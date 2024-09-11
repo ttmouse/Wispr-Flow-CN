@@ -1,5 +1,9 @@
 funasr
+numpy
 PyAudio
-pynput
-pyperclip
 PyQt6
+pyinstaller
+keyboard
+pyperclip
+pyautogui
+portaudio
