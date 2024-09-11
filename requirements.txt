@@ -1,0 +1,5 @@
+funasr
+PyAudio
+pynput
+pyperclip
+PyQt6
