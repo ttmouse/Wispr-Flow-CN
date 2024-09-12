@@ -1,23 +1,19 @@
 import PyInstaller.__main__
 import os
 
-# 获取当前脚本的目录
+# 获取当前脚本所在的目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# 设置应用程序图标路径（如果有的话）
-# icon_path = os.path.join(current_dir, 'icon.ico')
+# 设置打包参数
+params = [
+    'src/main.py',  # 您的主脚本
+    '--name=语音转文字',  # 应用程序名称
+    '--onefile',  # 打包成单个可执行文件
+    '--windowed',  # 使用 GUI 模式，不显示控制台
+    f'--add-data={os.path.join(current_dir, "src")}:src',  # 添加 src 目录
+    '--icon=app_icon.ico',  # 应用程序图标（如果有的话）
+    '--noconsole',  # 不显示控制台窗口
+]
 
-PyInstaller.__main__.run([
-    'src/main.py',
-    '--name=FunASR语音转文字',
-    '--onefile',
-    '--windowed',
-    # f'--icon={icon_path}',  # 如果有图标的话
-    '--add-data=src:src',
-    '--hidden-import=funasr',
-    '--hidden-import=PyQt6',
-    '--hidden-import=pyaudio',
-    '--hidden-import=pynput',
-    '--hidden-import=pyperclip',
-    '--hidden-import=numpy',
-])
+# 运行 PyInstaller
+PyInstaller.__main__.run(params)
