@@ -6,4 +6,3 @@ pyinstaller
 keyboard
 pyperclip
 pyautogui
-portaudio

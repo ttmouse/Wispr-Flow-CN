@@ -1,5 +1,6 @@
 import sys
 import pkg_resources
+import subprocess
 
 def check_dependencies():
     """检查所有依赖是否已安装"""
@@ -19,10 +20,21 @@ def check_python_version():
         raise RuntimeError("Python 3.6 或更高版本是必需的")
     print("Python 版本检查通过")
 
+def check_portaudio():
+    """检查 portaudio 是否已安装"""
+    print("检查 portaudio...")
+    try:
+        subprocess.run(["brew", "list", "portaudio"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("portaudio 已安装")
+    except subprocess.CalledProcessError:
+        print("portaudio 未安装，请使用 'brew install portaudio' 安装")
+        sys.exit(1)
+
 if __name__ == "__main__":
     print("开始环境检查...")
     try:
         check_python_version()
+        check_portaudio()
         check_dependencies()
         print("所有依赖检查通过，环境准备就绪。")
     except Exception as e:
