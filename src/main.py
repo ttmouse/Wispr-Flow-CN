@@ -216,8 +216,8 @@ class Application(QObject):
         # 清理文本
         # 移除所有 <|...|> 标记及其内容
         text = re.sub(r'<\s*\|[^|]*\|\s*>', '', text)
-        # 移除多余的空格
-        text = re.sub(r'\s+', ' ', text)
+        # 移除所有空格
+        text = text.replace(' ', '')
         # 移除首尾空白字符
         text = text.strip()
 
