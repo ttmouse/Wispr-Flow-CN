@@ -7,7 +7,7 @@ from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from hotkey_manager import HotkeyManager
 from clipboard_manager import ClipboardManager
-from download_model import download_funasr_model
+# 从 download_model import download_funasr_model  # 注释掉这一行
 import re
 
 class AudioCaptureThread(QThread):
@@ -65,11 +65,11 @@ class Application(QObject):
             self.audio_capture = AudioCapture()
             print("音频捕获已初始化")
             
-            print("正在下载模型...")
-            model_dir = download_funasr_model()
-            print(f"模型已下载到: {model_dir}")
+            # print("正在下载模型...")  # 注释掉这一行
+            # model_dir = download_funasr_model()  # 注释掉这一行
+            # print(f"模型已下载到: {model_dir}")  # 注释掉这一行
             
-            self.funasr_engine = FunASREngine(model_dir)
+            self.funasr_engine = FunASREngine()  # 移除 model_dir 参数
             print("FunASR引擎已初始化")
             
             self.hotkey_manager = HotkeyManager()

@@ -1,8 +1,13 @@
+torch
+torchaudio
 funasr
 numpy
-PyAudio
+pyaudio
 PyQt6
 pyinstaller
-keyboard
+pynput
 pyperclip
 pyautogui
+modelscope
+pyobjc-framework-AVFoundation
+

@@ -43,11 +43,16 @@ class AudioCapture:
             self.stream.stop_stream()
             self.stream.close()
             self.stream = None
-        audio_data = np.concatenate(self.frames) if self.frames else np.array([], dtype=np.int16)
-        duration = time.time() - self.start_time
-        print(f"录音结束，捕获的音频数据总长度：{len(audio_data)}，录音时长：{duration:.2f}秒，总读取次数：{len(self.frames)}")
         
-        return audio_data  # 直接返回音频数据，不清理
+        audio_data = np.concatenate(self.frames) if self.frames else np.array([], dtype=np.float32)
+        
+        if self.start_time is not None:
+            duration = time.time() - self.start_time
+            print(f"录音结束，捕获的音频数据总长度：{len(audio_data)}，录音时长：{duration:.2f}秒，总读取次数：{len(self.frames)}")
+        else:
+            print("录音结束，但没有捕获到音频数据")
+        
+        return audio_data
 
     def clear_recording_data(self):
         self.frames = []
