@@ -13,23 +13,56 @@ logging.getLogger('modelscope').setLevel(logging.WARNING)
 class FunASREngine:
     def __init__(self):
         try:
+            # 获取应用程序的基础路径
+            if getattr(sys, 'frozen', False):
+                application_path = sys._MEIPASS
+            else:
+                application_path = os.path.dirname(os.path.abspath(__file__))
+            
+            print(f"应用程序路径: {application_path}")
+            
+            # 设置 MODELSCOPE_CACHE 环境变量
+            cache_dir = os.path.join(application_path, 'modelscope', 'hub')
+            os.environ['MODELSCOPE_CACHE'] = cache_dir
+            print(f"模型缓存路径: {cache_dir}")
+            
+            # 检查模型文件是否存在
+            asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
+            punc_model_dir = os.path.join(cache_dir, 'damo', 'punc_ct-transformer_zh-cn-common-vocab272727-pytorch')
+            
+            print(f"ASR模型路径: {asr_model_dir}")
+            print(f"标点模型路径: {punc_model_dir}")
+            
+            if not os.path.exists(asr_model_dir) or not os.path.exists(punc_model_dir):
+                raise Exception(f"模型文件不存在: ASR模型: {os.path.exists(asr_model_dir)}, 标点模型: {os.path.exists(punc_model_dir)}")
+            
             # 使用 redirect_stdout 来捕获输出
             f = io.StringIO()
             with redirect_stdout(f), redirect_stderr(f):
+                print("开始加载ASR模型...")
                 # 初始化语音识别模型
                 self.model = AutoModel(
-                    model="damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+                    model=asr_model_dir,
                     model_revision="v2.0.4",
                     disable_update=True
                 )
+                print("ASR模型加载完成")
+                
+                print("开始加载标点模型...")
                 # 初始化标点模型
                 self.punc_model = AutoModel(
-                    model="damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", ## 这个不要改，是正确的
-                    model_revision="v2.0.4"
+                    model=punc_model_dir,
+                    model_revision="v2.0.4",
+                    disable_update=True
                 )
+                print("标点模型加载完成")
                 
         except Exception as e:
-            print(f"❌ 模型加载失败: {e}")
+            error_msg = f"❌ 模型加载失败: {str(e)}\n"
+            error_msg += f"系统路径: {sys.path}\n"
+            error_msg += f"当前目录: {os.getcwd()}\n"
+            error_msg += f"环境变量: MODELSCOPE_CACHE={os.environ.get('MODELSCOPE_CACHE', '未设置')}\n"
+            print(error_msg)
             raise
 
     def transcribe(self, audio_data):
@@ -59,7 +92,7 @@ class FunASREngine:
                 text = str(result)
             
             # 输出原始转写结果
-            print(f"🎯 语音识别: {text}")
+            # print(f"🎯 语音识别: {text}")
             
             # 2. 添加标点
             with redirect_stdout(f), redirect_stderr(f):
@@ -77,11 +110,11 @@ class FunASREngine:
             elif isinstance(punc_result, dict):
                 text = punc_result.get('text', text)
             
-            print(f"🎯 添加标点: {text}")
+            # print(f"🎯 添加标点: {text}")
             
             # 3. 处理英文单词间的空格
             processed_text = self._process_text(text)
-            print(f"✨ 处理后文本: {processed_text}")
+            # print(f"✨ 处理后文本: {processed_text}")
             
             return [{"text": processed_text}]
             
