@@ -46,7 +46,8 @@ class FunASREngine:
                     batch_size_s=300,
                     use_itn=True,     # 启用逆文本正则化
                     mode='offline',    # 使用离线模式以获得更好的标点效果
-                    decode_method='greedy_search'  # 使用贪婪搜索解码
+                    decode_method='greedy_search',  # 使用贪婪搜索解码
+                    disable_progress_bar=True  # 禁用进度条
                 )
             
             # 处理结果
@@ -61,7 +62,11 @@ class FunASREngine:
             print(f"🎯 语音识别: {text}")
             
             # 2. 添加标点
-            punc_result = self.punc_model.generate(input=text)
+            with redirect_stdout(f), redirect_stderr(f):
+                punc_result = self.punc_model.generate(
+                    input=text,
+                    disable_progress_bar=True  # 禁用进度条
+                )
             if isinstance(punc_result, list) and len(punc_result) > 0:
                 text = punc_result[0].get('text', text)
             elif isinstance(punc_result, dict):
