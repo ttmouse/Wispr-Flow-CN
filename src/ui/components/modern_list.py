@@ -43,6 +43,10 @@ class HistoryItemWidget(QWidget):
                 background-color: #E5E5E7;
             }
         """)
+    
+    def getText(self):
+        """获取文本内容"""
+        return self.text_label.text()
 
 class HistoryItem(QListWidgetItem):
     def __init__(self, text, timestamp):
@@ -50,6 +54,10 @@ class HistoryItem(QListWidgetItem):
         self.text = text
         self.timestamp = timestamp
         self.setSizeHint(QSize(0, 0))  # 初始大小，会被自动调整
+    
+    def getText(self):
+        """获取文本内容"""
+        return self.text
 
 class ModernListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -93,6 +101,14 @@ class ModernListWidget(QListWidget):
         
         # 滚动到顶部
         self.scrollToTop()
+    
+    def getItemText(self, item):
+        """获取列表项的文本内容"""
+        if item and self.itemWidget(item):
+            return self.itemWidget(item).getText()
+        elif isinstance(item, HistoryItem):
+            return item.getText()
+        return ""
         
     def resizeEvent(self, event):
         """窗口大小改变时重新计算所有项的大小"""
