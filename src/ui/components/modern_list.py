@@ -1,24 +1,55 @@
-from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QLabel, QWidget, QVBoxLayout
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QFontMetrics
+from PyQt6.QtGui import QFont
 import time
+
+class TextLabel(QLabel):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setWordWrap(True)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setFont(QFont("-apple-system", 14))
+        self.setStyleSheet("""
+            QLabel {
+                color: #1D1D1F;
+                padding: 0px;
+                line-height: 140%;
+            }
+        """)
+
+class HistoryItemWidget(QWidget):
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(0)
+        
+        # 创建文本标签
+        self.text_label = TextLabel(text, self)
+        layout.addWidget(self.text_label)
+        
+        # 设置样式，添加底部分隔线
+        self.setStyleSheet("""
+            HistoryItemWidget {
+                background-color: white;
+            }
+            HistoryItemWidget::after {
+                content: '';
+                position: absolute;
+                left: 20px;
+                right: 20px;
+                bottom: 0;
+                height: 1px;
+                background-color: #E5E5E7;
+            }
+        """)
 
 class HistoryItem(QListWidgetItem):
     def __init__(self, text, timestamp):
         super().__init__()
         self.text = text
-        self.timestamp = timestamp  # 保留timestamp属性，但不显示
-        self.update_display()
-        
-    def update_display(self):
-        self.setText(self.text)
-        # 动态计算合适的大小
-        font = QFont("", 16)  # 增大字体大小
-        metrics = QFontMetrics(font)
-        width = 400 - 32  # 假设最小宽度400，减去padding
-        rect = metrics.boundingRect(0, 0, width, 2000, Qt.TextFlag.TextWordWrap, self.text)
-        height = max(40, rect.height() + 16)  # 减小最小高度和padding
-        self.setSizeHint(QSize(width, height))
+        self.timestamp = timestamp
+        self.setSizeHint(QSize(0, 0))  # 初始大小，会被自动调整
 
 class ModernListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -30,45 +61,44 @@ class ModernListWidget(QListWidget):
                 outline: none;
             }
             QListWidget::item {
-                border-bottom: 1px solid #E5E5E7;
-                padding: 8px 16px;
+                padding: 0;
                 margin: 0;
-                color: #1D1D1F;
-                font-size: 16px;
+                background-color: transparent;
+                border-bottom: 1px solid #E5E5E7;
             }
             QListWidget::item:hover {
                 background-color: #F5F5F7;
             }
             QListWidget::item:selected {
                 background-color: #F5F5F7;
-                color: #1D1D1F;
             }
         """)
-        # 启用自动换行
-        self.setWordWrap(True)
-        # 设置动态高度
-        self.setTextElideMode(Qt.TextElideMode.ElideNone)
-        # 设置自动调整大小
-        self.setSizeAdjustPolicy(QListWidget.SizeAdjustPolicy.AdjustToContents)
         
-    def sizeHintForRow(self, row) -> int:
-        """返回每行的建议高度"""
-        item = self.item(row)
-        if not item:
-            return 0
-            
-        # 获取文本内容
-        text = item.text()
-        font = self.font()
-        metrics = QFontMetrics(font)
+        # 基本设置
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.setSpacing(1)
+        self.setMinimumWidth(300)
         
-        # 计算文本宽度和换行
-        available_width = self.viewport().width() - 32  # 减去左右padding
-        text_rect = metrics.boundingRect(
-            0, 0, available_width, 1000,
-            Qt.TextFlag.TextWordWrap,
-            text
-        )
+    def addHistoryItem(self, text, timestamp=None):
+        """添加新的历史记录项"""
+        # 创建列表项
+        item = HistoryItem(text, timestamp or time.time())
+        self.insertItem(0, item)
         
-        # 返回文本高度加上padding
-        return max(40, text_rect.height() + 16)  # 减小最小高度和padding 
+        # 创建自定义widget
+        widget = HistoryItemWidget(text)
+        item.setSizeHint(widget.sizeHint())
+        self.setItemWidget(item, widget)
+        
+        # 滚动到顶部
+        self.scrollToTop()
+        
+    def resizeEvent(self, event):
+        """窗口大小改变时重新计算所有项的大小"""
+        super().resizeEvent(event)
+        for i in range(self.count()):
+            item = self.item(i)
+            if item and self.itemWidget(item):
+                widget = self.itemWidget(item)
+                item.setSizeHint(widget.sizeHint()) 

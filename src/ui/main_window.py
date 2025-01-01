@@ -20,8 +20,12 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 400, 600)
         self.setMinimumSize(400, 400)
         
-        # 设置窗口标志，隐藏默认的窗口顶部工具栏
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        # 设置窗口标志
+        self.setWindowFlags(Qt.WindowType.Window |  # 确保是独立窗口
+                          Qt.WindowType.FramelessWindowHint)  # 无边框
+        
+        # 设置窗口保持在最前
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         
         self.setStyleSheet("""
             QMainWindow {
@@ -60,23 +64,66 @@ class MainWindow(QMainWindow):
         title_bar.setStyleSheet("background-color: black; color: white;")
         title_bar.setFixedHeight(58)
         
+        # 添加鼠标事件追踪
+        title_bar.mousePressEvent = self._on_title_bar_mouse_press
+        title_bar.mouseMoveEvent = self._on_title_bar_mouse_move
+        
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(20, 0, 20, 0)
         
+        # 标题文本
         title_label = QLabel("音频转文本")
         title_label.setFont(QFont("", 16))
         title_label.setStyleSheet("color: white;")
         title_layout.addWidget(title_label)
         
+        # 添加关闭按钮
+        close_button = QPushButton("×")
+        close_button.setFixedSize(20, 20)
+        close_button.setFont(QFont("", 16))
+        close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                color: #999999;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: white;
+            }
+            QPushButton:pressed {
+                color: #666666;
+            }
+        """)
+        close_button.clicked.connect(self.close)
+        title_layout.addWidget(close_button)
+        
         self.main_layout.addWidget(title_bar)
+        
+        # 保存拖动相关的状态
+        self._is_dragging = False
+        self._drag_start_pos = None
+        
+    def _on_title_bar_mouse_press(self, event):
+        """处理标题栏鼠标按下事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_dragging = True
+            self._drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+            
+    def _on_title_bar_mouse_move(self, event):
+        """处理标题栏鼠标移动事件"""
+        if self._is_dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+            
+    def mouseReleaseEvent(self, event):
+        """处理鼠标释放事件"""
+        self._is_dragging = False
+        super().mouseReleaseEvent(event)
         
     def setup_history_section(self):
         """设置历史记录部分"""
-        recent_label = QLabel("最近记录")
-        recent_label.setFont(QFont("", 16))
-        recent_label.setContentsMargins(20, 20, 20, 10)
-        self.main_layout.addWidget(recent_label)
-        
         self.history_list = ModernListWidget()
         self.history_list.itemClicked.connect(self._on_history_item_clicked)
         self.main_layout.addWidget(self.history_list)
@@ -95,19 +142,6 @@ class MainWindow(QMainWindow):
         """设置录音按钮"""
         self.record_button = QPushButton()
         self.record_button.setFixedSize(64, 64)
-        self.record_button.setStyleSheet("""
-            QPushButton {
-                background-color: black;
-                border-radius: 32px;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: #1a1a1a;
-            }
-            QPushButton:pressed {
-                background-color: #333333;
-            }
-        """)
         
         # 麦克风图标容器
         icon_container = QWidget(self.record_button)
@@ -116,19 +150,60 @@ class MainWindow(QMainWindow):
         icon_layout.setContentsMargins(0, 0, 0, 0)
         icon_layout.setSpacing(0)
         
-        mic_icon = QLabel()
-        mic_icon.setFixedSize(24, 24)
-        mic_icon.setStyleSheet("""
+        # 创建两个图标标签
+        self.mic_icon = QLabel()
+        self.mic_icon.setFixedSize(24, 24)
+        self.mic_icon.setStyleSheet("""
             QLabel {
                 image: url(resources/mic.png);
                 padding: 0;
                 background: transparent;
             }
         """)
-        icon_layout.addWidget(mic_icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        self.mic_recording_icon = QLabel()
+        self.mic_recording_icon.setFixedSize(24, 24)
+        self.mic_recording_icon.setStyleSheet("""
+            QLabel {
+                image: url(resources/mic-recording.svg);
+                padding: 0;
+                background: transparent;
+            }
+        """)
+        self.mic_recording_icon.hide()  # 初始隐藏录音状态图标
+        
+        # 将两个图标都添加到布局中
+        icon_layout.addWidget(self.mic_icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        icon_layout.addWidget(self.mic_recording_icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # 设置初始样式
+        self._update_record_button_style(False)  # 初始化为非录音状态
         
         self.record_button.clicked.connect(self.record_button_clicked.emit)
         parent_layout.addWidget(self.record_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+    def _update_record_button_style(self, is_recording):
+        """更新录音按钮样式"""
+        self.record_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {"#D32F2F" if is_recording else "black"};
+                border-radius: 32px;
+                border: none;
+            }}
+            QPushButton:hover {{
+                background-color: {"#B71C1C" if is_recording else "#1a1a1a"};
+            }}
+            QPushButton:pressed {{
+                background-color: {"#961717" if is_recording else "#333333"};
+            }}
+        """)
+        # 切换图标显示
+        if is_recording:
+            self.mic_icon.hide()
+            self.mic_recording_icon.show()
+        else:
+            self.mic_icon.show()
+            self.mic_recording_icon.hide()
         
     def setup_hidden_components(self):
         """设置隐藏的组件"""
@@ -153,15 +228,16 @@ class MainWindow(QMainWindow):
         if isinstance(item, HistoryItem):
             self.history_item_clicked.emit(item.text)
     
-    def display_result(self, result, add_to_history=True):
+    def display_result(self, text):
         """显示识别结果"""
-        self.result_text.setText(result)
-        if add_to_history:
-            self.add_to_history(result)
+        if text and text.strip():  # 确保文本不为空
+            self.history_list.addHistoryItem(text)  # 使用新的addHistoryItem方法
     
     def update_status(self, status):
         """更新状态显示"""
-        pass
+        # 根据状态更新按钮样式
+        is_recording = "录音中" in status if status else False
+        self._update_record_button_style(is_recording)
     
     def set_state_manager(self, state_manager):
         """设置状态管理器"""
