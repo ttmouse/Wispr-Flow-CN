@@ -92,13 +92,11 @@ class MainWindow(QMainWindow):
         """设置录音按钮"""
         self.record_button = QPushButton()
         self.record_button.setFixedSize(64, 64)
-        self.record_button.setText("")
         self.record_button.setStyleSheet("""
             QPushButton {
                 background-color: black;
                 border-radius: 32px;
                 border: none;
-                text-align: center;
             }
             QPushButton:hover {
                 background-color: #1a1a1a;

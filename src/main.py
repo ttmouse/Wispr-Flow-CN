@@ -117,22 +117,15 @@ class Application(QObject):
         self.hotkey_manager.set_release_callback(self.on_option_release)
         self.update_ui_signal.connect(self.update_ui)
         self.main_window.record_button_clicked.connect(self.toggle_recording)
-        self.main_window.pause_button_clicked.connect(self.toggle_pause)
         self.main_window.space_key_pressed.connect(self.on_space_key_pressed)
         self.main_window.history_item_clicked.connect(self.on_history_item_clicked)
+        self.state_manager.status_changed.connect(self.main_window.update_status)
 
     def toggle_recording(self):
         if not self.recording:
             self.start_recording()
         else:
             self.stop_recording()
-
-    def toggle_pause(self):
-        if self.recording:
-            if not self.paused:
-                self.pause_recording()
-            else:
-                self.resume_recording()
 
     def start_recording(self):
         if not self.recording:
@@ -148,8 +141,6 @@ class Application(QObject):
                 self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
                 self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
                 self.audio_capture_thread.start()
-                self.main_window.record_button.setText("停止录音")
-                self.main_window.pause_button.setEnabled(True)
                 self.state_manager.start_recording()
             except Exception as e:
                 error_msg = f"开始录音时出错: {str(e)}"
@@ -178,29 +169,6 @@ class Application(QObject):
             except Exception as e:
                 print(f"❌ 录音失败: {e}")
                 self.update_ui_signal.emit(f"❌ 录音失败: {e}", "")
-            
-            self.main_window.record_button.setText("开始录音")
-            self.main_window.pause_button.setEnabled(False)
-
-    def pause_recording(self):
-        if self.recording and not self.paused:
-            self.context.record_action("暂停录音")
-            self.context.set_recording_state("paused")
-            self.paused = True
-            self.audio_capture_thread.stop()
-            self.state_manager.toggle_pause()
-            self.main_window.set_paused_state(True)
-
-    def resume_recording(self):
-        if self.recording and self.paused:
-            self.context.record_action("恢复录音")
-            self.context.set_recording_state("recording")
-            self.paused = False
-            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
-            self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-            self.audio_capture_thread.start()
-            self.state_manager.toggle_pause()
-            self.main_window.set_paused_state(False)
 
     def on_option_press(self):
         if not self.recording:
@@ -212,6 +180,25 @@ class Application(QObject):
 
     def on_space_key_pressed(self):
         self.toggle_recording()
+
+    def on_audio_captured(self, data):
+        """音频数据捕获回调"""
+        if self.recording and not self.paused:
+            self.state_manager.update_status()
+
+    def on_transcription_done(self, text):
+        """处理转写结果"""
+        if text.strip():
+            self.main_window.display_result(text)
+            self.clipboard_manager.copy_to_clipboard(text)
+            self.clipboard_manager.paste_to_current_app()
+            print(f"✓ {text}")
+    
+    def on_history_item_clicked(self, text):
+        """处理历史记录点击事件"""
+        self.clipboard_manager.copy_to_clipboard(text)
+        self.clipboard_manager.paste_to_current_app()
+        self.update_ui_signal.emit("已粘贴历史记录", text)
 
     def run(self):
         try:
@@ -231,36 +218,6 @@ class Application(QObject):
             self.transcription_thread.wait()
         self.hotkey_manager.stop_listening()
 
-    def on_transcription_done(self, result):
-        try:
-            # 处理 FunASR 返回的结果格式
-            if isinstance(result, list) and len(result) > 0:
-                text = result[0].get('text', '')
-            elif isinstance(result, dict):
-                text = result.get('text', '')
-            else:
-                text = str(result)
-
-            # 只移除特殊标记，保留标点符号和英文单词间的空格
-            text = re.sub(r'<\s*\|[^|]*\|\s*>', '', text)
-            # 移除中文间的空格，但保留英文单词间的空格
-            text = re.sub(r'(?<![a-zA-Z])\s+(?![a-zA-Z])', '', text)
-            text = text.strip()
-
-            print(f"✓ {text}")
-            self.clipboard_manager.copy_to_clipboard(text)
-            self.clipboard_manager.paste_to_current_app()
-            self.update_ui_signal.emit("✓ 转写完成", text)
-            
-            if hasattr(self, 'transcription_thread'):
-                self.transcription_thread.quit()
-                self.transcription_thread.wait()
-                
-            self.context.reset()
-        except Exception as e:
-            print(f"❌ 处理转写结果失败: {e}")
-            self.update_ui_signal.emit(f"❌ 处理转写结果失败: {e}", "")
-
     def update_ui(self, status, result):
         """更新界面显示"""
         self.main_window.update_status(status)
@@ -269,21 +226,86 @@ class Application(QObject):
             add_to_history = status != "已粘贴历史记录"
             self.main_window.display_result(result, add_to_history)
 
-    def on_audio_captured(self, data):
-        """音频数据捕获回调"""
-        if self.recording and not self.paused:
-            duration = time.time() - self._recording_start_time
-            self.state_manager.update_recording_status(duration)
-
-    def set_hotwords(self, hotwords):
-        if hasattr(self, 'funasr_engine'):
-            self.funasr_engine.model.set_hotwords(hotwords)
-
-    def on_history_item_clicked(self, text):
-        """处理历史记录点击事件"""
+class MainApp(QApplication):
+    def __init__(self, argv):
+        super().__init__(argv)
+        
+        # 初始化组件
+        self.state_manager = StateManager()
+        self.audio_manager = AudioCaptureManager(self.state_manager)
+        self.asr_engine = FunASREngine()
+        self.clipboard_manager = ClipboardManager()
+        self.hotkey_manager = HotkeyManager()
+        
+        # 创建主窗口
+        self.main_window = MainWindow()
+        self.main_window.set_state_manager(self.state_manager)
+        
+        # 连接信号
+        self._connect_signals()
+        
+        # 设置窗口图标
+        icon_path = os.path.join("resources", "icon.png")
+        if os.path.exists(icon_path):
+            self.main_window.setWindowIcon(QIcon(icon_path))
+        
+        print("应用程序就绪")
+        
+    def _connect_signals(self):
+        """连接信号"""
+        # 录音控制
+        self.main_window.record_button_clicked.connect(self._toggle_recording)
+        self.main_window.space_key_pressed.connect(self._toggle_recording)
+        self.main_window.status_update_needed.connect(self.state_manager.update_status)
+        
+        # 历史记录点击
+        self.main_window.history_item_clicked.connect(self._on_history_item_clicked)
+        
+        # 全局热键
+        self.hotkey_manager.hotkey_triggered.connect(self._toggle_recording)
+    
+    def _toggle_recording(self):
+        """切换录音状态"""
+        if not self.state_manager.is_recording:
+            self._start_recording()
+        else:
+            self._stop_recording()
+    
+    def _start_recording(self):
+        """开始录音"""
+        self.state_manager.start_recording()
+        self.audio_manager.start_recording()
+        self.main_window.record_button.setText("停止录音")
+    
+    def _stop_recording(self):
+        """停止录音"""
+        self.audio_manager.stop_recording()
+        self.state_manager.stop_recording()
+        self.main_window.record_button.setText("开始录音")
+        
+        # 处理录音数据
+        audio_data = self.audio_manager.get_audio_data()
+        if audio_data:
+            text = self.asr_engine.transcribe(audio_data)
+            if text:
+                self._on_transcription_done(text)
+    
+    def _on_transcription_done(self, text):
+        """处理转写结果"""
+        if text.strip():
+            self.main_window.display_result(text)
+            self.clipboard_manager.copy_to_clipboard(text)
+            print(f"✓ {text}")
+    
+    def _on_history_item_clicked(self, text):
+        """处理历史记录点击"""
         self.clipboard_manager.copy_to_clipboard(text)
         self.clipboard_manager.paste_to_current_app()
-        self.update_ui_signal.emit("已粘贴历史记录", text)
+        
+    def exec(self):
+        """运行应用程序"""
+        self.main_window.show()
+        return super().exec()
 
 if __name__ == "__main__":
     try:
