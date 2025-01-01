@@ -14,8 +14,7 @@ class FunASREngine:
             
             self.model = AutoModel(model=model_name,
                                    model_revision="v2.0.4",
-                                   vad_model="fsmn-vad",
-                                   punc_model="ct-punc")
+                                   punc_model="damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch")
             print("成功初始化 AutoModel")
         except Exception as e:
             print(f"初始化 AutoModel 时出错: {e}")
