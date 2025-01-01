@@ -20,6 +20,9 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 400, 600)
         self.setMinimumSize(400, 400)
         
+        # 设置窗口标志，隐藏默认的窗口顶部工具栏
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        
         self.setStyleSheet("""
             QMainWindow {
                 background-color: white;
@@ -70,7 +73,7 @@ class MainWindow(QMainWindow):
     def setup_history_section(self):
         """设置历史记录部分"""
         recent_label = QLabel("最近记录")
-        recent_label.setFont(QFont("", 14))
+        recent_label.setFont(QFont("", 16))
         recent_label.setContentsMargins(20, 20, 20, 10)
         self.main_layout.addWidget(recent_label)
         
