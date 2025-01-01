@@ -97,9 +97,11 @@ class MainWindow(QMainWindow):
         self.record_button.clicked.connect(self.record_button_clicked.emit)
         button_layout.addWidget(self.record_button)
         
+        # 暂停按钮（暂时隐藏）
         self.pause_button = QPushButton("暂停录音")
         self.pause_button.clicked.connect(self.pause_button_clicked.emit)
         self.pause_button.setEnabled(False)
+        self.pause_button.hide()  # 隐藏暂停按钮
         button_layout.addWidget(self.pause_button)
         
         right_layout.addLayout(button_layout)
