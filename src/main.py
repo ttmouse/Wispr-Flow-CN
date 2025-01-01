@@ -203,29 +203,34 @@ class Application(QObject):
         self.hotkey_manager.stop_listening()
 
     def on_transcription_done(self, result):
-        if isinstance(result, str):
-            text = result
-        elif isinstance(result, dict):
-            text = result.get('text', '')
-        elif isinstance(result, list) and len(result) > 0:
-            text = result[0].get('text', '') if isinstance(result[0], dict) else str(result[0])
-        else:
-            text = str(result)
+        try:
+            # 处理 FunASR 返回的结果格式
+            if isinstance(result, list) and len(result) > 0:
+                text = result[0].get('text', '')
+            elif isinstance(result, dict):
+                text = result.get('text', '')
+            else:
+                text = str(result)
 
-        text = re.sub(r'<\s*\|[^|]*\|\s*>', '', text)
-        text = text.replace(' ', '')
-        text = text.strip()
+            # 只移除特殊标记，保留标点符号
+            text = re.sub(r'<\s*\|[^|]*\|\s*>', '', text)
+            # 移除多余空格但保留标点
+            text = re.sub(r'\s+', '', text)
+            text = text.strip()
 
-        print(f"✓ {text}")
-        self.clipboard_manager.copy_to_clipboard(text)
-        self.clipboard_manager.paste_to_current_app()
-        self.update_ui_signal.emit("转写完成", text)
-        
-        if hasattr(self, 'transcription_thread'):
-            self.transcription_thread.quit()
-            self.transcription_thread.wait()
+            print(f"✓ {text}")
+            self.clipboard_manager.copy_to_clipboard(text)
+            self.clipboard_manager.paste_to_current_app()
+            self.update_ui_signal.emit("转写完成", text)
             
-        self.context.reset()
+            if hasattr(self, 'transcription_thread'):
+                self.transcription_thread.quit()
+                self.transcription_thread.wait()
+                
+            self.context.reset()
+        except Exception as e:
+            print(f"❌ 处理转写结果失败: {e}")
+            self.update_ui_signal.emit("转写失败", "处理结果时出错")
 
     def update_ui(self, status, result):
         self.main_window.update_status(status)
