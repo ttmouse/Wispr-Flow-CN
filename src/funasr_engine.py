@@ -65,7 +65,12 @@ class FunASREngine:
             with redirect_stdout(f), redirect_stderr(f):
                 punc_result = self.punc_model.generate(
                     input=text,
-                    disable_progress_bar=True  # 禁用进度条
+                    disable_progress_bar=True,  # 禁用进度条
+                    batch_size=1,               # 批处理大小
+                    mode='offline',             # 离线模式，更准确的标点
+                    cache_size=0,               # 不使用缓存，每次都重新预测
+                    hotword_score=0.8,          # 提高热词权重，使标点更丰富
+                    min_sentence_length=3       # 最小句子长度，小于这个长度的不会加句号
                 )
             if isinstance(punc_result, list) and len(punc_result) > 0:
                 text = punc_result[0].get('text', text)
