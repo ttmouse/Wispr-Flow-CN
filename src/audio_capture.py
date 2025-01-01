@@ -113,7 +113,7 @@ class AudioCapture:
         
         # 检查是否有足够的有效音频
         if self.valid_frame_count < self.min_valid_frames:
-            print(f"❌ 未检测到有效语音（有效帧数：{self.valid_frame_count}，需要：{self.min_valid_frames}）")
+            # print(f"\r\033[K❌ 未检测到有效语音（有效帧数：{self.valid_frame_count}，需要：{self.min_valid_frames}）", end="", flush=True)
             return np.array([], dtype=np.float32)
             
         return data

@@ -187,11 +187,14 @@ class Application(QObject):
             self.state_manager.update_status()
 
     def on_transcription_done(self, text):
-        """处理转写结果"""
-        if text.strip():
+        """转写完成的回调"""
+        if text and text.strip():
+            # 显示结果并添加到历史记录
             self.main_window.display_result(text)
+            # 复制到剪贴板并粘贴
             self.clipboard_manager.copy_to_clipboard(text)
             self.clipboard_manager.paste_to_current_app()
+            # 打印日志
             print(f"✓ {text}")
     
     def on_history_item_clicked(self, text):
@@ -221,10 +224,10 @@ class Application(QObject):
     def update_ui(self, status, result):
         """更新界面显示"""
         self.main_window.update_status(status)
-        if result:
+        if result and result.strip():
             # 如果是从历史记录点击的，不要再次添加到历史记录
-            add_to_history = status != "已粘贴历史记录"
-            self.main_window.display_result(result, add_to_history)
+            if status != "已粘贴历史记录":
+                self.main_window.display_result(result)
 
 class MainApp(QApplication):
     def __init__(self, argv):
