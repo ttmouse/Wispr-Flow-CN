@@ -8,16 +8,15 @@ from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from hotkey_manager import HotkeyManager
 from clipboard_manager import ClipboardManager
-from state_manager import StateManager, RecordingState
-import re
+from state_manager import StateManager
 from context_manager import Context
 import time
+import re
 
 # 应用信息
 APP_NAME = "FunASR"
 APP_VERSION = "1.0.0"
 APP_AUTHOR = "ttmouse"
-
 # 设置环境变量以隐藏系统日志
 os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
@@ -120,6 +119,7 @@ class Application(QObject):
         self.main_window.record_button_clicked.connect(self.toggle_recording)
         self.main_window.pause_button_clicked.connect(self.toggle_pause)
         self.main_window.space_key_pressed.connect(self.on_space_key_pressed)
+        self.main_window.history_item_clicked.connect(self.on_history_item_clicked)
 
     def toggle_recording(self):
         if not self.recording:
@@ -141,20 +141,21 @@ class Application(QObject):
             self.recording = True
             self.paused = False
             self.audio_data = []
-            self._recording_start_time = time.time()  # 设置录音开始时间
+            self._recording_start_time = time.time()
             
             try:
                 self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
                 self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-                self.audio_capture_thread.recording_stopped.connect(self.stop_recording)  # 连接自动停止信号
+                self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
                 self.audio_capture_thread.start()
-                self.main_window.set_recording_state(True)
-                self.state_manager.transition_to(RecordingState.RECORDING)
+                self.main_window.record_button.setText("停止录音")
+                self.main_window.pause_button.setEnabled(True)
+                self.state_manager.start_recording()
             except Exception as e:
                 error_msg = f"开始录音时出错: {str(e)}"
                 self.context.record_error(error_msg)
                 print(error_msg)
-                self.state_manager.transition_to(RecordingState.ERROR, error=str(e))
+                self.update_ui_signal.emit(f"❌ {error_msg}", "")
 
     def stop_recording(self):
         if self.recording:
@@ -167,19 +168,19 @@ class Application(QObject):
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
-                    # 使用实时计时的时间，而不是音频数据长度计算的时间
-                    duration = time.time() - self._recording_start_time
-                    self.state_manager.update_recording_status(duration)  # 更新最终时长
-                    self.state_manager.transition_to(RecordingState.PROCESSING)
+                    self.state_manager.stop_recording()
                     self.transcription_thread = TranscriptionThread(audio_data, self.funasr_engine)
                     self.transcription_thread.transcription_done.connect(self.on_transcription_done)
                     self.transcription_thread.start()
                 else:
                     print("❌ 未检测到声音")
-                    self.state_manager.transition_to(RecordingState.ERROR, error="未检测到声音")
+                    self.update_ui_signal.emit("❌ 未检测到声音", "")
             except Exception as e:
                 print(f"❌ 录音失败: {e}")
-                self.state_manager.transition_to(RecordingState.ERROR, error=str(e))
+                self.update_ui_signal.emit(f"❌ 录音失败: {e}", "")
+            
+            self.main_window.record_button.setText("开始录音")
+            self.main_window.pause_button.setEnabled(False)
 
     def pause_recording(self):
         if self.recording and not self.paused:
@@ -187,7 +188,7 @@ class Application(QObject):
             self.context.set_recording_state("paused")
             self.paused = True
             self.audio_capture_thread.stop()
-            self.state_manager.transition_to(RecordingState.IDLE)
+            self.state_manager.toggle_pause()
             self.main_window.set_paused_state(True)
 
     def resume_recording(self):
@@ -198,7 +199,7 @@ class Application(QObject):
             self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
             self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
             self.audio_capture_thread.start()
-            self.state_manager.transition_to(RecordingState.RECORDING)
+            self.state_manager.toggle_pause()
             self.main_window.set_paused_state(False)
 
     def on_option_press(self):
@@ -215,6 +216,9 @@ class Application(QObject):
     def run(self):
         try:
             self.main_window.show()
+            # 确保窗口显示在最前面
+            self.main_window.raise_()
+            self.main_window.activateWindow()
             self.hotkey_manager.start_listening()
             return self.app.exec()
         finally:
@@ -246,8 +250,7 @@ class Application(QObject):
             print(f"✓ {text}")
             self.clipboard_manager.copy_to_clipboard(text)
             self.clipboard_manager.paste_to_current_app()
-            self.state_manager.transition_to(RecordingState.IDLE)
-            self.main_window.display_result(text)
+            self.update_ui_signal.emit("✓ 转写完成", text)
             
             if hasattr(self, 'transcription_thread'):
                 self.transcription_thread.quit()
@@ -256,11 +259,13 @@ class Application(QObject):
             self.context.reset()
         except Exception as e:
             print(f"❌ 处理转写结果失败: {e}")
-            self.state_manager.transition_to(RecordingState.ERROR, error=str(e))
+            self.update_ui_signal.emit(f"❌ 处理转写结果失败: {e}", "")
 
     def update_ui(self, status, result):
+        """更新界面显示"""
         self.main_window.update_status(status)
-        self.main_window.display_result(result)
+        if result:
+            self.main_window.display_result(result)
 
     def on_audio_captured(self, data):
         """音频数据捕获回调"""
@@ -271,6 +276,12 @@ class Application(QObject):
     def set_hotwords(self, hotwords):
         if hasattr(self, 'funasr_engine'):
             self.funasr_engine.model.set_hotwords(hotwords)
+
+    def on_history_item_clicked(self, text):
+        """处理历史记录点击事件"""
+        self.clipboard_manager.copy_to_clipboard(text)
+        self.clipboard_manager.paste_to_current_app()
+        self.update_ui_signal.emit("已粘贴历史记录", text)
 
 if __name__ == "__main__":
     try:

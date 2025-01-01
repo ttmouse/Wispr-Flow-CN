@@ -2,35 +2,35 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>FunASR语音转文字</string>
-    <key>CFBundleIconFile</key>
-    <string>app_icon.icns</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.yourcompany.FunASR语音转文字</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
+    <key>CFBundleDisplayName</key>
+    <string>FunASR</string>
     <key>CFBundleName</key>
-    <string>FunASR语音转文字</string>
+    <string>FunASR</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.ttmouse.funasr</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
     <key>LSMinimumSystemVersion</key>
-    <string>10.14</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2023 Your Company. All rights reserved.</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
+    <string>10.13</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>需要访问麦克风以进行语音识别。</string>
+    <string>需要使用麦克风来进行语音识别</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>需要辅助功能权限以使用全局热键功能。</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>需要访问文件系统以保存设置和模型文件。</string>
+    <string>需要辅助功能权限来监听键盘快捷键</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>需要辅助功能权限来监听键盘快捷键</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>需要访问文档文件夹来保存录音文件</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>需要访问下载文件夹来保存录音文件</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>需要访问桌面来保存录音文件</string>
 </dict>
 </plist>

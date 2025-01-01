@@ -10,7 +10,7 @@ class AudioCapture:
         self.device_index = self._get_default_mic_index()
         self.read_count = 0
         # 音量相关参数
-        self.volume_threshold = 0.005  # 降低音量阈值，使其更容易捕获语音
+        self.volume_threshold = 0.002  # 降低音量阈值，使其更容易捕获语音
         self.min_valid_frames = 3      # 降低最少有效帧数要求（约0.2秒）
         self.valid_frame_count = 0     # 有效音频帧计数
         self.max_silence_frames = 30    # 最大连续静音帧数（约1.8秒）

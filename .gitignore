@@ -31,3 +31,4 @@ resources/modelscope/
 # 忽略日志文件
 *.log
 transcription.log
+src/modelscope/hub/
