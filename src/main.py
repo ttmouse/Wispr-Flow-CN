@@ -1,5 +1,6 @@
 import sys
 import traceback
+import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject
 from ui.main_window import MainWindow
@@ -7,9 +8,12 @@ from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from hotkey_manager import HotkeyManager
 from clipboard_manager import ClipboardManager
-# 从 download_model import download_funasr_model  # 注释掉这一行
 import re
 from context_manager import Context
+
+# 设置环境变量以隐藏系统日志
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
 
 class AudioCaptureThread(QThread):
     audio_captured = pyqtSignal(object)
@@ -96,7 +100,6 @@ class Application(QObject):
         self.main_window.space_key_pressed.connect(self.on_space_key_pressed)
 
     def toggle_recording(self):
-        print(f"切换录音状态，当前状态: {'正在录音' if self.recording else '未录音'}")
         if not self.recording:
             self.start_recording()
         else:
@@ -182,7 +185,6 @@ class Application(QObject):
             self.stop_recording()
 
     def on_space_key_pressed(self):
-        print("Application: 空格键被按下，准备切换录音状态")
         self.toggle_recording()
 
     def run(self):

@@ -68,9 +68,7 @@ class MainWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def focusInEvent(self, event):
-        print("MainWindow: 窗口获得焦点")
         super().focusInEvent(event)
 
     def focusOutEvent(self, event):
-        print("MainWindow: 窗口失去焦点")
         super().focusOutEvent(event)
