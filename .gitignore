@@ -1,0 +1,33 @@
+# 忽略构建目录
+build/
+dist/
+
+# 忽略Python缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 忽略虚拟环境目录
+venv/
+env/
+py310/
+
+# 忽略IDE配置文件
+.vscode/
+.idea/
+
+# 忽略系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略打包工具生成的文件
+*.spec
+
+# 忽略模型和资源文件
+models/
+resources/modelscope/
+
+# 忽略日志文件
+*.log
+transcription.log
