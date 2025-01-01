@@ -13,11 +13,11 @@ class HistoryItem(QListWidgetItem):
     def update_display(self):
         self.setText(self.text)
         # 动态计算合适的大小
-        font = QFont("", 14)
+        font = QFont("", 16)  # 增大字体大小
         metrics = QFontMetrics(font)
         width = 400 - 32  # 假设最小宽度400，减去padding
         rect = metrics.boundingRect(0, 0, width, 2000, Qt.TextFlag.TextWordWrap, self.text)
-        height = max(60, rect.height() + 24)  # 最小高度60，加上padding
+        height = max(40, rect.height() + 16)  # 减小最小高度和padding
         self.setSizeHint(QSize(width, height))
 
 class ModernListWidget(QListWidget):
@@ -31,10 +31,10 @@ class ModernListWidget(QListWidget):
             }
             QListWidget::item {
                 border-bottom: 1px solid #E5E5E7;
-                padding: 12px 16px;
+                padding: 8px 16px;
                 margin: 0;
                 color: #1D1D1F;
-                font-size: 14px;
+                font-size: 16px;
             }
             QListWidget::item:hover {
                 background-color: #F5F5F7;
@@ -71,4 +71,4 @@ class ModernListWidget(QListWidget):
         )
         
         # 返回文本高度加上padding
-        return max(60, text_rect.height() + 24)  # 最小高度60，加上padding 
+        return max(40, text_rect.height() + 16)  # 减小最小高度和padding 
