@@ -62,13 +62,10 @@ class MainWindow(QMainWindow):
         else:
             self.pause_button.setText("暂停录音")
 
-    def keyPressEvent(self, event: QKeyEvent):
-        print(f"MainWindow: 键被按下，键码: {event.key()}")  # 添加更详细的调试信息
+    def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space:
-            print("MainWindow: 空格键被按下")
             self.space_key_pressed.emit()
-        else:
-            super().keyPressEvent(event)
+        super().keyPressEvent(event)
 
     def focusInEvent(self, event):
         print("MainWindow: 窗口获得焦点")
