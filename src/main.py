@@ -212,10 +212,10 @@ class Application(QObject):
             else:
                 text = str(result)
 
-            # 只移除特殊标记，保留标点符号
+            # 只移除特殊标记，保留标点符号和英文单词间的空格
             text = re.sub(r'<\s*\|[^|]*\|\s*>', '', text)
-            # 移除多余空格但保留标点
-            text = re.sub(r'\s+', '', text)
+            # 移除中文间的空格，但保留英文单词间的空格
+            text = re.sub(r'(?<![a-zA-Z])\s+(?![a-zA-Z])', '', text)
             text = text.strip()
 
             print(f"✓ {text}")

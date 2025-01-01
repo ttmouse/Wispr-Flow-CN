@@ -24,7 +24,7 @@ class FunASREngine:
                 )
                 # 初始化标点模型
                 self.punc_model = AutoModel(
-                    model="damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
+                    model="damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch", ## 这个不要改，是正确的
                     model_revision="v2.0.4"
                 )
                 
