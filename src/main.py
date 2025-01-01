@@ -265,7 +265,9 @@ class Application(QObject):
         """更新界面显示"""
         self.main_window.update_status(status)
         if result:
-            self.main_window.display_result(result)
+            # 如果是从历史记录点击的，不要再次添加到历史记录
+            add_to_history = status != "已粘贴历史记录"
+            self.main_window.display_result(result, add_to_history)
 
     def on_audio_captured(self, data):
         """音频数据捕获回调"""

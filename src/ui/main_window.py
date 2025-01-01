@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
     status_update_needed = pyqtSignal()
     start_timer = pyqtSignal()
     stop_timer = pyqtSignal()
-    history_item_clicked = pyqtSignal(str)  # 新增信号
+    history_item_clicked = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -33,14 +33,17 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(600, 400)
 
         self._recording_start_time = 0
-        self._status_timer = QTimer(self)
-        self._status_timer.timeout.connect(self._on_timer)
-        self._status_timer.setInterval(100)
-        
-        self.start_timer.connect(self._start_timer)
-        self.stop_timer.connect(self._stop_timer)
+        self._status_timer = None  # 将在 showEvent 中初始化
         
         self.setup_ui()
+        
+    def showEvent(self, event):
+        """窗口显示时初始化定时器"""
+        super().showEvent(event)
+        if self._status_timer is None:
+            self._status_timer = QTimer(self)
+            self._status_timer.timeout.connect(self._on_timer)
+            self._status_timer.setInterval(100)
         
     def setup_ui(self):
         central_widget = QWidget()
@@ -65,10 +68,21 @@ class MainWindow(QMainWindow):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
+        # 状态面板
+        status_panel = QWidget()
+        status_layout = QHBoxLayout(status_panel)
+        
         # 状态标签
         self.status_label = QLabel("就绪")
         self.status_label.setFont(QFont("", 14))
-        right_layout.addWidget(self.status_label)
+        status_layout.addWidget(self.status_label)
+        
+        # 录音时长
+        self.duration_label = QLabel("")
+        self.duration_label.setFont(QFont("", 14))
+        status_layout.addWidget(self.duration_label)
+        
+        right_layout.addWidget(status_panel)
         
         # 结果文本框
         self.result_text = QTextEdit()
@@ -117,14 +131,28 @@ class MainWindow(QMainWindow):
         if isinstance(item, HistoryItem):
             self.history_item_clicked.emit(item.text)
     
-    def display_result(self, result):
-        """显示识别结果"""
+    def display_result(self, result, add_to_history=True):
+        """显示识别结果
+        
+        Args:
+            result: 要显示的文本
+            add_to_history: 是否添加到历史记录，默认为True
+        """
         self.result_text.setText(result)
-        self.add_to_history(result)
+        if add_to_history:
+            self.add_to_history(result)
     
     def update_status(self, status):
         """更新状态显示"""
-        self.status_label.setText(status)
+        # 分离状态文本和时长信息
+        if "录音中" in status and "秒" in status:
+            base_status = status[:status.find("(")].strip()
+            duration_info = status[status.find("("):].strip()
+            self.status_label.setText(base_status)
+            self.duration_label.setText(duration_info)
+        else:
+            self.status_label.setText(status)
+            self.duration_label.setText("")
     
     def set_state_manager(self, state_manager):
         """设置状态管理器"""
@@ -146,11 +174,13 @@ class MainWindow(QMainWindow):
     
     def _start_timer(self):
         """启动定时器"""
-        self._status_timer.start()
+        if self._status_timer:
+            self._status_timer.start()
     
     def _stop_timer(self):
         """停止定时器"""
-        self._status_timer.stop()
+        if self._status_timer:
+            self._status_timer.stop()
     
     def _on_timer(self):
         """定时器回调"""
