@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, 
                             QLabel, QTextEdit, QPushButton, QListWidget, QListWidgetItem,
-                            QSplitter)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, pyqtSlot
-from PyQt6.QtGui import QKeyEvent, QFont
+                            QSplitter, QFrame)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, pyqtSlot, QSize
+from PyQt6.QtGui import QKeyEvent, QFont, QPalette, QColor, QIcon
 import time
 
 class HistoryItem(QListWidgetItem):
@@ -16,6 +16,57 @@ class HistoryItem(QListWidgetItem):
         time_str = time.strftime("%H:%M:%S", time.localtime(self.timestamp))
         display_text = f"{time_str}\n{self.text[:50]}..." if len(self.text) > 50 else self.text
         self.setText(display_text)
+
+class ModernButton(QPushButton):
+    def __init__(self, text, parent=None, primary=False):
+        super().__init__(text, parent)
+        self.primary = primary
+        self.setMinimumHeight(36)
+        self.setFont(QFont("", 13))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                background-color: """ + ("#007AFF" if primary else "#F5F5F7") + """;
+                color: """ + ("#FFFFFF" if primary else "#1D1D1F") + """;
+            }
+            QPushButton:hover {
+                background-color: """ + ("#0051FF" if primary else "#E5E5E7") + """;
+            }
+            QPushButton:pressed {
+                background-color: """ + ("#0041CC" if primary else "#D5D5D7") + """;
+            }
+            QPushButton:disabled {
+                background-color: """ + ("#99C5FF" if primary else "#F5F5F7") + """;
+                color: """ + ("#FFFFFF" if primary else "#8E8E93") + """;
+            }
+        """)
+
+class ModernListWidget(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            QListWidget {
+                border: none;
+                border-radius: 8px;
+                background-color: #F5F5F7;
+                padding: 4px;
+            }
+            QListWidget::item {
+                border-radius: 6px;
+                padding: 8px;
+                margin: 2px 4px;
+            }
+            QListWidget::item:hover {
+                background-color: #E5E5E7;
+            }
+            QListWidget::item:selected {
+                background-color: #007AFF;
+                color: white;
+            }
+        """)
 
 class MainWindow(QMainWindow):
     record_button_clicked = pyqtSignal()
@@ -31,6 +82,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("FunASR 语音转文字")
         self.setGeometry(100, 100, 800, 600)
         self.setMinimumSize(600, 400)
+        
+        # 设置窗口背景色
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #FFFFFF;
+            }
+        """)
 
         self._recording_start_time = 0
         self._status_timer = None  # 将在 showEvent 中初始化
@@ -49,73 +107,103 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # 使用水平分割器
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # 主布局添加边距
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
         
         # 左侧面板 - 历史记录
-        left_panel = QWidget()
+        left_panel = QFrame()
+        left_panel.setStyleSheet("""
+            QFrame {
+                background-color: #FFFFFF;
+                border-radius: 12px;
+                border: 1px solid #E5E5E7;
+            }
+        """)
         left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(16, 16, 16, 16)
+        left_layout.setSpacing(12)
         
         history_label = QLabel("历史记录")
-        history_label.setFont(QFont("", 14))
+        history_label.setFont(QFont("", 16, QFont.Weight.Medium))
+        history_label.setStyleSheet("color: #1D1D1F;")
         left_layout.addWidget(history_label)
         
-        self.history_list = QListWidget()
+        self.history_list = ModernListWidget()
         self.history_list.itemClicked.connect(self._on_history_item_clicked)
         left_layout.addWidget(self.history_list)
         
         # 右侧面板 - 主要内容
-        right_panel = QWidget()
+        right_panel = QFrame()
+        right_panel.setStyleSheet("""
+            QFrame {
+                background-color: #FFFFFF;
+                border-radius: 12px;
+                border: 1px solid #E5E5E7;
+            }
+        """)
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(16, 16, 16, 16)
+        right_layout.setSpacing(12)
         
         # 状态面板
         status_panel = QWidget()
         status_layout = QHBoxLayout(status_panel)
+        status_layout.setContentsMargins(0, 0, 0, 0)
         
         # 状态标签
         self.status_label = QLabel("就绪")
-        self.status_label.setFont(QFont("", 14))
+        self.status_label.setFont(QFont("", 16, QFont.Weight.Medium))
+        self.status_label.setStyleSheet("color: #1D1D1F;")
         status_layout.addWidget(self.status_label)
         
         # 录音时长
         self.duration_label = QLabel("")
-        self.duration_label.setFont(QFont("", 14))
+        self.duration_label.setFont(QFont("", 16))
+        self.duration_label.setStyleSheet("color: #8E8E93;")
         status_layout.addWidget(self.duration_label)
         
+        status_layout.addStretch()
         right_layout.addWidget(status_panel)
         
         # 结果文本框
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setFont(QFont("", 13))
+        self.result_text.setFont(QFont("", 14))
+        self.result_text.setStyleSheet("""
+            QTextEdit {
+                border: none;
+                border-radius: 8px;
+                background-color: #F5F5F7;
+                padding: 12px;
+                selection-background-color: #007AFF;
+                selection-color: white;
+            }
+        """)
         right_layout.addWidget(self.result_text)
         
         # 按钮布局
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
         
-        self.record_button = QPushButton("开始录音")
+        self.record_button = ModernButton("开始录音", primary=True)
         self.record_button.clicked.connect(self.record_button_clicked.emit)
         button_layout.addWidget(self.record_button)
         
         # 暂停按钮（暂时隐藏）
-        self.pause_button = QPushButton("暂停录音")
+        self.pause_button = ModernButton("暂停录音")
         self.pause_button.clicked.connect(self.pause_button_clicked.emit)
         self.pause_button.setEnabled(False)
-        self.pause_button.hide()  # 隐藏暂停按钮
+        self.pause_button.hide()
         button_layout.addWidget(self.pause_button)
         
+        button_layout.addStretch()
         right_layout.addLayout(button_layout)
         
-        # 添加面板到分割器
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        
-        # 设置分割器的初始大小
-        splitter.setSizes([200, 600])
-        
-        # 主布局
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.addWidget(splitter)
+        # 添加面板到主布局
+        main_layout.addWidget(left_panel, 1)  # 1 表示伸缩因子
+        main_layout.addWidget(right_panel, 2)  # 2 表示伸缩因子
         
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
@@ -134,12 +222,7 @@ class MainWindow(QMainWindow):
             self.history_item_clicked.emit(item.text)
     
     def display_result(self, result, add_to_history=True):
-        """显示识别结果
-        
-        Args:
-            result: 要显示的文本
-            add_to_history: 是否添加到历史记录，默认为True
-        """
+        """显示识别结果"""
         self.result_text.setText(result)
         if add_to_history:
             self.add_to_history(result)
