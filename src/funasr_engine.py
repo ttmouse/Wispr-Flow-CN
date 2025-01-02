@@ -31,8 +31,9 @@ class FunASREngine:
             hotwords_file = os.path.join(os.path.dirname(application_path), "resources", "hotwords.txt")
             if os.path.exists(hotwords_file):
                 with open(hotwords_file, 'r', encoding='utf-8') as f:
-                    self.hotwords = [line.strip() for line in f if line.strip()]
-                print(f"加载了 {len(self.hotwords)} 个热词")
+                    self.hotwords = [line.strip() for line in f 
+                                   if line.strip() and not line.strip().startswith('#')]
+                print(f"✓ 加载了 {len(self.hotwords)} 个热词: {', '.join(self.hotwords)}")
             
             # 检查模型文件是否存在
             asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
@@ -91,7 +92,7 @@ class FunASREngine:
                     mode='offline',      # 使用离线模式以提高准确率
                     decode_method='greedy_search',  # 使用贪婪搜索解码
                     disable_progress_bar=True,  # 禁用进度条
-                    hotwords=self.hotwords if self.hotwords else None  # 使用热词列表
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None  # 增加热词权重到 50.0
                 )
             
             # 处理结果
@@ -116,8 +117,9 @@ class FunASREngine:
                     batch_size=1,
                     mode='offline',      # 使用离线模式以提高准确率
                     cache_size=1000,     # 使用缓存加速
-                    hotword_score=0.8,   # 提高热词权重
-                    min_sentence_length=2 # 减小最小句子长度
+                    hotword_score=2.0,   # 提高热词权重
+                    min_sentence_length=2, # 减小最小句子长度
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None  # 在标点模型中也使用热词
                 )
             if isinstance(punc_result, list) and len(punc_result) > 0:
                 text = punc_result[0].get('text', text)
