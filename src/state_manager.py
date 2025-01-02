@@ -1,7 +1,13 @@
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtMultimedia import QSoundEffect
 from PyQt6.QtCore import QUrl
+from PyQt6.QtWidgets import QApplication
 import os
+import logging
+
+# 配置日志记录
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class StateManager(QObject):
     status_changed = pyqtSignal(str)
@@ -14,29 +20,26 @@ class StateManager(QObject):
     
     def _init_sound(self):
         """初始化音效"""
-        try:
-            sound_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "start.wav")
-            if os.path.exists(sound_path):
-                self.start_sound = QSoundEffect()
-                self.start_sound.setSource(QUrl.fromLocalFile(sound_path))
-                self.start_sound.setVolume(1.0)
-                self.start_sound.setLoopCount(1)
-        except Exception as e:
-            print(f"❌ 音效初始化失败: {e}")
-            self.start_sound = None
+        # 确保在主线程中初始化
+        if QApplication.instance().thread() != self.thread():
+            self.moveToThread(QApplication.instance().thread())
+        
+        # 初始化音效
+        self.start_sound = QSoundEffect(self)  # 指定父对象
+        sound_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "start.wav")
+        self.start_sound.setSource(QUrl.fromLocalFile(sound_path))
+        self.start_sound.setVolume(0.3)  # 不要修改这个大小，我需要小的音量。
+        self.start_sound.setLoopCount(1)
     
     def start_recording(self):
         """开始录音"""
         self.status = "录音中"
         self.status_changed.emit(self.status)
+        
         # 播放音效
         if self.start_sound:
-            # 如果正在播放，先停止
             if self.start_sound.isPlaying():
                 self.start_sound.stop()
-            # 重新初始化音效
-            self._init_sound()
-            # 播放
             self.start_sound.play()
     
     def stop_recording(self):

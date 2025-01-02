@@ -26,6 +26,14 @@ class FunASREngine:
             os.environ['MODELSCOPE_CACHE'] = cache_dir
             print(f"模型缓存路径: {cache_dir}")
             
+            # 初始化热词列表
+            self.hotwords = []
+            hotwords_file = os.path.join(os.path.dirname(application_path), "resources", "hotwords.txt")
+            if os.path.exists(hotwords_file):
+                with open(hotwords_file, 'r', encoding='utf-8') as f:
+                    self.hotwords = [line.strip() for line in f if line.strip()]
+                print(f"加载了 {len(self.hotwords)} 个热词")
+            
             # 检查模型文件是否存在
             asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
             punc_model_dir = os.path.join(cache_dir, 'damo', 'punc_ct-transformer_zh-cn-common-vocab272727-pytorch')
@@ -70,17 +78,20 @@ class FunASREngine:
         try:
             if audio_data.dtype != np.float32:
                 audio_data = audio_data.astype(np.float32)
+                
+                
             # 使用 redirect_stdout 来捕获输出
             f = io.StringIO()
             with redirect_stdout(f), redirect_stderr(f):
                 # 1. 语音识别
                 result = self.model.generate(
                     input=audio_data,
-                    batch_size_s=300,
-                    use_itn=True,     # 启用逆文本正则化
-                    mode='offline',    # 使用离线模式以获得更好的标点效果
+                    batch_size_s=100,     # 减小批处理大小
+                    use_itn=True,         # 启用逆文本正则化
+                    mode='offline',      # 使用离线模式以提高准确率
                     decode_method='greedy_search',  # 使用贪婪搜索解码
-                    disable_progress_bar=True  # 禁用进度条
+                    disable_progress_bar=True,  # 禁用进度条
+                    hotwords=self.hotwords if self.hotwords else None  # 使用热词列表
                 )
             
             # 处理结果
@@ -90,31 +101,31 @@ class FunASREngine:
                 text = result.get('text', '')
             else:
                 text = str(result)
-            
-            # 输出原始转写结果
-            # print(f"🎯 语音识别: {text}")
+                
+            # 检查结果中是否包含热词
+            if self.hotwords:
+                found_hotwords = [word for word in self.hotwords if word in text]
+                if found_hotwords:
+                    print(f"✓ 识别出的热词: {', '.join(found_hotwords)}")
             
             # 2. 添加标点
             with redirect_stdout(f), redirect_stderr(f):
                 punc_result = self.punc_model.generate(
                     input=text,
-                    disable_progress_bar=True,  # 禁用进度条
-                    batch_size=1,               # 批处理大小
-                    mode='offline',             # 离线模式，更准确的标点
-                    cache_size=0,               # 不使用缓存，每次都重新预测
-                    hotword_score=0.8,          # 提高热词权重，使标点更丰富
-                    min_sentence_length=3       # 最小句子长度，小于这个长度的不会加句号
+                    disable_progress_bar=True,
+                    batch_size=1,
+                    mode='offline',      # 使用离线模式以提高准确率
+                    cache_size=1000,     # 使用缓存加速
+                    hotword_score=0.8,   # 提高热词权重
+                    min_sentence_length=2 # 减小最小句子长度
                 )
             if isinstance(punc_result, list) and len(punc_result) > 0:
                 text = punc_result[0].get('text', text)
             elif isinstance(punc_result, dict):
                 text = punc_result.get('text', text)
             
-            # print(f"🎯 添加标点: {text}")
-            
             # 3. 处理英文单词间的空格
             processed_text = self._process_text(text)
-            # print(f"✨ 处理后文本: {processed_text}")
             
             return [{"text": processed_text}]
             

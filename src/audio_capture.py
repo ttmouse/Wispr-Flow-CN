@@ -13,10 +13,8 @@ class AudioCapture:
         self.volume_threshold = 0.003  # 降低音量阈值，使其更容易捕获语音
         self.min_valid_frames = 3      # 降低最少有效帧数要求（约0.2秒）
         self.valid_frame_count = 0     # 有效音频帧计数
-        self.max_silence_frames = 60    # 最大连续静音帧数（约3秒）
+        self.max_silence_frames = 40    # 减少最大静音帧数到1.5秒
         self.silence_frame_count = 0    # 连续静音帧计数
-        # self.frame_window = []         # 用于计算移动平均的窗口
-        # self.window_size = 5           # 增加窗口大小，使音量判断更平滑
         
     def _get_default_mic_index(self):
         default_device = self.audio.get_default_input_device_info()
@@ -29,14 +27,13 @@ class AudioCapture:
         self.read_count = 0
         self.valid_frame_count = 0
         self.silence_frame_count = 0
-        self.frame_window = []  # 清空窗口
         self.stream = self.audio.open(
             format=pyaudio.paFloat32,
             channels=1,
             rate=16000,
             input=True,
             input_device_index=self.device_index,
-            frames_per_buffer=1024,
+            frames_per_buffer=512,  # 减小缓冲区大小以降低延迟
             stream_callback=None
         )
 
