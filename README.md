@@ -2,7 +2,7 @@
 
 Wispr Flow CN 是一个基于 FunASR 的实时语音识别应用，提供简洁现代的用户界面和高效的语音转文字功能。
 
-![应用截图](docs/images/screenshot.png)
+![应用截图](screenshot.png)
 
 ## 特性
 
