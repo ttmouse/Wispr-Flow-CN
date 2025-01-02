@@ -3,15 +3,19 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QFont
 from .components.modern_button import ModernButton
 from .components.modern_list import ModernListWidget
+import os
+import sys
 
 class MainWindow(QMainWindow):
+    # 常量定义
+    WINDOW_TITLE = "Dou-flow"
+    
     record_button_clicked = pyqtSignal()
-    space_key_pressed = pyqtSignal()
     history_item_clicked = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("语音识别")
+        self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(400, 600)
         
         # 创建中央部件
@@ -33,11 +37,16 @@ class MainWindow(QMainWindow):
         # 创建UI组件
         self.setup_ui(main_layout)
         
-        # 设置窗口标志
+        # 设置窗口标志位
         self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.FramelessWindowHint
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowSystemMenuHint
         )
+        
+        # 设置应用图标
+        icon = QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "mic.png"))
+        self.setWindowIcon(icon)
         
         # 设置焦点策略
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -45,7 +54,10 @@ class MainWindow(QMainWindow):
         
         # 初始化状态
         self.state_manager = None
-
+        
+        # 移动窗口到屏幕中央
+        self.center_on_screen()
+    
     def setup_ui(self, main_layout):
         """设置UI组件"""
         # 添加标题栏
@@ -71,7 +83,7 @@ class MainWindow(QMainWindow):
         """设置标题栏"""
         title_bar = QWidget()
         title_bar.setStyleSheet("background-color: black;")
-        title_bar.setFixedHeight(40)
+        title_bar.setFixedHeight(50)
         
         # 添加鼠标事件追踪
         title_bar.mousePressEvent = self._on_title_bar_mouse_press
@@ -82,8 +94,8 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
         
         # 标题
-        title_label = QLabel("语音识别")
-        title_label.setStyleSheet("color: white; font-size: 14px;")
+        title_label = QLabel(self.WINDOW_TITLE)
+        title_label.setStyleSheet("color: white; font-size: 16px;")
         layout.addWidget(title_label)
         
         # 添加弹性空间
@@ -94,10 +106,10 @@ class MainWindow(QMainWindow):
         self.close_button.setStyleSheet("""
             QLabel {
                 color: #999999;
-                font-size: 16px;
-                padding: 2px 8px;
-                border-radius: 4px;
-                margin: 8px 0px;
+                font-size: 18px;
+                padding: 4px 12px;
+                border-radius: 6px;
+                margin: 10px 0px;
             }
             QLabel:hover {
                 color: white;
@@ -105,7 +117,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.close_button.mousePressEvent = lambda e: self.close()
+        self.close_button.mousePressEvent = lambda e: self.hide()  # 改为隐藏窗口
         layout.addWidget(self.close_button)
         
         return title_bar
@@ -150,20 +162,14 @@ class MainWindow(QMainWindow):
     
     def update_status(self, status):
         """更新状态显示"""
-        is_recording = "录音中" in status if status else False
+        is_recording = status == "录音中"
         self.record_button.set_recording_state(is_recording)
     
     def set_state_manager(self, state_manager):
         """设置状态管理器"""
         self.state_manager = state_manager
         if state_manager:
-            self.update_status(state_manager.recording_status_text)
-    
-    def keyPressEvent(self, event):
-        """处理键盘事件"""
-        if event.key() == Qt.Key.Key_Space:
-            self.space_key_pressed.emit()
-        super().keyPressEvent(event)
+            self.update_status("就绪")
     
     def _on_history_item_clicked(self, item):
         """处理历史记录项点击事件"""
@@ -178,7 +184,14 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """处理窗口关闭事件"""
-        # 忽略关闭事件，只是隐藏窗口
-        event.ignore()
-        self.hide()
-        print("窗口已最小化到系统托盘")
+        event.ignore()  # 忽略关闭事件
+        self.hide()  # 只是隐藏窗口
+    
+    def center_on_screen(self):
+        """将窗口移动到屏幕中央"""
+        screen = self.screen()
+        if screen:
+            center = screen.availableGeometry().center()
+            geo = self.frameGeometry()
+            geo.moveCenter(center)
+            self.move(geo.topLeft())

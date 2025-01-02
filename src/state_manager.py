@@ -1,113 +1,97 @@
-import time
 from PyQt6.QtCore import QObject, pyqtSignal
-import os
 from PyQt6.QtMultimedia import QSoundEffect
 from PyQt6.QtCore import QUrl
-import logging
 from PyQt6.QtWidgets import QApplication
-
-# 配置日志记录
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+import os
+import logging
 
 class StateManager(QObject):
-    status_changed = pyqtSignal(str)
+    """状态管理器，处理录音状态和音效"""
+    # 常量定义
+    SOUND_EFFECT_PATH = os.path.join("resources", "start.wav")
+    SOUND_EFFECT_VOLUME = 0.3  # 调整音量
+    STATUS_READY = "就绪"
+    STATUS_RECORDING = "录音中"
     
+    # 信号定义
+    status_changed = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)  # 错误信号
+
     def __init__(self):
+        """初始化状态管理器"""
         super().__init__()
-        self.recording = False
-        self.paused = False
-        self._recording_start_time = 0
-        self._dot_count = 0
-        self._last_update = 0
-        self._last_console_status = ""
-        self._last_dots = ""
+        self.is_recording = False
+        self.start_sound = None
         
-        # 初始化开始录音音效
-        self.start_sound = QSoundEffect(self)  # 指定父对象
-        self.start_sound.setSource(QUrl.fromLocalFile("resources/start.wav"))
-        self.start_sound.setVolume(1.0)
-        self.start_sound.setLoopCount(1)
+        try:
+            self._create_sound_effect()
+        except Exception as e:
+            logging.error(f"音效初始化失败: {e}")
+            self.error_occurred.emit(f"音效初始化失败: {e}")
         
         # 移动到主线程
         self.moveToThread(QApplication.instance().thread())
-    
-    @property
-    def recording_status_text(self):
-        if not self.recording:
-            return "就绪"
-        elif self.paused:
-            return "已暂停"
-        else:
-            # 只更新动态点，保持基本文本不变
-            new_dots = "." * ((int(time.time() * 2) % 3) + 1)
-            if new_dots != self._last_dots:
-                self._last_dots = new_dots
-            duration = time.time() - self._recording_start_time
-            return f"⏺️  录音中{self._last_dots} ({duration:.1f}秒)"
-    
-    def _ensure_sound_ready(self):
-        """确保音效就绪"""
-        if not self.start_sound.isLoaded():
-            logger.warning("音效未加载，重新加载中...")
-            self.start_sound.setSource(QUrl.fromLocalFile("resources/start.wav"))
-            # 等待音效加载完成
-            while not self.start_sound.isLoaded():
+
+    def _create_sound_effect(self):
+        """创建新的音效实例"""
+        try:
+            # 清理旧实例
+            if self.start_sound is not None:
+                self.start_sound.stop()
+                self.start_sound.deleteLater()
+            
+            # 检查音效文件是否存在
+            if not os.path.exists(self.SOUND_EFFECT_PATH):
+                raise FileNotFoundError(f"音效文件不存在: {self.SOUND_EFFECT_PATH}")
+            
+            # 创建新实例
+            self.start_sound = QSoundEffect(self)
+            self.start_sound.setSource(QUrl.fromLocalFile(self.SOUND_EFFECT_PATH))
+            self.start_sound.setVolume(self.SOUND_EFFECT_VOLUME)
+            self.start_sound.setLoopCount(1)
+            
+            # 等待音效加载，但设置超时
+            for _ in range(100):  # 最多等待1秒
                 QApplication.processEvents()
-    
+                if self.start_sound.isLoaded():
+                    break
+            
+            if not self.start_sound.isLoaded():
+                raise TimeoutError("音效加载超时")
+                
+        except Exception as e:
+            logging.error(f"创建音效实例失败: {e}")
+            self.error_occurred.emit(f"创建音效实例失败: {e}")
+            raise
+
     def start_recording(self):
         """开始录音"""
-        self.recording = True
-        self._recording_start_time = time.time()
-        self.paused = False
-        
-        # 播放开始录音音效
-        if self.start_sound.status() == QSoundEffect.Status.Ready:
-            self.start_sound.stop()  # 先停止之前可能的播放
+        if self.is_recording:
+            return  # 防止重复启动
+            
+        try:
+            self.is_recording = True
+            self._create_sound_effect()  # 每次播放前创建新实例
             self.start_sound.play()
-            logger.info("播放开始录音音效")
-        else:
-            logger.warning("音效未就绪，重新设置")
-            self.start_sound.setSource(QUrl.fromLocalFile("resources/start.wav"))
-            if self.start_sound.status() == QSoundEffect.Status.Ready:
-                self.start_sound.play()
-        
-        status = self.recording_status_text
-        logger.info("开始录音")
-        self._print_status(status)
-        self.status_changed.emit(status)
-    
+            self.status_changed.emit(self.STATUS_RECORDING)
+        except Exception as e:
+            self.is_recording = False
+            logging.error(f"开始录音失败: {e}")
+            self.error_occurred.emit(f"开始录音失败: {e}")
+
     def stop_recording(self):
-        """停止录音，不播放音效"""
-        if self.recording:
-            self.recording = False
-            duration = time.time() - self._recording_start_time
-            status = f"✓ 录音完成 ({duration:.1f}秒)"
-            logger.info(f"停止录音 - {status}")
-            print()  # 打印空行，为下一次录音准备
-            self.status_changed.emit(status)
-    
-    def update_status(self):
-        """更新状态显示"""
-        if self.recording:
-            status = self.recording_status_text
-            self._print_status(status)
-            self.status_changed.emit(status)
-    
-    def _print_status(self, status):
-        """打印状态到控制台，避免重复打印相同状态"""
-        # 只比较不包含时间的部分
-        base_status = status[:status.rfind("(")] if "(" in status else status
-        last_base_status = self._last_console_status[:self._last_console_status.rfind("(")] if "(" in self._last_console_status else self._last_console_status
+        """停止录音"""
+        if not self.is_recording:
+            return  # 防止重复停止
+            
+        self.is_recording = False
+        self.status_changed.emit(self.STATUS_READY)
         
-        if base_status != last_base_status or "秒" in status:
-            print(f"\r\033[K{status}", end="", flush=True)  # \r 回到行首，\033[K 清除行
-            self._last_console_status = status
-    
-    @property
-    def is_recording(self):
-        return self.recording
-    
-    @property
-    def is_paused(self):
-        return self.paused 
+    def __del__(self):
+        """析构函数，确保资源被正确释放"""
+        if self.start_sound is not None:
+            try:
+                self.start_sound.stop()
+                self.start_sound.deleteLater()
+            except:
+                pass  # 忽略清理时的错误 

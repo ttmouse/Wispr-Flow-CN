@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>FunASR</string>
+    <string>Dou-flow</string>
     <key>CFBundleName</key>
-    <string>FunASR</string>
+    <string>Dou-flow</string>
     <key>CFBundleIdentifier</key>
-    <string>com.ttmouse.funasr</string>
+    <string>com.ttmouse.douflow</string>
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
     <key>CFBundleShortVersionString</key>

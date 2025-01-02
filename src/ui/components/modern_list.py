@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QLabel, QWidget, QVBox
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QFont
 import time
+from PyQt6.QtCore import QTimer
 
 class TextLabel(QLabel):
     """自定义文本标签组件
@@ -125,6 +126,21 @@ class ModernListWidget(QListWidget):
         font = QFont()
         font.setPointSize(14)  # 设置字体大小
         self.setFont(font)
+    
+    def mousePressEvent(self, event):
+        """处理鼠标点击事件"""
+        super().mousePressEvent(event)
+        # 获取点击位置的项
+        item = self.itemAt(event.pos())
+        if item:
+            # 发送点击信号后清除选中状态
+            QTimer.singleShot(100, self.clearSelection)
+    
+    def mouseReleaseEvent(self, event):
+        """处理鼠标释放事件"""
+        super().mouseReleaseEvent(event)
+        # 延迟清除选中状态，确保点击事件已经处理完成
+        QTimer.singleShot(100, self.clearSelection)
     
     def addItem(self, item):
         """添加新的历史记录项到列表顶部
