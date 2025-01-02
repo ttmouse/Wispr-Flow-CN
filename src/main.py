@@ -38,60 +38,34 @@ class Application(QObject):
     show_window_signal = pyqtSignal()
 
     def __init__(self):
-        super().__init__()
         try:
-            self.app = QApplication(sys.argv)
+            super().__init__()
             
-            # 设置应用程序属性
-            if sys.platform == 'darwin':
-                self.app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
+            # 初始化Qt应用
+            self.app = QApplication.instance() or QApplication(sys.argv)
+            self.app.setQuitOnLastWindowClosed(False)  # 关闭最后一个窗口时不退出
             
-            # 设置应用程序信息
-            self.app.setApplicationName(APP_NAME)
-            self.app.setApplicationDisplayName(APP_NAME)
-            self.app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")))
-            self.app.setQuitOnLastWindowClosed(False)
-            
-            # 创建系统托盘图标
-            self.tray_icon = QSystemTrayIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")), self.app)
-            
-            # 创建托盘菜单
-            tray_menu = QMenu()
-            show_action = tray_menu.addAction("显示/隐藏")
-            show_action.triggered.connect(self.show_window)
-            tray_menu.addSeparator()
-            quit_action = tray_menu.addAction("退出")
-            quit_action.triggered.connect(self.quit_application)
-            
-            # 设置托盘图标的菜单
-            self.tray_icon.setContextMenu(tray_menu)
-            self.tray_icon.show()
+            # 设置应用属性
+            self.app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)  # 使用高DPI图标
             
             # 初始化组件
+            self.clipboard_manager = ClipboardManager()
             self.state_manager = StateManager()
             self.main_window = MainWindow()
             self.main_window.set_state_manager(self.state_manager)
             
-            # 初始化其他组件
-            self.audio_capture = AudioCapture()
-            print("正在加载语音识别模型...")
-            self.funasr_engine = FunASREngine()
-            print("✓ 语音识别就绪")
-            
+            # 设置热键管理器
             self.hotkey_manager = HotkeyManager()
-            self.clipboard_manager = ClipboardManager()
-            self.global_hotkey = GlobalHotkeyManager()
+            self.hotkey_manager.set_press_callback(self.on_option_press)
+            self.hotkey_manager.set_release_callback(self.on_option_release)
+            self.hotkey_manager.start_listening()
             
             self.recording = False
-
+            
             # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
-            self.global_hotkey.hotkey_triggered.connect(self.show_window)
             self.setup_connections()
             
-            # 设置全局快捷键
-            self.global_hotkey.setup()
-
         except Exception as e:
             print(f"❌ 初始化失败: {e}")
             print(traceback.format_exc())
@@ -143,7 +117,6 @@ class Application(QObject):
                 self.transcription_thread.quit()
                 self.transcription_thread.wait()
             self.hotkey_manager.stop_listening()
-            self.global_hotkey.cleanup()
         except Exception as e:
             print(f"❌ 清理资源失败: {e}")
 

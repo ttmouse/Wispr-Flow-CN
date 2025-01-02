@@ -181,3 +181,17 @@ class FunASREngine:
 
     def get_model_path(self):
         return "使用预训练模型"
+
+    def reload_hotwords(self):
+        """重新加载热词"""
+        try:
+            hotwords_file = os.path.join("resources", "hotwords.txt")
+            if os.path.exists(hotwords_file):
+                with open(hotwords_file, "r", encoding="utf-8") as f:
+                    self.hotwords = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+                print(f"重新加载热词成功，共 {len(self.hotwords)} 个")
+            else:
+                self.hotwords = []
+        except Exception as e:
+            print(f"重新加载热词失败: {e}")
+            self.hotwords = []

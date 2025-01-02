@@ -1,15 +1,15 @@
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QFont
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt6.QtGui import QIcon, QFont, QAction
 from .components.modern_button import ModernButton
 from .components.modern_list import ModernListWidget
+from .hotwords_window import HotwordsWindow
 import os
 import sys
 
 class MainWindow(QMainWindow):
     # 常量定义
     WINDOW_TITLE = "Dou-flow"
-    
     record_button_clicked = pyqtSignal()
     history_item_clicked = pyqtSignal(str)
 
@@ -56,6 +56,9 @@ class MainWindow(QMainWindow):
         
         # 移动窗口到屏幕中央
         self.center_on_screen()
+        
+        # 创建系统状态栏菜单
+        self.setup_status_menu()
     
     def setup_ui(self, main_layout):
         """设置UI组件"""
@@ -66,6 +69,40 @@ class MainWindow(QMainWindow):
         # 添加历史记录列表
         self.history_list = ModernListWidget()
         self.history_list.itemClicked.connect(self._on_history_item_clicked)
+        
+        # 添加空状态提示
+        self.empty_state = QWidget()
+        empty_layout = QVBoxLayout(self.empty_state)
+        empty_layout.setContentsMargins(0, 60, 0, 60)
+        empty_layout.setSpacing(20)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # 图标
+        icon_label = QLabel("⌥")
+        icon_label.setStyleSheet("""
+            QLabel {
+                color: #999999;
+                font-size: 24px;
+                font-weight: 300;
+            }
+        """)
+        empty_layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # 提示文字
+        hint_label = QLabel("点击录音按钮开始录音\n松开后自动转换为文字")
+        hint_label.setStyleSheet("""
+            QLabel {
+                color: #999999;
+                font-size: 14px;
+                font-weight: 400;
+            }
+        """)
+        hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(hint_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # 将空状态提示添加到列表中
+        self.history_list.setEmptyState(self.empty_state)
+        
         main_layout.addWidget(self.history_list)
         
         # 添加底部按钮区域
@@ -116,7 +153,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.close_button.mousePressEvent = lambda e: self.hide()  # 改为隐藏窗口
+        self.close_button.mousePressEvent = lambda e: self.hide()
         layout.addWidget(self.close_button)
         
         return title_bar
@@ -194,3 +231,38 @@ class MainWindow(QMainWindow):
             geo = self.frameGeometry()
             geo.moveCenter(center)
             self.move(geo.topLeft())
+    
+    def show_hotwords_window(self):
+        """显示热词编辑窗口"""
+        dialog = HotwordsWindow(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # 如果用户点击了保存，重新加载热词
+            if hasattr(self, 'state_manager'):
+                self.state_manager.reload_hotwords()
+    
+    def setup_status_menu(self):
+        """设置系统状态栏菜单"""
+        # 创建菜单栏
+        menubar = QMenuBar()
+        
+        # 设置为系统菜单栏
+        menubar.setNativeMenuBar(True)
+        
+        # 创建应用菜单
+        app_menu = menubar.addMenu("Dou-flow")
+        
+        # 编辑热词
+        edit_hotwords_action = QAction("编辑热词...", self)
+        edit_hotwords_action.triggered.connect(self.show_hotwords_window)
+        app_menu.addAction(edit_hotwords_action)
+        
+        # 分隔线
+        app_menu.addSeparator()
+        
+        # 退出
+        quit_action = QAction("退出", self)
+        quit_action.triggered.connect(QApplication.quit)
+        app_menu.addAction(quit_action)
+        
+        # 设置为窗口的菜单栏
+        self.setMenuBar(menubar)

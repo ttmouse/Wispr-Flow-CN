@@ -50,4 +50,9 @@ class StateManager(QObject):
     def update_status(self, status):
         """更新状态"""
         self.status = status
-        self.status_changed.emit(self.status) 
+        self.status_changed.emit(self.status)
+    
+    def reload_hotwords(self):
+        """重新加载热词"""
+        if hasattr(self, 'funasr_engine'):
+            self.funasr_engine.reload_hotwords() 
