@@ -10,13 +10,13 @@ class AudioCapture:
         self.device_index = self._get_default_mic_index()
         self.read_count = 0
         # 音量相关参数
-        self.volume_threshold = 0.002  # 降低音量阈值，使其更容易捕获语音
+        self.volume_threshold = 0.003  # 降低音量阈值，使其更容易捕获语音
         self.min_valid_frames = 3      # 降低最少有效帧数要求（约0.2秒）
         self.valid_frame_count = 0     # 有效音频帧计数
         self.max_silence_frames = 60    # 最大连续静音帧数（约3秒）
         self.silence_frame_count = 0    # 连续静音帧计数
-        self.frame_window = []         # 用于计算移动平均的窗口
-        self.window_size = 5           # 增加窗口大小，使音量判断更平滑
+        # self.frame_window = []         # 用于计算移动平均的窗口
+        # self.window_size = 5           # 增加窗口大小，使音量判断更平滑
         
     def _get_default_mic_index(self):
         default_device = self.audio.get_default_input_device_info()
@@ -43,25 +43,14 @@ class AudioCapture:
     def _is_valid_audio(self, data):
         """检查音频数据是否有效（音量是否足够）"""
         audio_data = np.frombuffer(data, dtype=np.float32)
-        # 计算音量（使用RMS值）
+        # 直接使用RMS值判断，不使用移动平均
         volume = np.sqrt(np.mean(np.square(audio_data)))
+        is_valid = volume > self.volume_threshold
         
-        # 使用移动平均来平滑音量判断
-        self.frame_window.append(volume)
-        if len(self.frame_window) > self.window_size:
-            self.frame_window.pop(0)
-        avg_volume = np.mean(self.frame_window)
-        
-        # 如果窗口还没满，使用当前音量判断
-        if len(self.frame_window) < self.window_size:
-            is_valid = volume > self.volume_threshold
-        else:
-            is_valid = avg_volume > self.volume_threshold
-        
-        # 更新静音计数
+        # 更新计数
         if is_valid:
             self.silence_frame_count = 0
-            self.valid_frame_count += 1  # 只在这里计数一次
+            self.valid_frame_count += 1
         else:
             self.silence_frame_count += 1
             

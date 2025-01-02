@@ -1,7 +1,7 @@
 import sys
 import traceback
 import os
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
 from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
@@ -49,8 +49,23 @@ class Application(QObject):
             # 设置应用程序信息
             self.app.setApplicationName(APP_NAME)
             self.app.setApplicationDisplayName(APP_NAME)
-            self.app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic.png")))
+            self.app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")))
             self.app.setQuitOnLastWindowClosed(False)
+            
+            # 创建系统托盘图标
+            self.tray_icon = QSystemTrayIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")), self.app)
+            
+            # 创建托盘菜单
+            tray_menu = QMenu()
+            show_action = tray_menu.addAction("显示/隐藏")
+            show_action.triggered.connect(self.show_window)
+            tray_menu.addSeparator()
+            quit_action = tray_menu.addAction("退出")
+            quit_action.triggered.connect(self.quit_application)
+            
+            # 设置托盘图标的菜单
+            self.tray_icon.setContextMenu(tray_menu)
+            self.tray_icon.show()
             
             # 初始化组件
             self.state_manager = StateManager()
@@ -131,6 +146,11 @@ class Application(QObject):
             self.global_hotkey.cleanup()
         except Exception as e:
             print(f"❌ 清理资源失败: {e}")
+
+    @pyqtSlot()
+    def show_window(self):
+        """显示主窗口（可以从其他线程调用）"""
+        self.show_window_signal.emit()
 
     def setup_connections(self):
         """设置信号连接"""

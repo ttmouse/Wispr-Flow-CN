@@ -37,15 +37,14 @@ class MainWindow(QMainWindow):
         # 创建UI组件
         self.setup_ui(main_layout)
         
-        # 设置窗口标志位
+        # 设置窗口属性
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowSystemMenuHint
+            Qt.WindowType.FramelessWindowHint |  # 无边框
+            Qt.WindowType.Window  # 普通窗口
         )
         
         # 设置应用图标
-        icon = QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "mic.png"))
+        icon = QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "mic1.png"))
         self.setWindowIcon(icon)
         
         # 设置焦点策略
