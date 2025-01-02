@@ -1,48 +1,68 @@
-from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                            QPushButton, QLabel)
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QIcon, QFont
 from .components.modern_button import ModernButton
-from .components.modern_list import ModernListWidget, HistoryItem
+from .components.modern_list import ModernListWidget
 
 class MainWindow(QMainWindow):
     record_button_clicked = pyqtSignal()
     space_key_pressed = pyqtSignal()
     history_item_clicked = pyqtSignal(str)
-    
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("语音识别")
-        self.setFixedSize(400, 600)
+        self.setMinimumSize(400, 600)
         
-        # 设置窗口标志位，保持自定义标题栏的同时在任务栏中显示
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowSystemMenuHint)
+        # 创建中央部件
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
         
-        # 创建主窗口部件和布局
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        self.main_layout = QVBoxLayout(self.central_widget)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
+        # 创建主布局
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
+        # 设置窗口样式
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: white;
+            }
+        """)
+        
+        # 创建UI组件
+        self.setup_ui(main_layout)
+        
+        # 设置窗口标志
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.FramelessWindowHint
+        )
+        
+        # 设置焦点策略
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, True)
+        
+        # 初始化状态
+        self.state_manager = None
+
+    def setup_ui(self, main_layout):
+        """设置UI组件"""
         # 添加标题栏
         self.title_bar = self.setup_title_bar()
-        self.main_layout.addWidget(self.title_bar)
+        main_layout.addWidget(self.title_bar)
         
         # 添加历史记录列表
         self.history_list = ModernListWidget()
         self.history_list.itemClicked.connect(self._on_history_item_clicked)
-        self.main_layout.addWidget(self.history_list)
+        main_layout.addWidget(self.history_list)
         
         # 添加底部按钮区域
-        self.setup_bottom_bar()
+        self.setup_bottom_bar(main_layout)
         
         # 保存拖动相关的状态
         self._is_dragging = False
         self._drag_start_pos = None
-        
-        # 初始化状态管理器
-        self.state_manager = None
         
         # 设置焦点策略，使窗口可以接收键盘事件
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -69,45 +89,28 @@ class MainWindow(QMainWindow):
         # 添加弹性空间
         layout.addStretch()
         
-        # 设置按钮
-        self.settings_button = QPushButton("⚙")
-        self.settings_button.setStyleSheet("""
-            QPushButton {
-                color: white;
-                background: transparent;
-                border: none;
-                font-size: 18px;
-                padding: 4px 8px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-            }
-        """)
-        self.settings_button.clicked.connect(self.show_settings)
-        layout.addWidget(self.settings_button)
-        
         # 关闭按钮
-        self.close_button = QPushButton("×")
+        self.close_button = QLabel("×")
         self.close_button.setStyleSheet("""
-            QPushButton {
-                color: white;
-                background: transparent;
-                border: none;
-                font-size: 20px;
-                padding: 4px 8px;
-            }
-            QPushButton:hover {
-                background: #FF4136;
+            QLabel {
+                color: #999999;
+                font-size: 16px;
+                padding: 2px 8px;
                 border-radius: 4px;
+                margin: 8px 0px;
+            }
+            QLabel:hover {
+                color: white;
+                background-color: rgba(255, 255, 255, 0.1);
             }
         """)
-        self.close_button.clicked.connect(self.close)
+        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_button.mousePressEvent = lambda e: self.close()
         layout.addWidget(self.close_button)
         
         return title_bar
     
-    def setup_bottom_bar(self):
+    def setup_bottom_bar(self, main_layout):
         """设置底部按钮区域"""
         bottom_bar = QWidget()
         bottom_bar.setFixedHeight(100)
@@ -121,13 +124,7 @@ class MainWindow(QMainWindow):
         self.record_button.clicked.connect(self.record_button_clicked.emit)
         layout.addWidget(self.record_button, alignment=Qt.AlignmentFlag.AlignCenter)
         
-        self.main_layout.addWidget(bottom_bar)
-    
-    def show_settings(self):
-        """显示设置窗口"""
-        from .settings_window import SettingsWindow
-        settings_window = SettingsWindow(self)
-        settings_window.exec()
+        main_layout.addWidget(bottom_bar)
     
     def _on_title_bar_mouse_press(self, event):
         """处理标题栏的鼠标按下事件"""
@@ -148,7 +145,8 @@ class MainWindow(QMainWindow):
     def add_to_history(self, text):
         """添加新的识别结果到历史记录"""
         if text and text.strip():
-            self.history_list.addHistoryItem(text)
+            item = QListWidgetItem(text)
+            self.history_list.addItem(item)
     
     def update_status(self, status):
         """更新状态显示"""
@@ -169,7 +167,7 @@ class MainWindow(QMainWindow):
     
     def _on_history_item_clicked(self, item):
         """处理历史记录项点击事件"""
-        text = self.history_list.getItemText(item)
+        text = item.text()
         if text:
             self.history_item_clicked.emit(text)
     
@@ -177,3 +175,10 @@ class MainWindow(QMainWindow):
         """显示识别结果"""
         if text and text.strip():
             self.add_to_history(text)
+    
+    def closeEvent(self, event):
+        """处理窗口关闭事件"""
+        # 忽略关闭事件，只是隐藏窗口
+        event.ignore()
+        self.hide()
+        print("窗口已最小化到系统托盘")

@@ -13,7 +13,7 @@ class AudioCapture:
         self.volume_threshold = 0.002  # 降低音量阈值，使其更容易捕获语音
         self.min_valid_frames = 3      # 降低最少有效帧数要求（约0.2秒）
         self.valid_frame_count = 0     # 有效音频帧计数
-        self.max_silence_frames = 30    # 最大连续静音帧数（约1.8秒）
+        self.max_silence_frames = 60    # 最大连续静音帧数（约3秒）
         self.silence_frame_count = 0    # 连续静音帧计数
         self.frame_window = []         # 用于计算移动平均的窗口
         self.window_size = 5           # 增加窗口大小，使音量判断更平滑
