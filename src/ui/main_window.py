@@ -15,8 +15,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("语音识别")
         self.setFixedSize(400, 600)
         
-        # 设置窗口无边框
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        # 设置窗口标志位，保持自定义标题栏的同时在任务栏中显示
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowSystemMenuHint)
         
         # 创建主窗口部件和布局
         self.central_widget = QWidget()
