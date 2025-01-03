@@ -21,7 +21,7 @@ class TextLabel(QLabel):
         self.setTextFormat(Qt.TextFormat.PlainText)  # 使用纯文本格式，避免HTML注入
         
         # 创建字体并设置平滑渲染
-        font = QFont("-apple-system", 14)
+        font = QFont("PingFang SC", 14)
         # 设置字体渲染策略，组合多个策略以获得最佳效果
         font.setStyleStrategy(
             QFont.StyleStrategy.PreferAntialias |    # 优先使用抗锯齿
@@ -76,7 +76,7 @@ class HistoryItemWidget(QWidget):
                 position: absolute;
                 left: 20px;
                 right: 20px;
-                bottom: 0;
+                bottom: 0;你好。
                 height: 1px;
                 background-color: #E5E5E7;
             }

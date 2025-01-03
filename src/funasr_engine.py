@@ -33,7 +33,7 @@ class FunASREngine:
                 with open(hotwords_file, 'r', encoding='utf-8') as f:
                     self.hotwords = [line.strip() for line in f 
                                    if line.strip() and not line.strip().startswith('#')]
-                print(f"✓ 加载了 {len(self.hotwords)} 个热词: {', '.join(self.hotwords)}")
+                print(f"✓ 加载了 {len(self.hotwords)} 个热词")
             
             # 检查模型文件是否存在
             asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
