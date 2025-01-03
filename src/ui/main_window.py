@@ -18,6 +18,17 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(400, 600)
         
+        # 设置窗口标志
+        self.setWindowFlags(
+            Qt.WindowType.Window |  # 普通窗口
+            Qt.WindowType.FramelessWindowHint |  # 无边框
+            Qt.WindowType.WindowSystemMenuHint |  # 系统菜单
+            Qt.WindowType.WindowStaysOnTopHint  # 总是在最前
+        )
+        
+        # 设置窗口属性
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)  # 显示时需要激活
+        
         # 创建中央部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -36,13 +47,6 @@ class MainWindow(QMainWindow):
         
         # 创建UI组件
         self.setup_ui(main_layout)
-        
-        # 设置窗口属性
-        self.setWindowFlags(
-            Qt.WindowType.Window |  # 普通窗口
-            Qt.WindowType.FramelessWindowHint |  # 无边框
-            Qt.WindowType.WindowSystemMenuHint  # 系统菜单
-        )
         
         # 设置应用图标
         icon = QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "mic1.png"))
@@ -124,7 +128,7 @@ class MainWindow(QMainWindow):
         title_bar.mouseMoveEvent = self._on_title_bar_mouse_move
         
         layout = QHBoxLayout(title_bar)
-        layout.setContentsMargins(16, 0, 16, 0)
+        layout.setContentsMargins(16, 0, 8, 0)
         layout.setSpacing(8)
         
         # 标题
@@ -140,14 +144,18 @@ class MainWindow(QMainWindow):
         self.close_button.setStyleSheet("""
             QLabel {
                 color: #999999;
-                font-size: 18px;
-                padding: 4px 12px;
-                border-radius: 6px;
-                margin: 10px 0px;
+                font-size: 16px;
+                padding: 4px 8px;
+                border-radius: 3px;
+                margin: 12px 0;
+                background-color: rgba(255, 255, 255, 0.05);
+                min-width: 16px;
+                min-height: 16px;
+                text-align: center;
             }
             QLabel:hover {
                 color: white;
-                background-color: rgba(255, 255, 255, 0.1);
+                background-color: rgba(255, 255, 255, 0.15);
             }
         """)
         self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -268,12 +276,38 @@ class MainWindow(QMainWindow):
             # 首次运行或无效位置，居中显示
             self.center_on_screen()
     
-    def show(self):
-        """重写show方法，确保窗口显示在最前面"""
+    def _show_window_internal(self):
+        """在主线程中显示窗口"""
+        try:
+            if sys.platform == 'darwin':
+                try:
+                    from AppKit import NSApplication
+                    app = NSApplication.sharedApplication()
+                    
+                    # 显示并激活窗口
+                    if not self.isVisible():
+                        self.show()
+                    
+                    # 强制激活应用和窗口
+                    app.activateIgnoringOtherApps_(True)
+                    self.raise_()
+                    self.activateWindow()
+                    self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+                    
+                except Exception as e:
+                    print(f"显示窗口时出错: {e}")
+                    self._fallback_show_window()
+            else:
+                self._fallback_show_window()
+            
+            print("✓ 窗口已显示")
+        except Exception as e:
+            print(f"❌ 显示窗口失败: {e}")
+    
+    def _fallback_show_window(self):
+        """后备的窗口显示方法"""
         if not self.isVisible():
-            super().show()
-        
-        # 常规的窗口激活
-        self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
+            self.show()
         self.raise_()
         self.activateWindow()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)

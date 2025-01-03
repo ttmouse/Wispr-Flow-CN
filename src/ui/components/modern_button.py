@@ -37,7 +37,7 @@ class ModernButton(QPushButton):
             return
             
         # 简单的缩放动画
-        random_scale = random.uniform(0.88, 0.95)
+        random_scale = random.uniform(0.85, 0.98)
         
         self.animation.stop()
         self.animation.setStartValue(self._scale_factor)
