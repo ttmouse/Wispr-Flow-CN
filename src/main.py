@@ -54,12 +54,23 @@ class Application(QObject):
             
             # 创建系统托盘图标
             self.tray_icon = QSystemTrayIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")), self.app)
+            self.tray_icon.setToolTip("Dou-flow")  # 设置提示文本
             
             # 创建托盘菜单
             tray_menu = QMenu()
-            show_action = tray_menu.addAction("显示/隐藏")
+            
+            # 显示窗口
+            show_action = tray_menu.addAction("显示窗口")
             show_action.triggered.connect(self.show_window)
+            
+            # 编辑热词
+            edit_hotwords_action = tray_menu.addAction("编辑热词...")
+            edit_hotwords_action.triggered.connect(lambda: self.main_window.show_hotwords_window())
+            
+            # 分隔线
             tray_menu.addSeparator()
+            
+            # 退出
             quit_action = tray_menu.addAction("退出")
             quit_action.triggered.connect(self.quit_application)
             
@@ -80,17 +91,13 @@ class Application(QObject):
             
             self.hotkey_manager = HotkeyManager()
             self.clipboard_manager = ClipboardManager()
-            self.global_hotkey = GlobalHotkeyManager()
+            self.context = Context()
             
             self.recording = False
 
             # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
-            self.global_hotkey.hotkey_triggered.connect(self.show_window)
             self.setup_connections()
-            
-            # 设置全局快捷键
-            self.global_hotkey.setup()
 
         except Exception as e:
             print(f"❌ 初始化失败: {e}")
@@ -143,14 +150,18 @@ class Application(QObject):
                 self.transcription_thread.quit()
                 self.transcription_thread.wait()
             self.hotkey_manager.stop_listening()
-            self.global_hotkey.cleanup()
         except Exception as e:
             print(f"❌ 清理资源失败: {e}")
 
     @pyqtSlot()
     def show_window(self):
         """显示主窗口（可以从其他线程调用）"""
-        self.show_window_signal.emit()
+        # 如果在主线程中，直接调用
+        if QThread.currentThread() == QApplication.instance().thread():
+            self._show_window_internal()
+        else:
+            # 在其他线程中，使用信号
+            self.show_window_signal.emit()
 
     def setup_connections(self):
         """设置信号连接"""
@@ -160,6 +171,7 @@ class Application(QObject):
         self.main_window.record_button_clicked.connect(self.toggle_recording)
         self.main_window.history_item_clicked.connect(self.on_history_item_clicked)
         self.state_manager.status_changed.connect(self.main_window.update_status)
+        # 连接窗口显示信号
         self.show_window_signal.connect(self._show_window_internal)
 
     def toggle_recording(self):
@@ -192,9 +204,43 @@ class Application(QObject):
     def _show_window_internal(self):
         """在主线程中显示窗口"""
         try:
-            # 显示并激活窗口
-            self.main_window.show()
-            self.main_window.activateWindow()
+            # 在 macOS 上使用 NSWindow 来激活窗口
+            if sys.platform == 'darwin':
+                try:
+                    from AppKit import NSApplication, NSWindow
+                    # 获取应用和窗口
+                    app = NSApplication.sharedApplication()
+                    window = self.main_window.windowHandle().nativeHandle()
+                    
+                    # 显示窗口
+                    if not self.main_window.isVisible():
+                        self.main_window.show()
+                    
+                    # 设置窗口级别为浮动窗口并激活
+                    window.setLevel_(NSWindow.FloatingWindowLevel)
+                    window.makeKeyAndOrderFront_(None)
+                    app.activateIgnoringOtherApps_(True)
+                    
+                    # 恢复正常窗口级别
+                    QTimer.singleShot(100, lambda: (
+                        window.setLevel_(NSWindow.NormalWindowLevel),
+                        self.main_window.raise_(),
+                        self.main_window.activateWindow()
+                    ))
+                    
+                except Exception as e:
+                    print(f"激活窗口时出错: {e}")
+                    # 如果原生方法失败，使用 Qt 方法
+                    self.main_window.show()
+                    self.main_window.raise_()
+                    self.main_window.activateWindow()
+            else:
+                # 非 macOS 系统的处理
+                if not self.main_window.isVisible():
+                    self.main_window.show()
+                self.main_window.raise_()
+                self.main_window.activateWindow()
+            
             print("✓ 窗口已显示")
         except Exception as e:
             print(f"❌ 显示窗口失败: {e}")

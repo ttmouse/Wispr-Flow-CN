@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings
 from PyQt6.QtGui import QIcon, QFont, QAction
 from .components.modern_button import ModernButton
 from .components.modern_list import ModernListWidget
@@ -39,8 +39,9 @@ class MainWindow(QMainWindow):
         
         # 设置窗口属性
         self.setWindowFlags(
+            Qt.WindowType.Window |  # 普通窗口
             Qt.WindowType.FramelessWindowHint |  # 无边框
-            Qt.WindowType.Window  # 普通窗口
+            Qt.WindowType.WindowSystemMenuHint  # 系统菜单
         )
         
         # 设置应用图标
@@ -54,11 +55,8 @@ class MainWindow(QMainWindow):
         # 初始化状态
         self.state_manager = None
         
-        # 移动窗口到屏幕中央
-        self.center_on_screen()
-        
-        # 创建系统状态栏菜单
-        self.setup_status_menu()
+        # 恢复窗口位置
+        self.restore_window_position()
     
     def setup_ui(self, main_layout):
         """设置UI组件"""
@@ -240,29 +238,42 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'state_manager'):
                 self.state_manager.reload_hotwords()
     
-    def setup_status_menu(self):
-        """设置系统状态栏菜单"""
-        # 创建菜单栏
-        menubar = QMenuBar()
+    def moveEvent(self, event):
+        """处理窗口移动事件，保存新位置"""
+        super().moveEvent(event)
+        self.save_window_position()
+    
+    def save_window_position(self):
+        """保存窗口位置"""
+        settings = QSettings("Dou-flow", "WindowState")
+        settings.setValue("window_position", self.pos())
+    
+    def restore_window_position(self):
+        """恢复窗口位置"""
+        settings = QSettings("Dou-flow", "WindowState")
+        saved_pos = settings.value("window_position")
         
-        # 设置为系统菜单栏
-        menubar.setNativeMenuBar(True)
+        if saved_pos and isinstance(saved_pos, QPoint):
+            # 确保位置在可见区域内
+            screen = self.screen()
+            if screen:
+                screen_geo = screen.availableGeometry()
+                
+                # 如果保存的位置在屏幕外，则移动到屏幕内
+                if not screen_geo.contains(saved_pos):
+                    self.center_on_screen()
+                else:
+                    self.move(saved_pos)
+        else:
+            # 首次运行或无效位置，居中显示
+            self.center_on_screen()
+    
+    def show(self):
+        """重写show方法，确保窗口显示在最前面"""
+        if not self.isVisible():
+            super().show()
         
-        # 创建应用菜单
-        app_menu = menubar.addMenu("Dou-flow")
-        
-        # 编辑热词
-        edit_hotwords_action = QAction("编辑热词...", self)
-        edit_hotwords_action.triggered.connect(self.show_hotwords_window)
-        app_menu.addAction(edit_hotwords_action)
-        
-        # 分隔线
-        app_menu.addSeparator()
-        
-        # 退出
-        quit_action = QAction("退出", self)
-        quit_action.triggered.connect(QApplication.quit)
-        app_menu.addAction(quit_action)
-        
-        # 设置为窗口的菜单栏
-        self.setMenuBar(menubar)
+        # 常规的窗口激活
+        self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
+        self.raise_()
+        self.activateWindow()

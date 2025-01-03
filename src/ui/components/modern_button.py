@@ -1,7 +1,8 @@
+# 这个文件是用来实现录音按钮的动画效果的。
 from PyQt6.QtWidgets import QPushButton
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QSize, QRectF, pyqtProperty
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QSize, QRectF, pyqtProperty, QTimer
 from PyQt6.QtGui import QIcon, QPainter, QColor
-from PyQt6.QtMultimedia import QSoundEffect
+import random
 
 class ModernButton(QPushButton):
     def __init__(self, parent=None):
@@ -19,22 +20,29 @@ class ModernButton(QPushButton):
         
         # 创建动画
         self.animation = QPropertyAnimation(self, b"scale_factor")
-        self.animation.setDuration(100)  # 更快的动画
-        self.animation.setStartValue(1.0)
-        self.animation.setEndValue(0.9)
-        self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        self.animation.setLoopCount(-1)  # 无限循环
+        self.animation.setDuration(80)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         
-        # 设置声音效果
-        self.start_sound = QSoundEffect()
-        self.start_sound.setSource(Qt.Url.fromLocalFile("resources/start.wav"))
-        self.start_sound.setVolume(1.0)
-        
-        self.stop_sound = QSoundEffect()
-        self.stop_sound.setSource(Qt.Url.fromLocalFile("resources/stop.wav"))
-        self.stop_sound.setVolume(1.0)
+        # 创建定时器用于更新动画
+        self.update_timer = QTimer()
+        self.update_timer.moveToThread(self.thread())
+        self.update_timer.timeout.connect(self.update_animation)
+        self.update_timer.setInterval(100)
         
         self.update_style()
+    
+    def update_animation(self):
+        """更新动画"""
+        if not self._is_recording:
+            return
+            
+        # 简单的缩放动画
+        random_scale = random.uniform(0.88, 0.95)
+        
+        self.animation.stop()
+        self.animation.setStartValue(self._scale_factor)
+        self.animation.setEndValue(random_scale)
+        self.animation.start()
     
     @pyqtProperty(float)
     def scale_factor(self):
@@ -54,17 +62,16 @@ class ModernButton(QPushButton):
         self._is_recording = is_recording
         self.update_style()
         
-        # 控制动画和声音
+        # 控制动画
         if is_recording:
             self.setIcon(QIcon("resources/mic-recording.svg"))
-            self.start_sound.play()
-            self.animation.setDirection(QPropertyAnimation.Direction.Forward)
-            self.animation.start()
+            self._scale_factor = 1.0
+            self.update_timer.start()
         else:
+            self.update_timer.stop()
             self.animation.stop()
             self._scale_factor = 1.0
             self.update()
-            self.stop_sound.play()
             self.setIcon(QIcon("resources/mic.png"))
     
     def update_style(self):

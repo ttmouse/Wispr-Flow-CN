@@ -40,7 +40,7 @@ class TranscriptionThread(QThread):
     def run(self):
         try:
             result = self.funasr_engine.transcribe(self.audio_data)
-            # 处理 FunASR 返回的结果格式
+            # 处理 FunASR 返回的结果
             if isinstance(result, list) and len(result) > 0:
                 text = result[0].get('text', '')
             elif isinstance(result, dict):
