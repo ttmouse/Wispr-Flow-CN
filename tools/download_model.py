@@ -21,8 +21,8 @@ MODEL_SIZES = {
 
 MODELS = {
     'asr': {
-        'name': 'speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch',
-        'url': 'https://www.modelscope.cn/iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch.git'
+        'name': 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch',
+        'url': 'https://www.modelscope.cn/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch.git'
     },
     'punc': {
         'name': 'punc_ct-transformer_zh-cn-common-vocab272727-pytorch',
@@ -68,7 +68,7 @@ def download_model(model_type: str, test_mode: bool = False) -> str:
     model_name = model_info['name']
     model_url = model_info['url']
     
-    # 设置模型目录
+    # 设置模型目录1
     base_dir = os.path.dirname(os.path.dirname(__file__))
     if test_mode:
         model_dir = os.path.join(base_dir, 'test_models', model_name)
