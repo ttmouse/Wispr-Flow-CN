@@ -138,18 +138,19 @@ class FunASREngine:
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 result = self.model.generate(
                     input=audio_chunk,
-                    batch_size_s=200,
+                    batch_size_s=200,          # 恢复到原来的值
                     use_itn=True,
                     mode='offline',
-                    decode_method='greedy_search',
+                    decode_method='greedy_search',  # 改回greedy_search
                     disable_progress_bar=True,
-                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None,
-                    cache_size=2000,
-                    beam_size=5
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None,  # 恢复原来的热词权重
+                    cache_size=2000,           # 恢复原来的缓存大小
+                    beam_size=5                # 恢复原来的beam size
                 )
             
             if isinstance(result, list) and len(result) > 0:
-                return result[0].get('text', '')
+                text = result[0].get('text', '')
+                return text
             return ''
         except Exception as e:
             print(f"❌ 单块处理失败: {e}")
@@ -199,65 +200,31 @@ class FunASREngine:
             return text
 
     def transcribe(self, audio_data):
-        """并行处理音频转写"""
+        """转写音频数据"""
         try:
-            start_time = time.time()
-            
             if audio_data.dtype != np.float32:
                 audio_data = audio_data.astype(np.float32)
             
-            # 1. 预处理
-            audio_data = self.preprocess_audio(audio_data)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                # 1. 语音识别
+                result = self.model.generate(
+                    input=audio_data,
+                    batch_size_s=100,     # 减小批处理大小
+                    use_itn=True,         # 启用逆文本正则化
+                    mode='offline',      # 使用离线模式以提高准确率
+                    decode_method='greedy_search',  # 使用贪婪搜索解码
+                    disable_progress_bar=True,  # 禁用进度条
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None
+                )
             
-            # 2. 计算合适的分块大小（每块2秒音频）
-            sample_rate = 16000  # 采样率
-            chunk_duration = 2   # 每块2秒
-            chunk_size = sample_rate * chunk_duration
+            if isinstance(result, list) and len(result) > 0:
+                text = result[0].get('text', '')
+                
+            # 2. 添加标点
+            text = self._add_punctuation(text)
             
-            # 3. 分块，确保有重叠（避免语音在边界处被切断）
-            overlap = sample_rate // 2  # 0.5秒重叠
-            chunks = []
-            start = 0
-            while start < len(audio_data):
-                end = min(start + chunk_size, len(audio_data))
-                chunk = audio_data[start:end]
-                if len(chunk) >= sample_rate:  # 只处理长度超过1秒的块
-                    chunks.append(chunk)
-                start += chunk_size - overlap
-            
-            # 4. 如果音频太短，直接处理
-            if len(chunks) <= 1:
-                return self._transcribe_single(audio_data)
-            
-            # 5. 并行处理每个块
-            chunk_start_time = time.time()
-            with ThreadPoolExecutor(max_workers=min(len(chunks), 3)) as executor:
-                chunk_results = list(executor.map(self._transcribe_single, chunks))
-            chunk_time = (time.time() - chunk_start_time) * 1000
-            
-            # 6. 合并结果
-            merge_start_time = time.time()
-            merged_text = self._merge_results(chunk_results)
-            merge_time = (time.time() - merge_start_time) * 1000
-            
-            # 7. 添加标点符号
-            punc_start_time = time.time()
-            final_text = self._add_punctuation(merged_text)
-            punc_time = (time.time() - punc_start_time) * 1000
-            
-            # 8. 处理英文单词间的空格
-            final_text = self._process_text(final_text)
-            
-            # 9. 输出性能统计
-            total_time = (time.time() - start_time) * 1000
-            print(f"\n并行处理性能统计:")
-            print(f"音频长度: {len(audio_data)/sample_rate:.1f}秒")
-            print(f"处理块数: {len(chunks)}")
-            print(f"分块识别耗时: {chunk_time:.2f}ms")
-            print(f"合并耗时: {merge_time:.2f}ms")
-            print(f"标点处理耗时: {punc_time:.2f}ms")
-            print(f"总耗时: {total_time:.2f}ms")
-            print(f"平均每秒处理时间: {total_time/(len(audio_data)/sample_rate):.2f}ms")
+            # 3. 处理英文单词间的空格
+            final_text = self._process_text(text)
             
             return [{"text": final_text}]
             
@@ -325,3 +292,27 @@ class FunASREngine:
         except Exception as e:
             print(f"重新加载热词失败: {e}")
             self.hotwords = []
+
+    def _post_process_text(self, text):
+        """文本后处理"""
+        # 1. 修复常见的错误模式
+        fixes = {
+            "有可能是也有可能": "有可能",
+            "的的": "的",
+            "了了": "了",
+            "吗吗": "吗",
+            "啊啊": "啊",
+            "嗯嗯": "嗯",
+            "问题的问题": "问题",
+        }
+        
+        for wrong, correct in fixes.items():
+            text = text.replace(wrong, correct)
+        
+        # 2. 修复重复的标点
+        text = re.sub(r'([。，！？；：、])\1+', r'\1', text)
+        
+        # 3. 修复不合理的词组搭配
+        text = re.sub(r'解决了(\w+)问题的问题', r'解决了\1问题', text)
+        
+        return text
