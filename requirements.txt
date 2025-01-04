@@ -4,10 +4,17 @@ funasr
 numpy>=1.24.0
 pyaudio>=0.2.13
 PyQt6>=6.4.0
+PyQt6-Qt6
+PyQt6-sip
 pyinstaller
 pynput>=1.7.6
 pyperclip
 pyautogui
 modelscope>=1.9.5
+pyobjc-core
+pyobjc-framework-Cocoa
 pyobjc-framework-AVFoundation
+watchdog
+requests
+tqdm
 
