@@ -10,4 +10,6 @@ pyperclip
 pyautogui
 modelscope>=1.9.5
 pyobjc-framework-AVFoundation
+requests>=2.31.0
+tqdm>=4.66.1
 
