@@ -9,7 +9,6 @@ import io
 import time
 from concurrent.futures import ThreadPoolExecutor
 import math
-from tools.download_model import ensure_models
 
 # 设置 modelscope 日志级别为 WARNING，减少不必要的信息
 logging.getLogger('modelscope').setLevel(logging.WARNING)
@@ -39,20 +38,15 @@ class FunASREngine:
                                    if line.strip() and not line.strip().startswith('#')]
                 print(f"✓ 加载了 {len(self.hotwords)} 个热词")
             
-            # 确保模型文件存在，如果不存在则下载
-            print("检查并下载必要的模型...")
-            model_results = ensure_models()
-            
-            # 检查下载结果
-            for model_type, result in model_results.items():
-                if not result["success"]:
-                    raise Exception(f"模型 {model_type} 下载失败: {result['error']}")
-            
-            asr_model_dir = model_results["asr"]["path"]
-            punc_model_dir = model_results["punc"]["path"]
+            # 检查模型文件是否存在
+            asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
+            punc_model_dir = os.path.join(cache_dir, 'damo', 'punc_ct-transformer_zh-cn-common-vocab272727-pytorch')
             
             print(f"ASR模型路径: {asr_model_dir}")
             print(f"标点模型路径: {punc_model_dir}")
+            
+            if not os.path.exists(asr_model_dir) or not os.path.exists(punc_model_dir):
+                raise Exception(f"模型文件不存在: ASR模型: {os.path.exists(asr_model_dir)}, 标点模型: {os.path.exists(punc_model_dir)}")
             
             # 使用 redirect_stdout 来捕获输出
             f = io.StringIO()

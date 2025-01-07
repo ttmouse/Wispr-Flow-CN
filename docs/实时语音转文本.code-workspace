@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../../keyword-monitor/.prompts"
+		},
+		{
+			"path": "../../keyword-monitor/google 关键词.app"
 		}
 	],
 	"settings": {}

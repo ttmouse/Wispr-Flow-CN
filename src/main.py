@@ -1,7 +1,7 @@
 import sys
 import traceback
 import os
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
 from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
@@ -15,12 +15,13 @@ from audio_threads import AudioCaptureThread, TranscriptionThread
 from global_hotkey import GlobalHotkeyManager
 import time
 import re
+import subprocess
 
 # 应用信息
-APP_NAME = "Dou-flow"  # 统一应用名称
+APP_NAME = "Dou-flow"  # 统一应用名称3
 APP_VERSION = "1.0.0"
 APP_AUTHOR = "ttmouse"
-# 设置环境变量以隐藏系统日志
+# 设置环境变量以隐藏系统1
 os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
 
@@ -49,7 +50,7 @@ class Application(QObject):
             # 设置应用程序信息
             self.app.setApplicationName(APP_NAME)
             self.app.setApplicationDisplayName(APP_NAME)
-            self.app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")))
+            self.app.setWindowIcon(QIcon("icon_1024.png"))
             self.app.setQuitOnLastWindowClosed(False)
             
             # 创建系统托盘图标
@@ -66,6 +67,10 @@ class Application(QObject):
             # 编辑热词
             edit_hotwords_action = tray_menu.addAction("编辑热词...")
             edit_hotwords_action.triggered.connect(lambda: self.main_window.show_hotwords_window())
+            
+            # 检查权限
+            check_permissions_action = tray_menu.addAction("检查权限")
+            check_permissions_action.triggered.connect(self.check_permissions)
             
             # 分隔线
             tray_menu.addSeparator()
@@ -95,7 +100,7 @@ class Application(QObject):
             
             self.recording = False
 
-            # 连接信号
+            # 连接信号1
             self.show_window_signal.connect(self._show_window_internal)
             self.setup_connections()
 
@@ -301,6 +306,59 @@ class Application(QObject):
             return 1
         finally:
             self.cleanup()
+
+    def check_permissions(self):
+        """检查应用权限状态"""
+        try:
+            # 检查麦克风权限
+            mic_status = subprocess.run([
+                'osascript',
+                '-e', 'tell application "System Events" to tell process "SystemUIServer"',
+                '-e', 'get value of first menu bar item of menu bar 1 whose description contains "麦克风"',
+                '-e', 'end tell'
+            ], capture_output=True, text=True)
+            
+            # 检查辅助功能权限
+            accessibility_status = subprocess.run([
+                'osascript',
+                '-e', 'tell application "System Events"',
+                '-e', 'set isEnabled to UI elements enabled',
+                '-e', 'return isEnabled',
+                '-e', 'end tell'
+            ], capture_output=True, text=True)
+            
+            # 检查自动化权限
+            automation_status = subprocess.run([
+                'osascript',
+                '-e', 'tell application "System Events"',
+                '-e', 'return "已授权"',
+                '-e', 'end tell'
+            ], capture_output=True, text=True)
+            
+            # 准备状态消息
+            status_msg = "权限状态：\n\n"
+            status_msg += f"麦克风：{'已授权' if '1' in mic_status.stdout else '未授权'}\n"
+            status_msg += f"辅助功能：{'已授权' if 'true' in accessibility_status.stdout.lower() else '未授权'}\n"
+            status_msg += f"自动化：{'已授权' if '已授权' in automation_status.stdout else '未授权'}\n\n"
+            
+            if '未授权' in status_msg:
+                status_msg += "请在系统设置中授予以下权限：\n"
+                status_msg += "1. 系统设置 > 隐私与安全性 > 麦克风\n"
+                status_msg += "2. 系统设置 > 隐私与安全性 > 辅助功能\n"
+                status_msg += "3. 系统设置 > 隐私与安全性 > 自动化"
+            
+            # 显示状态
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle("权限检查")
+            msg_box.setText(status_msg)
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.exec()
+        except Exception as e:
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle("权限检查失败")
+            msg_box.setText(f"检查权限时出错：{str(e)}")
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.exec()
 
 if __name__ == "__main__":
     try:
