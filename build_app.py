@@ -1,3 +1,6 @@
+# ./tools/build_app.sh
+
+
 import os
 import sys
 import shutil

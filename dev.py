@@ -32,7 +32,7 @@ class AppReloader(FileSystemEventHandler):
                 self.restart_app()
 
 def main():
-    # 创建文件监视器
+    # 创建文件监视器1
     event_handler = AppReloader()
     observer = Observer()
     

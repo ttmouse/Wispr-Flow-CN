@@ -62,10 +62,6 @@ cat > "${APP_NAME}.app/Contents/entitlements.plist" << EOL
         <string>com.apple.finder</string>
         <string>*</string>
     </array>
-    <key>com.apple.security.automation.apple-events</key>
-    <true/>
-    <key>com.apple.security.personal-information.addressbook</key>
-    <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
 </dict>

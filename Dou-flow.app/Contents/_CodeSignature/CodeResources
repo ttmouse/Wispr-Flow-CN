@@ -41,10 +41,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			Is7GxaJkE1wDCwuGU+vIhwplGR8=
+			4CCRWhr+O24lHYJjNUeVLnYc8sQ=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"0163ec21b8d8fa20a87c5daee2f4525c409f599c" or cdhash H"22cec6c5a264135c030b0b8653ebc8870a65191f"</string>
+			<string>cdhash H"440b40a6784ede8f7c20ab6cfc87427d890c446e" or cdhash H"e020915a1afe3b6e251d82633547952e761cf2c4"</string>
 		</dict>
 	</dict>
 	<key>rules</key>

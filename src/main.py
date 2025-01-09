@@ -16,6 +16,7 @@ from global_hotkey import GlobalHotkeyManager
 import time
 import re
 import subprocess
+from audio_manager import AudioManager
 
 # 应用信息
 APP_NAME = "Dou-flow"  # 统一应用名称3
@@ -53,7 +54,12 @@ class Application(QObject):
             self.app.setWindowIcon(QIcon("icon_1024.png"))
             self.app.setQuitOnLastWindowClosed(False)
             
-            # 创建系统托盘图标
+            # 在 macOS 上设置 Dock 图标点击事件
+            if sys.platform == 'darwin':
+                self.app.setProperty("DOCK_CLICK_HANDLER", True)
+                self.app.event = self.handle_mac_events
+            
+            # 创建系统托盘图标1
             self.tray_icon = QSystemTrayIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")), self.app)
             self.tray_icon.setToolTip("Dou-flow")  # 设置提示文本
             
@@ -81,6 +87,7 @@ class Application(QObject):
             
             # 设置托盘图标的菜单
             self.tray_icon.setContextMenu(tray_menu)
+            # 移除托盘图标的点击事件连接
             self.tray_icon.show()
             
             # 初始化组件
@@ -99,7 +106,11 @@ class Application(QObject):
             self.context = Context()
             
             self.recording = False
-
+            self.previous_volume = None  # 保存之前的音量设置
+            
+            # 初始化音频管理器
+            self.audio_manager = AudioManager(self)  # 传入 self 作为父对象
+            
             # 连接信号1
             self.show_window_signal.connect(self._show_window_internal)
             self.setup_connections()
@@ -109,12 +120,79 @@ class Application(QObject):
             print(traceback.format_exc())
             sys.exit(1)
 
+    def _set_system_volume(self, volume):
+        """设置系统音量
+        volume: 0-100 的整数，或者 None 表示静音"""
+        try:
+            if volume is None:
+                # 检查当前是否已经静音
+                result = subprocess.run([
+                    'osascript',
+                    '-e', 'get volume settings'
+                ], capture_output=True, text=True)
+                if "output muted:true" in result.stdout:
+                    print("系统已经处于静音状态")
+                    return
+                
+                # 静音所有音频输出
+                subprocess.run([
+                    'osascript',
+                    '-e', 'set volume output muted true'
+                ], check=True)
+                print("系统已静音")
+            else:
+                # 设置音量并取消静音
+                volume = max(0, min(100, volume))  # 确保音量在 0-100 范围内
+                # 将 0-100 的音量转换为 0-7 的范围（macOS 使用 0-7 的音量范围）
+                mac_volume = int((volume / 100.0) * 7)
+                subprocess.run([
+                    'osascript',
+                    '-e', f'set volume output volume {volume}',
+                    '-e', 'set volume output muted false'
+                ], check=True)
+                print(f"系统音量已设置为: {volume}")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ 设置系统音量失败: {e}")
+        except Exception as e:
+            print(f"❌ 设置系统音量时发生错误: {e}")
+
+    def _get_system_volume(self):
+        """获取当前系统音量"""
+        try:
+            # 获取完整的音量设置
+            result = subprocess.run([
+                'osascript',
+                '-e', 'get volume settings'
+            ], capture_output=True, text=True, check=True)
+            
+            settings = result.stdout.strip()
+            # 解析输出，格式类似：output volume:50, input volume:75, alert volume:75, output muted:false
+            volume_str = settings.split(',')[0].split(':')[1].strip()
+            muted = "output muted:true" in settings
+            
+            if muted:
+                print("系统当前处于静音状态")
+                return 0
+            
+            volume = int(volume_str)
+            print(f"当前系统音量: {volume}")
+            return volume
+        except subprocess.CalledProcessError as e:
+            print(f"❌ 获取系统音量失败: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ 获取系统音量时发生错误: {e}")
+            return None
+
     def start_recording(self):
         """开始录音"""
         if not self.recording:
             self.recording = True
             
             try:
+                # 暂停其他应用的音频（替换原来的音量控制代码）
+                self.audio_manager.mute_other_apps()
+                
                 self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
                 self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
                 self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
@@ -133,6 +211,9 @@ class Application(QObject):
             self.audio_capture_thread.wait()
             
             try:
+                # 恢复其他应用的音频（替换原来的音量控制代码）
+                self.audio_manager.resume_other_apps()
+                
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
@@ -189,12 +270,18 @@ class Application(QObject):
     def on_option_press(self):
         """处理Option键按下事件"""
         if not self.recording:
+            print("✓ Option 键按下，开始录音")
             self.start_recording()
+        else:
+            print("⚠️ Option 键按下，但已经在录音中")
 
     def on_option_release(self):
         """处理Option键释放事件"""
         if self.recording:
+            print("✓ Option 键释放，停止录音")
             self.stop_recording()
+        else:
+            print("⚠️ Option 键释放，但未在录音中")
 
     def on_audio_captured(self, data):
         """音频数据捕获回调"""
@@ -264,9 +351,8 @@ class Application(QObject):
         if text and text.strip():
             # 1. 先复制到剪贴板
             self.clipboard_manager.copy_to_clipboard(text)
-            # 2. 更新UI（如果窗口可见）
-            if self.main_window.isVisible():
-                self.main_window.display_result(text)
+            # 2. 更新UI并添加到历史记录（无论窗口是否可见）
+            self.main_window.display_result(text)
             # 3. 延迟执行粘贴操作
             QTimer.singleShot(100, lambda: self._paste_and_reactivate(text))
             # 打印日志
@@ -359,6 +445,22 @@ class Application(QObject):
             msg_box.setText(f"检查权限时出错：{str(e)}")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
+
+    def handle_mac_events(self, event):
+        """处理 macOS 特定事件"""
+        try:
+            # 处理 Dock 图标点击事件
+            if event.type() == 214:  # Qt.Type.ApplicationStateChange
+                # 使用与状态栏菜单相同的方法
+                if QThread.currentThread() == QApplication.instance().thread():
+                    self._show_window_internal()
+                else:
+                    self.show_window_signal.emit()
+                return True
+            return QApplication.event(self.app, event)
+        except Exception as e:
+            print(f"❌ 处理 macOS 事件失败: {e}")
+            return False
 
 if __name__ == "__main__":
     try:

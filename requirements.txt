@@ -14,7 +14,8 @@ modelscope>=1.9.5
 pyobjc-core
 pyobjc-framework-Cocoa
 pyobjc-framework-AVFoundation
+pyobjc-framework-CoreAudio
 watchdog
-requests
-tqdm
+requests>=2.31.0
+tqdm>=4.66.1
 
