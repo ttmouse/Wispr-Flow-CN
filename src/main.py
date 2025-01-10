@@ -58,7 +58,7 @@ class Application(QObject):
             self.app.setApplicationDisplayName(APP_NAME)
             
             # 加载应用图标
-            icon_path = os.path.join(os.path.dirname(__file__), "..", "icon.icns")
+            icon_path = os.path.join(os.path.dirname(__file__), "..", "iconset.icns")
             app_icon = QIcon(icon_path)
             self.app.setWindowIcon(app_icon)
             self.app.setQuitOnLastWindowClosed(False)
