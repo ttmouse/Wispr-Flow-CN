@@ -6,10 +6,12 @@ from .components.modern_list import ModernListWidget
 from .hotwords_window import HotwordsWindow
 import os
 import sys
+from config import APP_VERSION  # 使用绝对导入
 
 class MainWindow(QMainWindow):
     # 常量定义
     WINDOW_TITLE = "Dou-flow"
+    VERSION = APP_VERSION  # 使用导入的版本号
     record_button_clicked = pyqtSignal()
     history_item_clicked = pyqtSignal(str)
 
@@ -131,10 +133,21 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 0, 8, 0)
         layout.setSpacing(8)
         
-        # 标题
+        # 标题和版本号
+        title_container = QWidget()
+        title_layout = QHBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(8)
+        
         title_label = QLabel(self.WINDOW_TITLE)
         title_label.setStyleSheet("color: white; font-size: 16px;")
-        layout.addWidget(title_label)
+        title_layout.addWidget(title_label)
+        
+        version_label = QLabel(f"v{self.VERSION}")
+        version_label.setStyleSheet("color: #666666; font-size: 12px;")
+        title_layout.addWidget(version_label)
+        
+        layout.addWidget(title_container)
         
         # 添加弹性空间
         layout.addStretch()

@@ -17,13 +17,15 @@ import time
 import re
 import subprocess
 from audio_manager import AudioManager
+from config import APP_VERSION  # 从config导入版本号
+import atexit
+import multiprocessing
 
 # 应用信息
 APP_NAME = "Dou-flow"  # 统一应用名称3
-APP_VERSION = "1.0.0"
 APP_AUTHOR = "ttmouse"
-# 设置环境变量以隐藏系统1
-os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+# 设置环境变量以隐藏系统日志
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false;qt.core.qobject.timer=false'
 os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
 
 def get_app_path():
@@ -41,6 +43,9 @@ class Application(QObject):
 
     def __init__(self):
         super().__init__()
+        # 初始化资源清理
+        atexit.register(self.cleanup_resources)
+        
         try:
             self.app = QApplication(sys.argv)
             
@@ -51,7 +56,11 @@ class Application(QObject):
             # 设置应用程序信息
             self.app.setApplicationName(APP_NAME)
             self.app.setApplicationDisplayName(APP_NAME)
-            self.app.setWindowIcon(QIcon("icon_1024.png"))
+            
+            # 加载应用图标
+            icon_path = os.path.join(os.path.dirname(__file__), "..", "icon.icns")
+            app_icon = QIcon(icon_path)
+            self.app.setWindowIcon(app_icon)
             self.app.setQuitOnLastWindowClosed(False)
             
             # 在 macOS 上设置 Dock 图标点击事件
@@ -59,8 +68,8 @@ class Application(QObject):
                 self.app.setProperty("DOCK_CLICK_HANDLER", True)
                 self.app.event = self.handle_mac_events
             
-            # 创建系统托盘图标1
-            self.tray_icon = QSystemTrayIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "resources", "mic1.png")), self.app)
+            # 创建系统托盘图标
+            self.tray_icon = QSystemTrayIcon(app_icon, self.app)  # 使用相同的图标
             self.tray_icon.setToolTip("Dou-flow")  # 设置提示文本
             
             # 创建托盘菜单
@@ -119,6 +128,46 @@ class Application(QObject):
             print(f"❌ 初始化失败: {e}")
             print(traceback.format_exc())
             sys.exit(1)
+
+    def cleanup_resources(self):
+        """清理资源"""
+        try:
+            # 停止所有线程
+            if hasattr(self, 'audio_capture_thread') and self.audio_capture_thread:
+                self.audio_capture_thread.stop()
+                self.audio_capture_thread.wait()
+            
+            if hasattr(self, 'transcription_thread') and self.transcription_thread:
+                if self.transcription_thread.isRunning():
+                    self.transcription_thread.terminate()
+                    self.transcription_thread.wait()
+            
+            # 清理音频资源
+            if hasattr(self, 'audio_capture'):
+                self.audio_capture.cleanup()
+            
+            # 清理其他资源
+            if hasattr(self, 'state_manager'):
+                self.state_manager.cleanup()
+            
+            # 清理多进程资源
+            multiprocessing.current_process()._clean()
+            
+            print("✓ 资源清理完成")
+        except Exception as e:
+            print(f"❌ 资源清理失败: {e}")
+        finally:
+            # 确保关键资源被清理
+            try:
+                if hasattr(self, 'app'):
+                    self.app.quit()
+            except Exception as e:
+                print(f"❌ 应用退出失败: {e}")
+
+    def closeEvent(self, event):
+        """处理关闭事件"""
+        self.cleanup_resources()
+        super().closeEvent(event)
 
     def _set_system_volume(self, volume):
         """设置系统音量

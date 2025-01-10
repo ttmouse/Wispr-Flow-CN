@@ -8,13 +8,62 @@
 		<data>
 		8zWyvkvwigIJwq9J6lNvPcV11K8=
 		</data>
-		<key>Resources/icon.icns</key>
+		<key>Resources/icon_1024.png</key>
+		<data>
+		Ixbt6RoBIAJZFYCJvVnNgBDHrec=
+		</data>
+		<key>Resources/resources/hotwords.txt</key>
+		<data>
+		4gTKv0uP/H1PqTF/O294aBu8ajE=
+		</data>
+		<key>Resources/resources/icon.icns</key>
 		<data>
 		8zWyvkvwigIJwq9J6lNvPcV11K8=
+		</data>
+		<key>Resources/resources/mic-icon.png</key>
+		<data>
+		4HNWKPG6ElhkrAkYNb0Y4GJht0I=
+		</data>
+		<key>Resources/resources/mic-recording.svg</key>
+		<data>
+		4fb95yTLrPQCuZgy8L0WfCbs5zw=
+		</data>
+		<key>Resources/resources/mic.png</key>
+		<data>
+		Ymr7gCI1xhVRbFAu5Y22ZAxArLU=
+		</data>
+		<key>Resources/resources/mic.svg</key>
+		<data>
+		okCbJCLUo/glBDCZ4bOkr8XWQNQ=
+		</data>
+		<key>Resources/resources/mic1.png</key>
+		<data>
+		QSmF8qz2bV7A8S3tt4vIpT8mrFU=
+		</data>
+		<key>Resources/resources/mic2.png</key>
+		<data>
+		xe2WQ1x8kPJTEWqtZvfzg0VH5x4=
+		</data>
+		<key>Resources/resources/start.wav</key>
+		<data>
+		ZoKNgzzeYtZq9QdemMa7giLEUEU=
+		</data>
+		<key>Resources/resources/stop.wav</key>
+		<data>
+		QSgkzgxUo8upSwSqDtb8r3gouNE=
 		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
+		<key>MacOS/start.sh</key>
+		<dict>
+			<key>cdhash</key>
+			<data>
+			fYXsPb5vyfahIar8OH2onPsGNRE=
+			</data>
+			<key>requirement</key>
+			<string>cdhash H"51a1be2b98bdf8e89e9a8ffd081b5b5ed94b219a" or cdhash H"7d85ec3dbe6fc9f6a121aafc387da89cfb063511"</string>
+		</dict>
 		<key>Resources/app_icon.icns</key>
 		<dict>
 			<key>hash</key>
@@ -26,7 +75,29 @@
 			7iF7KQKozYL6zLjkGkDMOvkTEzKqq2Nv3Ts9zrvlBAI=
 			</data>
 		</dict>
-		<key>Resources/icon.icns</key>
+		<key>Resources/icon_1024.png</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			Ixbt6RoBIAJZFYCJvVnNgBDHrec=
+			</data>
+			<key>hash2</key>
+			<data>
+			Td7Q1Bp7PZCZvDfgWTIMRF2TwIR1AtCp76BH4w/bhbM=
+			</data>
+		</dict>
+		<key>Resources/resources/hotwords.txt</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			4gTKv0uP/H1PqTF/O294aBu8ajE=
+			</data>
+			<key>hash2</key>
+			<data>
+			2y6pn0cwy4GzbXolekuGwH9BA1H3dPEUphkUhDc1nzM=
+			</data>
+		</dict>
+		<key>Resources/resources/icon.icns</key>
 		<dict>
 			<key>hash</key>
 			<data>
@@ -35,6 +106,94 @@
 			<key>hash2</key>
 			<data>
 			7iF7KQKozYL6zLjkGkDMOvkTEzKqq2Nv3Ts9zrvlBAI=
+			</data>
+		</dict>
+		<key>Resources/resources/mic-icon.png</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			4HNWKPG6ElhkrAkYNb0Y4GJht0I=
+			</data>
+			<key>hash2</key>
+			<data>
+			AiV195CZu+406lkKB+eN2WWeGnEFHVpDID4uuA+UQqw=
+			</data>
+		</dict>
+		<key>Resources/resources/mic-recording.svg</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			4fb95yTLrPQCuZgy8L0WfCbs5zw=
+			</data>
+			<key>hash2</key>
+			<data>
+			o75bsnznLd/oFiDuIBR5WthIQv4xZOdkzWJbA7MrEKA=
+			</data>
+		</dict>
+		<key>Resources/resources/mic.png</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			Ymr7gCI1xhVRbFAu5Y22ZAxArLU=
+			</data>
+			<key>hash2</key>
+			<data>
+			nS2WgF4hIVUVy3eRzhI7okdvQZ08kPaZpFmy4NsyOMk=
+			</data>
+		</dict>
+		<key>Resources/resources/mic.svg</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			okCbJCLUo/glBDCZ4bOkr8XWQNQ=
+			</data>
+			<key>hash2</key>
+			<data>
+			jWFpHaL+ZCpYwIEWnR+1V7zV4XHkniv9ocPsCEexN4s=
+			</data>
+		</dict>
+		<key>Resources/resources/mic1.png</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			QSmF8qz2bV7A8S3tt4vIpT8mrFU=
+			</data>
+			<key>hash2</key>
+			<data>
+			uHVpQ0eNnpJmJghEYoJAO5meHpaOwJ+HWdF6ifHDfSw=
+			</data>
+		</dict>
+		<key>Resources/resources/mic2.png</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			xe2WQ1x8kPJTEWqtZvfzg0VH5x4=
+			</data>
+			<key>hash2</key>
+			<data>
+			KPiS5ea/Mpmsmp4N2aIQ0IHgmF5/xV54t6MkPLurUhw=
+			</data>
+		</dict>
+		<key>Resources/resources/start.wav</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			ZoKNgzzeYtZq9QdemMa7giLEUEU=
+			</data>
+			<key>hash2</key>
+			<data>
+			5cBkDxDMPt52kMv/wx589lQ0YKFamnXi50KlfGP8r+U=
+			</data>
+		</dict>
+		<key>Resources/resources/stop.wav</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			QSgkzgxUo8upSwSqDtb8r3gouNE=
+			</data>
+			<key>hash2</key>
+			<data>
+			Bw5mBELn4lV6A2rr+1cnS+Jzi6QKUQ+FGlAYjrNxiPg=
 			</data>
 		</dict>
 		<key>entitlements.plist</key>
