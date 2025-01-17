@@ -22,7 +22,8 @@ import atexit
 import multiprocessing
 import logging
 from datetime import datetime
-from ui.settings_window import SettingsWindow  # 添加这行到文件开头的导入部分
+from ui.settings_window import SettingsWindow
+from settings_manager import SettingsManager
 
 # 在文件开头添加日志配置
 def setup_logging():
@@ -73,6 +74,9 @@ class Application(QObject):
         
         try:
             self.app = QApplication(sys.argv)
+            
+            # 初始化设置管理器
+            self.settings_manager = SettingsManager()
             
             # 设置应用程序属性
             if sys.platform == 'darwin':
@@ -137,17 +141,22 @@ class Application(QObject):
             self.audio_capture = AudioCapture()
             print("正在加载语音识别模型...")
             self.funasr_engine = FunASREngine()
+            
+            # 更新设置中的模型路径
+            model_paths = self.funasr_engine.get_model_paths()
+            self.settings_manager.update_model_paths(model_paths)
             print("✓ 语音识别就绪")
             
-            self.hotkey_manager = HotkeyManager()
+            # 初始化热键管理器，传入设置管理器
+            self.hotkey_manager = HotkeyManager(self.settings_manager)
             self.clipboard_manager = ClipboardManager()
             self.context = Context()
             
             self.recording = False
-            self.previous_volume = None  # 保存之前的音量设置
+            self.previous_volume = None
             
             # 初始化音频管理器
-            self.audio_manager = AudioManager(self)  # 传入 self 作为父对象
+            self.audio_manager = AudioManager(self)
             
             # 预初始化 AudioCaptureThread
             self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
@@ -157,6 +166,9 @@ class Application(QObject):
             # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
             self.setup_connections()
+            
+            # 应用初始设置
+            self.apply_settings()
 
         except Exception as e:
             print(f"❌ 初始化失败: {e}")
@@ -273,9 +285,6 @@ class Application(QObject):
             self.recording = True
             
             try:
-                # 异步处理音频静音
-                QTimer.singleShot(0, self.audio_manager.mute_other_apps)
-                
                 # 重新初始化录音线程（如果之前已经使用过）
                 if self.audio_capture_thread.isFinished():
                     self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
@@ -298,9 +307,6 @@ class Application(QObject):
             self.audio_capture_thread.wait()
             
             try:
-                # 恢复其他应用的音频（替换原来的音量控制代码）
-                self.audio_manager.resume_other_apps()
-                
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
@@ -552,32 +558,46 @@ class Application(QObject):
     def show_settings(self):
         """显示设置窗口"""
         try:
-            # 创建设置窗口，传入当前的快捷键设置
-            settings_window = SettingsWindow(None, self.hotkey_manager.hotkey_type)
-            # 连接快捷键变更信号
-            settings_window.hotkey_changed.connect(self._on_hotkey_changed)
+            # 创建设置窗口，传入设置管理器
+            if not hasattr(self, 'settings_window') or not self.settings_window:
+                self.settings_window = SettingsWindow(None, self.settings_manager)
+                # 连接设置保存信号
+                self.settings_window.settings_saved.connect(self.apply_settings)
             
             # 显示设置窗口
-            if settings_window.exec() == QDialog.DialogCode.Accepted:
-                # 用户点击了确定按钮
-                new_hotkey = settings_window.get_current_hotkey()
-                self._on_hotkey_changed(new_hotkey)
+            self.settings_window.show()
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
+            print("✓ 设置窗口已显示")
         
         except Exception as e:
             print(f"❌ 显示设置窗口失败: {e}")
     
-    def _on_hotkey_changed(self, new_hotkey):
-        """处理快捷键变更"""
+    def apply_settings(self):
+        """应用设置"""
         try:
-            # 停止当前的监听
-            self.hotkey_manager.stop_listening()
-            # 保存新的设置
-            self.hotkey_manager.save_settings(new_hotkey)
-            # 重新启动监听
-            self.hotkey_manager.start_listening()
-            print(f"✓ 快捷键已更改为: {new_hotkey}")
+            # 应用热键设置
+            current_hotkey = self.settings_manager.get_hotkey()
+            self.hotkey_manager.stop_listening()  # 先停止监听
+            self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
+            self.hotkey_manager.start_listening()  # 重新开始监听
+            
+            # 应用音频设置
+            volume_threshold = self.settings_manager.get_setting('audio.volume_threshold')
+            self.audio_capture.set_volume_threshold(volume_threshold)
+            
+            # 应用ASR设置
+            model_path = self.settings_manager.get_setting('asr.model_path')
+            if model_path and hasattr(self.funasr_engine, 'load_model'):
+                self.funasr_engine.load_model(model_path)
+            
+            punc_model_path = self.settings_manager.get_setting('asr.punc_model_path')
+            if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
+                self.funasr_engine.load_punctuation_model(punc_model_path)
+            
+            print("✓ 所有设置已应用")
         except Exception as e:
-            print(f"❌ 更改快捷键失败: {e}")
+            print(f"❌ 应用设置失败: {e}")
 
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统

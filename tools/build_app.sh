@@ -3,6 +3,9 @@
 # 切换到项目根目录
 cd "$(dirname "$0")/.."
 
+# 更新版本号
+python tools/version_manager.py
+
 # 安装依赖
 pip install pillow
 

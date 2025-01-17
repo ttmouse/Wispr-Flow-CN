@@ -1,3 +1,25 @@
 {
-  "hotkey": "fn"
+  "hotkey": "fn",
+  "high_frequency_words": [],
+  "audio": {
+    "input_device": null,
+    "volume_threshold": 150,
+    "mute_other_apps": true
+  },
+  "asr": {
+    "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
+    "auto_punctuation": true,
+    "real_time_display": true
+  },
+  "ui": {
+    "start_minimized": false,
+    "show_notifications": true,
+    "theme": "light"
+  },
+  "clipboard": {
+    "auto_paste": true,
+    "keep_history": true,
+    "max_history": 40
+  }
 }

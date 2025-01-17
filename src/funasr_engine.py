@@ -316,3 +316,14 @@ class FunASREngine:
         text = re.sub(r'解决了(\w+)问题的问题', r'解决了\1问题', text)
         
         return text
+
+    def get_model_paths(self):
+        """获取当前使用的模型路径"""
+        cache_dir = os.environ.get('MODELSCOPE_CACHE', '')
+        asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
+        punc_model_dir = os.path.join(cache_dir, 'damo', 'punc_ct-transformer_zh-cn-common-vocab272727-pytorch')
+        
+        return {
+            'asr_model_path': asr_model_dir if os.path.exists(asr_model_dir) else '未找到ASR模型',
+            'punc_model_path': punc_model_dir if os.path.exists(punc_model_dir) else '未找到标点模型'
+        }

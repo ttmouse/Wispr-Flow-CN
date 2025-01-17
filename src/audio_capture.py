@@ -10,7 +10,7 @@ class AudioCapture:
         self.device_index = self._get_default_mic_index()
         self.read_count = 0
         # 音量相关参数
-        self.volume_threshold = 0.005  # 降低音量阈值，使其更容易捕获语音
+        self.volume_threshold = 0.005  # 默认阈值
         self.min_valid_frames = 3      # 降低最少有效帧数要求（约0.2秒）
         self.valid_frame_count = 0     # 有效音频帧计数
         self.max_silence_frames = 40    # 减少最大静音帧数到1.5秒
@@ -109,3 +109,8 @@ class AudioCapture:
         self.frames = []
         self.read_count = 0
         self.valid_frame_count = 0
+
+    def set_volume_threshold(self, threshold):
+        """设置音量阈值（0-1000的值会被转换为0-0.02的浮点数）"""
+        self.volume_threshold = (threshold / 1000.0) * 0.02
+        print(f"音量阈值已更新为: {self.volume_threshold:.5f}")

@@ -3,11 +3,9 @@ import time
 import logging
 import Quartz
 import threading
-import json
-import os
 
 class HotkeyManager:
-    def __init__(self):
+    def __init__(self, settings_manager=None):
         self.press_callback = None
         self.release_callback = None
         self.keyboard_listener = None
@@ -17,14 +15,13 @@ class HotkeyManager:
         self.last_press_time = 0        # 记录最后一次按键时间
         self.is_recording = False       # 记录是否正在录音
         self.should_stop = False        # 控制 fn 监听线程
+        self.settings_manager = settings_manager  # 使用传入的设置管理器
         
         # 配置日志
-        logging.basicConfig(level=logging.DEBUG,
-                          format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger('HotkeyManager')
         
-        # 加载设置
-        self.hotkey_type = self.load_settings().get('hotkey', 'fn')
+        # 从设置管理器获取快捷键类型
+        self.hotkey_type = self.settings_manager.get_hotkey() if self.settings_manager else 'fn'
 
     def set_press_callback(self, callback):
         self.press_callback = callback
@@ -39,26 +36,10 @@ class HotkeyManager:
         self.is_recording = False
         self.logger.info("热键状态已重置")
 
-    def save_settings(self, hotkey_type='fn'):
-        """保存设置"""
-        try:
-            settings = {'hotkey': hotkey_type}
-            with open('settings.json', 'w', encoding='utf-8') as f:
-                json.dump(settings, f, ensure_ascii=False, indent=2)
-            self.hotkey_type = hotkey_type
-            self.logger.info(f"已保存快捷键设置: {hotkey_type}")
-        except Exception as e:
-            self.logger.error(f"保存设置失败: {e}")
-
-    def load_settings(self):
-        """加载设置"""
-        try:
-            if os.path.exists('settings.json'):
-                with open('settings.json', 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception as e:
-            self.logger.error(f"加载设置失败: {e}")
-        return {'hotkey': 'fn'}
+    def update_hotkey(self, hotkey_type='fn'):
+        """更新快捷键设置"""
+        self.hotkey_type = hotkey_type
+        self.logger.info(f"已更新快捷键设置: {hotkey_type}")
 
     def _is_hotkey_pressed(self, key):
         """检查是否是当前设置的热键"""
