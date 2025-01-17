@@ -10,7 +10,7 @@ class SettingsManager:
         'high_frequency_words': [],   # 高频词列表
         'audio': {
             'input_device': None,     # 输入设备名称，None表示系统默认
-            'volume_threshold': 300,   # 音量阈值：0-1000，对应实际阈值0-0.02
+            'volume_threshold': 150,   # 音量阈值：0-1000，对应实际阈值0-0.02，默认值150对应0.003
         },
         'asr': {
             'model_path': '',          # ASR模型路径

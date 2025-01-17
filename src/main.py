@@ -557,22 +557,17 @@ class Application(QObject):
 
     def show_settings(self):
         """显示设置窗口"""
-        try:
-            # 创建设置窗口，传入设置管理器
-            if not hasattr(self, 'settings_window') or not self.settings_window:
-                self.settings_window = SettingsWindow(None, self.settings_manager)
-                # 连接设置保存信号
-                self.settings_window.settings_saved.connect(self.apply_settings)
-            
-            # 显示设置窗口
-            self.settings_window.show()
-            self.settings_window.raise_()
-            self.settings_window.activateWindow()
-            print("✓ 设置窗口已显示")
+        if not hasattr(self, 'settings_window'):
+            self.settings_window = SettingsWindow(
+                settings_manager=self.settings_manager,
+                audio_capture=self.audio_capture
+            )
+            self.settings_window.settings_saved.connect(self.apply_settings)
         
-        except Exception as e:
-            print(f"❌ 显示设置窗口失败: {e}")
-    
+        self.settings_window.show()
+        self.settings_window.raise_()
+        self.settings_window.activateWindow()
+
     def apply_settings(self):
         """应用设置"""
         try:

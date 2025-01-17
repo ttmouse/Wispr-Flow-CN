@@ -3,15 +3,18 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                             QCheckBox, QSlider, QTabWidget,
                             QLineEdit, QFileDialog)
 from PyQt6.QtCore import Qt, pyqtSignal
+import pyaudio
 
 class SettingsWindow(QWidget):
     # 定义信号
     settings_changed = pyqtSignal(str, object)  # 当任何设置改变时发出信号
     settings_saved = pyqtSignal()  # 当设置保存时发出信号
 
-    def __init__(self, parent=None, settings_manager=None):
+    def __init__(self, parent=None, settings_manager=None, audio_capture=None):
         super().__init__(parent)
         self.settings_manager = settings_manager
+        self.audio_capture = audio_capture  # 添加对 AudioCapture 实例的引用
+        self.audio = None  # PyAudio 实例
         self.setWindowTitle("设置")
         self.setMinimumWidth(500)
         self.setMinimumHeight(400)
@@ -58,8 +61,19 @@ class SettingsWindow(QWidget):
             self.settings_manager.set_hotkey(self.hotkey_combo.currentText())
             
             # 保存音频设置
-            self.settings_manager.set_setting('audio.input_device', 
-                self.input_device.currentText() if self.input_device.currentText() != "系统默认" else None)
+            device_text = self.input_device.currentText()
+            # 如果是系统默认设备，提取实际的设备名称
+            if device_text.startswith("系统默认 ("):
+                device_name = None  # 使用 None 表示系统默认设备
+            else:
+                device_name = device_text
+                
+            # 更新音频设备
+            if self.audio_capture:
+                self.audio_capture.set_device(device_name)
+                
+            self.settings_manager.set_setting('audio.input_device', device_name)
+            
             # 将0-20的值转换为0-1000范围后保存
             volume_value = int(self.volume_threshold.value() * 1000 / 20)
             self.settings_manager.set_setting('audio.volume_threshold', volume_value)
@@ -74,13 +88,27 @@ class SettingsWindow(QWidget):
             
             self.settings_saved.emit()
             print("✓ 设置已保存")
+            
+            # 关闭设置窗口
+            self.close()
+            
         except Exception as e:
             print(f"❌ 保存设置失败: {e}")
 
     def closeEvent(self, event):
         """窗口关闭事件"""
-        # 可以在这里添加关闭前的确认或其他逻辑
+        self._cleanup_audio()
         event.accept()
+
+    def _cleanup_audio(self):
+        """清理音频资源"""
+        if self.audio:
+            try:
+                self.audio.terminate()
+            except Exception as e:
+                print(f"清理音频资源失败: {e}")
+            finally:
+                self.audio = None
 
     def _create_general_tab(self):
         """创建常规设置标签页"""
@@ -120,14 +148,25 @@ class SettingsWindow(QWidget):
         device_layout = QVBoxLayout()
         
         self.input_device = QComboBox()
-        # TODO: 添加可用的音频设备列表
-        self.input_device.addItem("系统默认")
-        current_device = self.settings_manager.get_setting('audio.input_device')
-        if current_device:
-            self.input_device.setCurrentText(current_device)
+        self._update_audio_devices()  # 加载可用的音频设备列表
         
-        device_layout.addWidget(QLabel("输入设备："))
+        # 添加刷新按钮
+        device_header_layout = QHBoxLayout()
+        device_header_layout.addWidget(QLabel("输入设备："))
+        refresh_button = QPushButton("刷新")
+        refresh_button.setFixedWidth(60)
+        refresh_button.clicked.connect(self._update_audio_devices)
+        device_header_layout.addWidget(refresh_button)
+        
+        device_layout.addLayout(device_header_layout)
         device_layout.addWidget(self.input_device)
+        
+        # 添加设备说明
+        device_help = QLabel("选择要使用的麦克风设备，设备更改后需要重新开始录音")
+        device_help.setStyleSheet("color: gray; font-size: 12px;")
+        device_help.setWordWrap(True)
+        device_layout.addWidget(device_help)
+        
         device_group.setLayout(device_layout)
         
         # 音频控制设置
@@ -137,7 +176,7 @@ class SettingsWindow(QWidget):
         # 创建音量阈值滑块和标签的水平布局
         volume_layout = QHBoxLayout()
         volume_label = QLabel("音量阈值：")
-        self.volume_value_label = QLabel("6")  # 显示当前值的标签
+        self.volume_value_label = QLabel("3")  # 显示当前值的标签
         self.volume_value_label.setMinimumWidth(30)  # 设置最小宽度确保对齐
         
         # 创建滑块
@@ -158,8 +197,8 @@ class SettingsWindow(QWidget):
         volume_layout.addWidget(self.volume_value_label)
         
         # 添加帮助文本
-        help_text = QLabel("数值越小，麦克风越灵敏。建议值：5-7\n"
-                          "当音量低于阈值时会被视为静音。默认值：6")
+        help_text = QLabel("数值越小，麦克风越灵敏。建议值：2-4\n"
+                          "当音量低于阈值时会被视为静音。默认值：3")
         help_text.setStyleSheet("color: gray; font-size: 12px;")
         help_text.setWordWrap(True)  # 允许文本换行
         
@@ -263,3 +302,89 @@ class SettingsWindow(QWidget):
         self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path'))
         self.punc_model_path.setText(self.settings_manager.get_setting('asr.punc_model_path'))
         self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation'))
+
+    def _get_audio_devices(self):
+        """获取系统中所有可用的音频输入设备"""
+        devices = []
+        
+        try:
+            # 清理之前的实例
+            self._cleanup_audio()
+            
+            # 创建新的 PyAudio 实例
+            self.audio = pyaudio.PyAudio()
+            
+            # 获取默认输入设备信息
+            try:
+                default_device = self.audio.get_default_input_device_info()
+                default_name = default_device['name']
+                devices.append(f"系统默认 ({default_name})")
+            except Exception as e:
+                print(f"获取默认设备失败: {e}")
+                default_name = None
+                devices.append("系统默认")
+            
+            # 获取所有设备信息
+            for i in range(self.audio.get_device_count()):
+                try:
+                    device_info = self.audio.get_device_info_by_index(i)
+                    # 只添加输入设备（maxInputChannels > 0）
+                    if device_info['maxInputChannels'] > 0:
+                        name = device_info['name']
+                        if default_name is None or name != default_name:  # 避免重复添加默认设备
+                            devices.append(name)
+                            print(f"发现输入设备: {name}")
+                except Exception as e:
+                    print(f"获取设备 {i} 信息失败: {e}")
+                    continue
+                    
+        except Exception as e:
+            print(f"获取音频设备列表失败: {e}")
+            if not devices:  # 如果还没有添加任何设备
+                devices = ["系统默认"]
+            
+        return devices
+
+    def _update_audio_devices(self):
+        """更新音频设备列表"""
+        try:
+            # 保存当前选择的设备
+            current_device = self.input_device.currentText()
+            
+            # 清空并重新加载设备列表
+            self.input_device.clear()
+            devices = self._get_audio_devices()
+            self.input_device.addItems(devices)
+            
+            # 尝试恢复之前选择的设备
+            device_found = False
+            
+            # 首先尝试完全匹配
+            for i in range(self.input_device.count()):
+                device_name = self.input_device.itemText(i)
+                if device_name == current_device:
+                    self.input_device.setCurrentText(device_name)
+                    device_found = True
+                    break
+            
+            # 如果没找到，尝试部分匹配（去除"系统默认"前缀后的名称）
+            if not device_found:
+                current_device_name = current_device.replace("系统默认 (", "").replace(")", "")
+                for i in range(self.input_device.count()):
+                    device_name = self.input_device.itemText(i)
+                    if current_device_name in device_name:
+                        self.input_device.setCurrentText(device_name)
+                        device_found = True
+                        break
+            
+            # 如果仍然没找到，使用第一个设备（通常是系统默认）
+            if not device_found:
+                self.input_device.setCurrentIndex(0)
+            
+            print("✓ 设备列表已更新")
+            
+        except Exception as e:
+            print(f"❌ 更新设备列表失败: {e}")
+            # 确保至少有一个选项
+            if self.input_device.count() == 0:
+                self.input_device.addItem("系统默认")

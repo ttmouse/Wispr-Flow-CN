@@ -2,7 +2,7 @@
   "hotkey": "fn",
   "high_frequency_words": [],
   "audio": {
-    "input_device": null,
+    "input_device": "MacBook Pro麦克风",
     "volume_threshold": 150,
     "mute_other_apps": true
   },
