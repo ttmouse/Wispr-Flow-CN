@@ -1,7 +1,7 @@
 import sys
 import traceback
 import os
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QDialog
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
 from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
@@ -20,6 +20,31 @@ from audio_manager import AudioManager
 from config import APP_VERSION  # 从config导入版本号
 import atexit
 import multiprocessing
+import logging
+from datetime import datetime
+from ui.settings_window import SettingsWindow  # 添加这行到文件开头的导入部分
+
+# 在文件开头添加日志配置
+def setup_logging():
+    """配置日志系统"""
+    # 创建logs目录（如果不存在）
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    
+    # 生成日志文件名（使用当前时间）
+    log_filename = f"logs/app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    
+    # 配置日志
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_filename, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logging.info(f"日志文件: {log_filename}")
 
 # 应用信息
 APP_NAME = "Dou-flow"  # 统一应用名称3
@@ -79,6 +104,10 @@ class Application(QObject):
             show_action = tray_menu.addAction("显示窗口")
             show_action.triggered.connect(self.show_window)
             
+            # 添加设置菜单项
+            settings_action = tray_menu.addAction("快捷键设置...")
+            settings_action.triggered.connect(self.show_settings)
+            
             # 编辑热词
             edit_hotwords_action = tray_menu.addAction("编辑热词...")
             edit_hotwords_action.triggered.connect(lambda: self.main_window.show_hotwords_window())
@@ -120,7 +149,12 @@ class Application(QObject):
             # 初始化音频管理器
             self.audio_manager = AudioManager(self)  # 传入 self 作为父对象
             
-            # 连接信号1
+            # 预初始化 AudioCaptureThread
+            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
+            self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
+            self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
+            
+            # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
             self.setup_connections()
 
@@ -157,7 +191,7 @@ class Application(QObject):
         except Exception as e:
             print(f"❌ 资源清理失败: {e}")
         finally:
-            # 确保关键资源被清理
+            # 确保关键资源被清理识别到了吗？
             try:
                 if hasattr(self, 'app'):
                     self.app.quit()
@@ -239,12 +273,16 @@ class Application(QObject):
             self.recording = True
             
             try:
-                # 暂停其他应用的音频（替换原来的音量控制代码）
-                self.audio_manager.mute_other_apps()
+                # 异步处理音频静音
+                QTimer.singleShot(0, self.audio_manager.mute_other_apps)
                 
-                self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
-                self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-                self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
+                # 重新初始化录音线程（如果之前已经使用过）
+                if self.audio_capture_thread.isFinished():
+                    self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
+                    self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
+                    self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
+                
+                # 启动录音线程
                 self.audio_capture_thread.start()
                 self.state_manager.start_recording()
             except Exception as e:
@@ -317,20 +355,20 @@ class Application(QObject):
             self.stop_recording()
 
     def on_option_press(self):
-        """处理Option键按下事件"""
+        """处理Control键按下事件"""
         if not self.recording:
-            print("✓ Option 键按下，开始录音")
+            print("✓ Control 键按下，开始录音")
             self.start_recording()
         else:
-            print("⚠️ Option 键按下，但已经在录音中")
+            print("⚠️ Control 键按下，但已经在录音中")
 
     def on_option_release(self):
-        """处理Option键释放事件"""
+        """处理Control键释放事件"""
         if self.recording:
-            print("✓ Option 键释放，停止录音")
+            print("✓ Control 键释放，停止录音")
             self.stop_recording()
         else:
-            print("⚠️ Option 键释放，但未在录音中")
+            print("⚠️ Control 键释放，但未在录音中")
 
     def on_audio_captured(self, data):
         """音频数据捕获回调"""
@@ -511,7 +549,40 @@ class Application(QObject):
             print(f"❌ 处理 macOS 事件失败: {e}")
             return False
 
+    def show_settings(self):
+        """显示设置窗口"""
+        try:
+            # 创建设置窗口，传入当前的快捷键设置
+            settings_window = SettingsWindow(None, self.hotkey_manager.hotkey_type)
+            # 连接快捷键变更信号
+            settings_window.hotkey_changed.connect(self._on_hotkey_changed)
+            
+            # 显示设置窗口
+            if settings_window.exec() == QDialog.DialogCode.Accepted:
+                # 用户点击了确定按钮
+                new_hotkey = settings_window.get_current_hotkey()
+                self._on_hotkey_changed(new_hotkey)
+        
+        except Exception as e:
+            print(f"❌ 显示设置窗口失败: {e}")
+    
+    def _on_hotkey_changed(self, new_hotkey):
+        """处理快捷键变更"""
+        try:
+            # 停止当前的监听
+            self.hotkey_manager.stop_listening()
+            # 保存新的设置
+            self.hotkey_manager.save_settings(new_hotkey)
+            # 重新启动监听
+            self.hotkey_manager.start_listening()
+            print(f"✓ 快捷键已更改为: {new_hotkey}")
+        except Exception as e:
+            print(f"❌ 更改快捷键失败: {e}")
+
 if __name__ == "__main__":
+    setup_logging()  # 初始化日志系统
+    logging.info("应用程序启动")
+    
     try:
         print("正在创建应用程实例...")
         app = Application()

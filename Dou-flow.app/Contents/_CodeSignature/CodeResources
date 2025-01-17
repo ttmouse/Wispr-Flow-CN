@@ -8,9 +8,9 @@
 		<data>
 		8zWyvkvwigIJwq9J6lNvPcV11K8=
 		</data>
-		<key>Resources/icon_1024.png</key>
+		<key>Resources/icon.icns</key>
 		<data>
-		Ixbt6RoBIAJZFYCJvVnNgBDHrec=
+		8zWyvkvwigIJwq9J6lNvPcV11K8=
 		</data>
 		<key>Resources/resources/hotwords.txt</key>
 		<data>
@@ -59,10 +59,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			fYXsPb5vyfahIar8OH2onPsGNRE=
+			bf5ViM3F3a36zI77sFreoLO++Yk=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"51a1be2b98bdf8e89e9a8ffd081b5b5ed94b219a" or cdhash H"7d85ec3dbe6fc9f6a121aafc387da89cfb063511"</string>
+			<string>cdhash H"3ad83246359248194db791f5b19175a3d7998746" or cdhash H"6dfe5588cdc5ddadfacc8efbb05adea0b3bef989"</string>
 		</dict>
 		<key>Resources/app_icon.icns</key>
 		<dict>
@@ -75,15 +75,15 @@
 			7iF7KQKozYL6zLjkGkDMOvkTEzKqq2Nv3Ts9zrvlBAI=
 			</data>
 		</dict>
-		<key>Resources/icon_1024.png</key>
+		<key>Resources/icon.icns</key>
 		<dict>
 			<key>hash</key>
 			<data>
-			Ixbt6RoBIAJZFYCJvVnNgBDHrec=
+			8zWyvkvwigIJwq9J6lNvPcV11K8=
 			</data>
 			<key>hash2</key>
 			<data>
-			Td7Q1Bp7PZCZvDfgWTIMRF2TwIR1AtCp76BH4w/bhbM=
+			7iF7KQKozYL6zLjkGkDMOvkTEzKqq2Nv3Ts9zrvlBAI=
 			</data>
 		</dict>
 		<key>Resources/resources/hotwords.txt</key>
