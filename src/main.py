@@ -145,6 +145,7 @@ class Application(QObject):
             # 初始化状态变量
             self.recording = False
             self.previous_volume = None
+            self._pending_paste_text = None  # 用于延迟粘贴的文本
             self.funasr_engine = None  # 延迟初始化
             self.hotkey_manager = None  # 延迟初始化
             self.clipboard_manager = None  # 延迟初始化
@@ -171,75 +172,156 @@ class Application(QObject):
         """启动后台初始化任务"""
         from PyQt6.QtCore import QTimer
         
-        # 使用QTimer延迟执行，确保主界面已完全显示
-        self.init_timer = QTimer()
-        self.init_timer.setSingleShot(True)
-        self.init_timer.timeout.connect(self._background_initialization)
-        self.init_timer.start(100)  # 100ms后开始后台初始化
+        # 使用异步初始化，避免阻塞主线程
+        self._init_step = 0
+        self._init_timer = QTimer()
+        self._init_timer.setSingleShot(True)
+        self._init_timer.timeout.connect(self._async_initialization_step)
+        self._init_timer.start(100)  # 100ms后开始后台初始化
     
-    def _background_initialization(self):
-        """后台初始化耗时组件"""
-        import time
+    def _async_initialization_step(self):
+        """异步初始化步骤，避免阻塞主线程"""
         try:
-            # 在开发环境中检查权限
-            if not getattr(sys, 'frozen', False):
-                self.main_window.update_loading_status("正在检查权限...")
-                self.app.processEvents()  # 强制刷新UI
-                time.sleep(0.5)  # 让用户看到状态
-                print("正在检查权限...")
-                self._check_development_permissions()
-                print("✓ 权限检查完成")
-            
-            # 初始化语音识别引擎
-            self.main_window.update_loading_status("正在加载语音识别模型...")
-            self.app.processEvents()  # 强制刷新UI
-            time.sleep(0.3)  # 让用户看到状态
-            print("正在加载语音识别模型...")
-            self.funasr_engine = FunASREngine()
-            
-            # 更新设置中的模型路径
-            model_paths = self.funasr_engine.get_model_paths()
-            self.settings_manager.update_model_paths(model_paths)
-            print("✓ 语音识别就绪")
-            
-            self.main_window.update_loading_status("正在初始化组件...")
-            self.app.processEvents()  # 强制刷新UI
-            time.sleep(0.3)  # 让用户看到状态
-            # 初始化热键管理器，传入设置管理器
-            self.hotkey_manager = HotkeyManager(self.settings_manager)
-            self.clipboard_manager = ClipboardManager()
-            self.context = Context()
-            
-            # 初始化音频管理器
-            self.audio_manager = AudioManager(self)
-            
-            # 预初始化 AudioCaptureThread
-            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
-            self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-            self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
-            
-            # 设置连接
-            self.setup_connections()
-            
-            # 应用初始设置
-            self.apply_settings()
-            
-            # 显示完成状态
-            self.main_window.update_loading_status("初始化完成")
-            self.app.processEvents()  # 强制刷新UI
-            time.sleep(1)  # 显示完成状态1秒
-            
-            # 清除加载状态
-            self.main_window.update_loading_status("")
-            self.app.processEvents()  # 强制刷新UI
-            print("✓ 所有组件初始化完成")
-            
+            if self._init_step == 0:
+                # 步骤1：检查权限
+                try:
+                    if not getattr(sys, 'frozen', False):
+                        if self.settings_manager.is_cache_expired('permissions'):
+                            self.main_window.update_loading_status("正在检查权限...")
+                            print("正在检查权限...")
+                            self._check_development_permissions()
+                            print("✓ 权限检查完成")
+                        else:
+                            print("✓ 权限缓存有效，跳过检查")
+                            cache = self.settings_manager.get_permissions_cache()
+                            if not cache['accessibility'] or not cache['microphone']:
+                                print("⚠️  缓存显示权限可能不完整，建议检查系统设置")
+                except Exception as e:
+                    print(f"⚠️  权限检查失败: {e}")
+                    # 权限检查失败不应阻止程序继续运行
+                self._init_step = 1
+                self._init_timer.start(50)  # 50ms后执行下一步
+                
+            elif self._init_step == 1:
+                # 步骤2：初始化语音识别引擎
+                try:
+                    if self.settings_manager.is_cache_expired('models'):
+                        self.main_window.update_loading_status("正在加载语音识别模型...")
+                        print("正在加载语音识别模型...")
+                        try:
+                            self.funasr_engine = FunASREngine()
+                            model_paths = self.funasr_engine.get_model_paths()
+                            self.settings_manager.update_model_paths(model_paths)
+                            asr_available = bool(model_paths.get('asr_model_path'))
+                            punc_available = bool(model_paths.get('punc_model_path'))
+                            self.settings_manager.update_models_cache(asr_available, punc_available)
+                            print("✓ 语音识别就绪")
+                        except Exception as e:
+                            print(f"❌ 模型加载失败: {e}")
+                            self.settings_manager.update_models_cache(False, False)
+                            self.funasr_engine = None
+                    else:
+                        print("✓ 模型缓存有效，跳过加载")
+                        cache = self.settings_manager.get_models_cache()
+                        if cache['asr_available']:
+                            try:
+                                self.funasr_engine = FunASREngine()
+                                print("✓ 基于缓存快速初始化语音识别")
+                            except Exception as e:
+                                print(f"⚠️  缓存显示模型可用但初始化失败: {e}")
+                                self.funasr_engine = None
+                                self.settings_manager.update_models_cache(False, False)
+                        else:
+                            print("⚠️  缓存显示模型不可用")
+                            self.funasr_engine = None
+                except Exception as e:
+                    print(f"⚠️  语音识别引擎初始化失败: {e}")
+                    self.funasr_engine = None
+                self._init_step = 2
+                self._init_timer.start(50)  # 50ms后执行下一步
+                
+            elif self._init_step == 2:
+                # 步骤3：初始化其他组件
+                try:
+                    self.main_window.update_loading_status("正在初始化组件...")
+                    
+                    # 安全初始化各个组件
+                    try:
+                        self.hotkey_manager = HotkeyManager(self.settings_manager)
+                    except Exception as e:
+                        print(f"⚠️  热键管理器初始化失败: {e}")
+                        self.hotkey_manager = None
+                    
+                    try:
+                        self.clipboard_manager = ClipboardManager()
+                    except Exception as e:
+                        print(f"⚠️  剪贴板管理器初始化失败: {e}")
+                        self.clipboard_manager = None
+                    
+                    try:
+                        self.context = Context()
+                    except Exception as e:
+                        print(f"⚠️  上下文管理器初始化失败: {e}")
+                        self.context = None
+                    
+                    try:
+                        self.audio_manager = AudioManager(self)
+                    except Exception as e:
+                        print(f"⚠️  音频管理器初始化失败: {e}")
+                        self.audio_manager = None
+                    
+                    # 预初始化 AudioCaptureThread
+                    try:
+                        self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
+                        self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
+                        self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
+                    except Exception as e:
+                        print(f"⚠️  音频捕获线程初始化失败: {e}")
+                        self.audio_capture_thread = None
+                        
+                except Exception as e:
+                    print(f"⚠️  组件初始化过程中出现错误: {e}")
+                
+                self._init_step = 3
+                self._init_timer.start(50)  # 50ms后执行下一步
+                
+            elif self._init_step == 3:
+                # 步骤4：设置连接和应用设置
+                try:
+                    self.setup_connections()
+                    self.apply_settings()
+                except Exception as e:
+                    print(f"⚠️  设置连接和应用设置失败: {e}")
+                self._init_step = 4
+                self._init_timer.start(50)  # 50ms后执行下一步
+                
+            elif self._init_step == 4:
+                # 步骤5：完成初始化
+                self.main_window.update_loading_status("初始化完成")
+                self._init_step = 5
+                self._init_timer.start(1000)  # 1秒后清除状态
+                
+            elif self._init_step == 5:
+                # 步骤6：清除加载状态
+                self.main_window.update_loading_status("")
+                print("✓ 所有组件初始化完成")
+                self._init_step = -1  # 标记完成
+                
         except Exception as e:
+            print(f"❌ 初始化步骤 {self._init_step} 发生严重错误: {e}")
+            import traceback
+            print(traceback.format_exc())
             self.main_window.update_loading_status("初始化失败")
-            self.app.processEvents()  # 强制刷新UI
-            time.sleep(2)  # 显示错误状态2秒
-            print(f"后台初始化失败: {e}")
-            # 可以选择显示错误对话框或其他处理方式
+            self._init_step = -1  # 标记完成（即使失败）
+            # 2秒后清除错误状态
+            QTimer.singleShot(2000, self._clear_error_status)
+
+    def _clear_error_status(self):
+        """清除错误状态"""
+        try:
+            self.main_window.update_loading_status("")
+        except Exception as e:
+            print(f"清除错误状态失败: {e}")
 
     def _check_development_permissions(self):
         """检查开发环境权限"""
@@ -302,10 +384,15 @@ class Application(QObject):
                 time.sleep(3)
             else:
                 print("✓ 权限检查通过")
+            
+            # 更新权限缓存
+            self.settings_manager.update_permissions_cache(has_accessibility, has_mic_access)
                 
         except Exception as e:
             print(f"权限检查失败: {e}")
             print("如果快捷键无法正常工作，请手动检查系统权限设置")
+            # 权限检查失败时也更新缓存，避免重复检查
+            self.settings_manager.update_permissions_cache(False, False)
 
     def cleanup_resources(self):
         """清理资源"""
@@ -588,6 +675,22 @@ class Application(QObject):
         self.cleanup()
         self.app.quit()
 
+    def _restore_window_level(self):
+        """恢复窗口正常级别"""
+        try:
+            if sys.platform == 'darwin':
+                from AppKit import NSApplication, NSWindow
+                app = NSApplication.sharedApplication()
+                window = self.main_window.windowHandle().nativeHandle()
+                if window:
+                    window.setLevel_(NSWindow.NormalWindowLevel)
+            
+            # 确保窗口在前台
+            self.main_window.raise_()
+            self.main_window.activateWindow()
+        except Exception as e:
+            print(f"恢复窗口级别时出错: {e}")
+    
     def _show_window_internal(self):
         """在主线程中显示窗口"""
         try:
@@ -609,11 +712,7 @@ class Application(QObject):
                     app.activateIgnoringOtherApps_(True)
                     
                     # 恢复正常窗口级别
-                    QTimer.singleShot(100, lambda: (
-                        window.setLevel_(NSWindow.NormalWindowLevel),
-                        self.main_window.raise_(),
-                        self.main_window.activateWindow()
-                    ))
+                    QTimer.singleShot(100, self._restore_window_level)
                     
                 except Exception as e:
                     print(f"激活窗口时出错: {e}")
@@ -632,6 +731,12 @@ class Application(QObject):
         except Exception as e:
             print(f"❌ 显示窗口失败: {e}")
     
+    def _delayed_paste(self):
+        """延迟执行粘贴操作"""
+        if hasattr(self, '_pending_paste_text') and self._pending_paste_text:
+            self._paste_and_reactivate(self._pending_paste_text)
+            self._pending_paste_text = None
+    
     def _paste_and_reactivate(self, text):
         """执行粘贴操作"""
         try:
@@ -639,9 +744,14 @@ class Application(QObject):
             if not self.clipboard_manager:
                 print("⚠️ 剪贴板管理器尚未就绪，无法执行粘贴操作")
                 return
-                
-            # 只执行粘贴，不影响窗口状态
+            
+            # 确保文本已复制到剪贴板
+            self.clipboard_manager.copy_to_clipboard(text)
+            
+            # 执行粘贴操作
             self.clipboard_manager.paste_to_current_app()
+            print(f"✓ 已粘贴文本: {text[:50]}{'...' if len(text) > 50 else ''}")
+            
         except Exception as e:
             print(f"❌ 粘贴操作失败: {e}")
             print(traceback.format_exc())
@@ -655,7 +765,8 @@ class Application(QObject):
             # 2. 更新UI并添加到历史记录（无论窗口是否可见）
             self.main_window.display_result(text)
             # 3. 延迟执行粘贴操作
-            QTimer.singleShot(100, lambda: self._paste_and_reactivate(text))
+            self._pending_paste_text = text
+            QTimer.singleShot(100, self._delayed_paste)
             # 打印日志
             print(f"✓ {text}")
     
@@ -667,7 +778,8 @@ class Application(QObject):
         # 2. 更新UI
         self.update_ui_signal.emit("准备粘贴历史记录", text)
         # 3. 延迟执行粘贴操作
-        QTimer.singleShot(100, lambda: self._paste_and_reactivate(text))
+        self._pending_paste_text = text
+        QTimer.singleShot(100, self._delayed_paste)
 
     def update_ui(self, status, result):
         """更新界面显示"""

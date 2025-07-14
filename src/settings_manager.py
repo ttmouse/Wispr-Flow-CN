@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
 class SettingsManager:
@@ -17,6 +18,20 @@ class SettingsManager:
             'model_path': '',          # ASR模型路径
             'punc_model_path': '',     # 标点符号模型路径
             'auto_punctuation': True,  # 自动添加标点
+        },
+        'cache': {
+            'permissions': {
+                'last_check': '',      # 上次权限检查时间
+                'accessibility': False, # 辅助功能权限状态
+                'microphone': False,   # 麦克风权限状态
+                'check_interval_hours': 24,  # 检查间隔（小时）
+            },
+            'models': {
+                'last_check': '',      # 上次模型检查时间
+                'asr_available': False, # ASR模型可用状态
+                'punc_available': False, # 标点模型可用状态
+                'check_interval_hours': 168,  # 检查间隔（小时，7天）
+            }
         }
     }
 
@@ -127,3 +142,66 @@ class SettingsManager:
         if 'punc_model_path' in paths:
             success &= self.set_setting('asr.punc_model_path', paths['punc_model_path'])
         return success
+
+    def is_cache_expired(self, cache_type: str) -> bool:
+        """检查缓存是否过期
+        
+        Args:
+            cache_type: 缓存类型，'permissions' 或 'models'
+        
+        Returns:
+            bool: True表示缓存已过期或不存在，需要重新检查
+        """
+        try:
+            last_check = self.get_setting(f'cache.{cache_type}.last_check', '')
+            if not last_check:
+                return True
+            
+            interval_hours = self.get_setting(f'cache.{cache_type}.check_interval_hours', 24)
+            last_check_time = datetime.fromisoformat(last_check)
+            expiry_time = last_check_time + timedelta(hours=interval_hours)
+            
+            return datetime.now() > expiry_time
+        except Exception as e:
+            self.logger.error(f"检查缓存过期状态失败 {cache_type}: {e}")
+            return True
+
+    def update_permissions_cache(self, accessibility: bool, microphone: bool) -> bool:
+        """更新权限缓存状态"""
+        try:
+            now = datetime.now().isoformat()
+            success = True
+            success &= self.set_setting('cache.permissions.last_check', now)
+            success &= self.set_setting('cache.permissions.accessibility', accessibility)
+            success &= self.set_setting('cache.permissions.microphone', microphone)
+            return success
+        except Exception as e:
+            self.logger.error(f"更新权限缓存失败: {e}")
+            return False
+
+    def update_models_cache(self, asr_available: bool, punc_available: bool) -> bool:
+        """更新模型缓存状态"""
+        try:
+            now = datetime.now().isoformat()
+            success = True
+            success &= self.set_setting('cache.models.last_check', now)
+            success &= self.set_setting('cache.models.asr_available', asr_available)
+            success &= self.set_setting('cache.models.punc_available', punc_available)
+            return success
+        except Exception as e:
+            self.logger.error(f"更新模型缓存失败: {e}")
+            return False
+
+    def get_permissions_cache(self) -> Dict[str, bool]:
+        """获取权限缓存状态"""
+        return {
+            'accessibility': self.get_setting('cache.permissions.accessibility', False),
+            'microphone': self.get_setting('cache.permissions.microphone', False)
+        }
+
+    def get_models_cache(self) -> Dict[str, bool]:
+        """获取模型缓存状态"""
+        return {
+            'asr_available': self.get_setting('cache.models.asr_available', False),
+            'punc_available': self.get_setting('cache.models.punc_available', False)
+        }

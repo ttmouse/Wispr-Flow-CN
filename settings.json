@@ -13,6 +13,20 @@
     "auto_punctuation": true,
     "real_time_display": true
   },
+  "cache": {
+    "permissions": {
+      "last_check": "2025-07-14T23:32:38.038935",
+      "accessibility": true,
+      "microphone": true,
+      "check_interval_hours": 24
+    },
+    "models": {
+      "last_check": "2025-07-14T23:32:42.242977",
+      "asr_available": true,
+      "punc_available": true,
+      "check_interval_hours": 168
+    }
+  },
   "ui": {
     "start_minimized": false,
     "show_notifications": true,

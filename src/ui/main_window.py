@@ -6,6 +6,8 @@ from .components.modern_list import ModernListWidget
 from .hotwords_window import HotwordsWindow
 import os
 import sys
+import json
+from datetime import datetime
 from config import APP_VERSION  # 使用绝对导入
 
 class MainWindow(QMainWindow):
@@ -31,6 +33,10 @@ class MainWindow(QMainWindow):
         
         # 设置窗口属性
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)  # 显示时需要激活
+        
+        # 历史记录文件路径
+        self.history_file = 'history.json'
+        self._loading_history = False  # 标志是否正在加载历史记录
         
         # 创建中央部件
         central_widget = QWidget()
@@ -64,6 +70,9 @@ class MainWindow(QMainWindow):
         
         # 恢复窗口位置
         self.restore_window_position()
+        
+        # 加载历史记录
+        self.load_history()
     
     def setup_ui(self, main_layout):
         """设置UI组件"""
@@ -241,8 +250,18 @@ class MainWindow(QMainWindow):
     def add_to_history(self, text):
         """添加新的识别结果到历史记录"""
         if text and text.strip():
+            # 检查是否已存在相同文本，避免重复
+            for i in range(self.history_list.count()):
+                existing_item = self.history_list.item(i)
+                if existing_item and existing_item.text() == text:
+                    return  # 已存在，不重复添加
+            
             item = QListWidgetItem(text)
-            self.history_list.addItem(item)
+            self.history_list.addItem(item)  # ModernListWidget会自动添加到顶部
+            
+            # 只有在不是加载历史记录时才保存
+            if not self._loading_history:
+                self.save_history()
     
     def update_status(self, status):
         """更新状态显示"""
@@ -363,8 +382,62 @@ class MainWindow(QMainWindow):
         self.activateWindow()
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
     
+    def save_history(self):
+        """保存历史记录到文件"""
+        try:
+            history_data = []
+            # 限制历史记录数量为100条
+            max_history = 100
+            count = min(self.history_list.count(), max_history)
+            
+            for i in range(count):
+                item = self.history_list.item(i)
+                if item:
+                    history_data.append({
+                        'text': item.text(),
+                        'timestamp': datetime.now().isoformat()
+                    })
+            
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(history_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存历史记录失败: {e}")
+    
+    def load_history(self):
+        """从文件加载历史记录"""
+        try:
+            if os.path.exists(self.history_file):
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    history_data = json.load(f)
+                
+                # 清空现有历史记录
+                self.history_list.clear()
+                
+                # 按时间倒序排列（最新的在前）
+                if history_data:
+                    # 如果有时间戳，按时间排序
+                    if isinstance(history_data[0], dict) and 'timestamp' in history_data[0]:
+                        history_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                    
+                    for entry in history_data:
+                        if isinstance(entry, dict) and 'text' in entry:
+                            # 临时禁用保存，避免加载时重复保存
+                            self._loading_history = True
+                            item = QListWidgetItem(entry['text'])
+                            self.history_list.addItem(item)
+                            self._loading_history = False
+                        elif isinstance(entry, str):
+                            # 兼容旧格式
+                            self._loading_history = True
+                            item = QListWidgetItem(entry)
+                            self.history_list.addItem(item)
+                            self._loading_history = False
+        except Exception as e:
+            print(f"加载历史记录失败: {e}")
+    
     def quit_application(self):
         """退出应用程序"""
+        self.save_history()  # 退出前保存历史记录
         if self.app_instance:
             self.app_instance.quit_application()
         else:
