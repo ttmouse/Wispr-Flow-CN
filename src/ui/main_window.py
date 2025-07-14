@@ -152,6 +152,29 @@ class MainWindow(QMainWindow):
         # 添加弹性空间
         layout.addStretch()
         
+        # 最小化按钮
+        self.minimize_button = QLabel("−")
+        self.minimize_button.setStyleSheet("""
+            QLabel {
+                color: #999999;
+                font-size: 16px;
+                padding: 4px 8px;
+                border-radius: 3px;
+                margin: 12px 0;
+                background-color: rgba(255, 255, 255, 0.05);
+                min-width: 16px;
+                min-height: 16px;
+                text-align: center;
+            }
+            QLabel:hover {
+                color: white;
+                background-color: rgba(255, 255, 255, 0.15);
+            }
+        """)
+        self.minimize_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.minimize_button.mousePressEvent = lambda e: self.hide()
+        layout.addWidget(self.minimize_button)
+        
         # 关闭按钮
         self.close_button = QLabel("×")
         self.close_button.setStyleSheet("""

@@ -43,36 +43,44 @@ class AudioCapture:
 
     def start_recording(self):
         """开始录音"""
-        try:
-            # 确保之前的录音已经停止
-            self.stop_recording()
-            
-            # 重新初始化音频系统
-            if self.audio is None:
-                self._initialize_audio()
-            
-            if self.audio is None or self.device_index is None:
-                raise Exception("音频系统未正确初始化")
-            
-            self.frames = []
-            self.read_count = 0
-            self.valid_frame_count = 0
-            self.silence_frame_count = 0
-            
-            self.stream = self.audio.open(
-                format=pyaudio.paFloat32,
-                channels=1,
-                rate=16000,
-                input=True,
-                input_device_index=self.device_index,
-                frames_per_buffer=512,  # 减小缓冲区大小以降低延迟
-                stream_callback=None
-            )
-            print("✓ 开始录音")
-        except Exception as e:
-            print(f"❌ 开始录音失败: {e}")
-            self._cleanup()
-            raise
+        retry_count = 0
+        max_retries = 3
+        
+        while retry_count < max_retries:
+            try:
+                # 确保之前的录音已经停止
+                self.stop_recording()
+                
+                # 重新初始化音频系统
+                if self.audio is None:
+                    self._initialize_audio()
+                
+                if self.audio is None or self.device_index is None:
+                    raise Exception("音频系统未正确初始化")
+                
+                self.frames = []
+                self.read_count = 0
+                self.valid_frame_count = 0
+                self.silence_frame_count = 0
+                
+                self.stream = self.audio.open(
+                    format=pyaudio.paFloat32,
+                    channels=1,
+                    rate=16000,
+                    input=True,
+                    input_device_index=self.device_index,
+                    frames_per_buffer=512,  # 减小缓冲区大小以降低延迟
+                    stream_callback=None
+                )
+                print("✓ 开始录音")
+                return
+            except Exception as e:
+                retry_count += 1
+                print(f"尝试 {retry_count}/{max_retries} 启动录音失败: {e}")
+                self._cleanup()
+                time.sleep(0.5)  # 等待系统资源释放
+        
+        raise Exception(f"在 {max_retries} 次尝试后仍无法启动录音")
 
     def stop_recording(self):
         """停止录音"""
@@ -80,11 +88,15 @@ class AudioCapture:
             return np.array([], dtype=np.float32)
 
         try:
-            if self.stream.is_active():
+            if self.stream and self.stream.is_active():
                 self.stream.stop_stream()
-            self.stream.close()
+            if self.stream:
+                self.stream.close()
         except Exception as e:
             print(f"停止录音失败: {e}")
+            # 强制重新初始化音频系统
+            self._cleanup()
+            self._initialize_audio()
         finally:
             self.stream = None
             
@@ -116,6 +128,7 @@ class AudioCapture:
                 print(f"清理音频系统失败: {e}")
             finally:
                 self.audio = None
+                time.sleep(0.2)  # 给系统一些时间完全释放资源
         
         self.frames = []
         self.read_count = 0

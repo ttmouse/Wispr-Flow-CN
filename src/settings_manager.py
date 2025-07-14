@@ -11,6 +11,7 @@ class SettingsManager:
         'audio': {
             'input_device': None,     # 输入设备名称，None表示系统默认
             'volume_threshold': 150,   # 音量阈值：0-1000，对应实际阈值0-0.02，默认值150对应0.003
+            'max_recording_duration': 10,  # 最大录音时长（秒），默认10秒
         },
         'asr': {
             'model_path': '',          # ASR模型路径
@@ -125,4 +126,4 @@ class SettingsManager:
             success &= self.set_setting('asr.model_path', paths['asr_model_path'])
         if 'punc_model_path' in paths:
             success &= self.set_setting('asr.punc_model_path', paths['punc_model_path'])
-        return success 
+        return success

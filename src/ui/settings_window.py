@@ -78,6 +78,9 @@ class SettingsWindow(QWidget):
             volume_value = int(self.volume_threshold.value() * 1000 / 20)
             self.settings_manager.set_setting('audio.volume_threshold', volume_value)
             
+            # 保存录音时长设置
+            self.settings_manager.set_setting('audio.max_recording_duration', self.recording_duration.value())
+            
             # 保存ASR设置
             self.settings_manager.set_setting('asr.model_path', 
                 self.asr_model_path.text())
@@ -204,6 +207,37 @@ class SettingsWindow(QWidget):
         
         control_layout.addLayout(volume_layout)
         control_layout.addWidget(help_text)
+        
+        # 录音时长设置
+        duration_layout = QHBoxLayout()
+        duration_label = QLabel("最大录音时长：")
+        self.duration_value_label = QLabel("10秒")  # 显示当前值的标签
+        self.duration_value_label.setMinimumWidth(50)  # 设置最小宽度确保对齐
+        
+        # 创建滑块
+        self.recording_duration = QSlider(Qt.Orientation.Horizontal)
+        self.recording_duration.setRange(5, 60)  # 5-60秒
+        self.recording_duration.setValue(self.settings_manager.get_setting('audio.max_recording_duration', 10))
+        self.recording_duration.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.recording_duration.setTickInterval(5)  # 每5秒一个刻度
+        
+        # 连接滑块值变化信号
+        self.recording_duration.valueChanged.connect(
+            lambda value: self.duration_value_label.setText(f"{value}秒")
+        )
+        
+        # 添加控件到布局
+        duration_layout.addWidget(duration_label)
+        duration_layout.addWidget(self.recording_duration)
+        duration_layout.addWidget(self.duration_value_label)
+        
+        # 添加帮助文本
+        duration_help_text = QLabel("设置录音的最大时长，超过此时长将自动停止录音。建议值：10-30秒")
+        duration_help_text.setStyleSheet("color: gray; font-size: 12px;")
+        duration_help_text.setWordWrap(True)  # 允许文本换行
+        
+        control_layout.addLayout(duration_layout)
+        control_layout.addWidget(duration_help_text)
         control_group.setLayout(control_layout)
         
         layout.addWidget(device_group)
@@ -297,6 +331,11 @@ class SettingsWindow(QWidget):
         saved_value = self.settings_manager.get_setting('audio.volume_threshold')
         slider_value = int(saved_value * 20 / 1000)
         self.volume_threshold.setValue(slider_value)
+        
+        # 更新录音时长设置
+        duration_value = self.settings_manager.get_setting('audio.max_recording_duration', 10)
+        self.recording_duration.setValue(duration_value)
+        self.duration_value_label.setText(f"{duration_value}秒")
         
         # 更新ASR设置
         self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path'))

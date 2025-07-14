@@ -2,6 +2,7 @@ import os
 import subprocess
 from PIL import Image
 import glob
+import os
 
 def find_icon_file():
     """查找可用的图标文件"""
@@ -28,6 +29,16 @@ def convert_to_icns():
         print("支持的格式：png, jpg, jpeg, ico, bmp")
         print("请确保图标文件名为 icon.xxx")
         return False
+    
+    # 检查是否需要重新生成图标
+    if os.path.exists('app_icon.icns'):
+        icon_mtime = os.path.getmtime(icon_file)
+        icns_mtime = os.path.getmtime('app_icon.icns')
+        
+        # 如果 .icns 文件比源图片文件新，则跳过转换
+        if icns_mtime > icon_mtime:
+            print(f"✓ app_icon.icns 已是最新版本，跳过转换")
+            return True
         
     try:
         # 创建临时目录
@@ -81,4 +92,4 @@ def convert_to_icns():
         return False
 
 if __name__ == "__main__":
-    convert_to_icns() 
+    convert_to_icns()

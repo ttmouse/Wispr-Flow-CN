@@ -1,9 +1,10 @@
 {
-  "hotkey": "fn",
+  "hotkey": "ctrl",
   "high_frequency_words": [],
   "audio": {
-    "input_device": "MacBook Pro麦克风",
+    "input_device": null,
     "volume_threshold": 150,
+    "max_recording_duration": 5,
     "mute_other_apps": true
   },
   "asr": {

@@ -9,10 +9,10 @@ python tools/version_manager.py
 # 安装依赖
 pip install pillow
 
-# 创建图标
+# 检查并创建图标（仅在需要时）
 python tools/create_icon.py
 
 # 创建应用
 bash run_local.command
 
-echo "✓ 应用已创建在项目根目录：Dou-flow.app" 
+echo "✓ 应用已创建在项目根目录：Dou-flow.app"

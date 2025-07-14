@@ -66,6 +66,8 @@ def get_app_path():
 class Application(QObject):
     update_ui_signal = pyqtSignal(str, str)
     show_window_signal = pyqtSignal()
+    start_recording_signal = pyqtSignal()
+    stop_recording_signal = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -73,6 +75,10 @@ class Application(QObject):
         atexit.register(self.cleanup_resources)
         
         try:
+            # 在开发环境中检查权限
+            if not getattr(sys, 'frozen', False):
+                self._check_development_permissions()
+            
             self.app = QApplication(sys.argv)
             
             # 初始化设置管理器
@@ -175,9 +181,80 @@ class Application(QObject):
             print(traceback.format_exc())
             sys.exit(1)
 
+    def _check_development_permissions(self):
+        """检查开发环境权限"""
+        try:
+            print("检查开发环境权限...")
+            
+            # 检查辅助功能权限
+            accessibility_check = subprocess.run([
+                'osascript',
+                '-e', 'tell application "System Events"',
+                '-e', 'set isEnabled to UI elements enabled',
+                '-e', 'return isEnabled',
+                '-e', 'end tell'
+            ], capture_output=True, text=True)
+            
+            has_accessibility = 'true' in accessibility_check.stdout.lower()
+            
+            # 检查麦克风权限
+            mic_check = subprocess.run([
+                'osascript',
+                '-e', 'tell application "System Events"',
+                '-e', 'return "mic_check"',
+                '-e', 'end tell'
+            ], capture_output=True, text=True)
+            
+            # 如果能执行 AppleScript，说明有基本权限
+            has_mic_access = 'mic_check' in mic_check.stdout
+            
+            missing_permissions = []
+            if not has_accessibility:
+                missing_permissions.append("辅助功能")
+            
+            if missing_permissions:
+                print(f"⚠️  缺少权限: {', '.join(missing_permissions)}")
+                print("\n快捷键录音功能需要以下权限：")
+                print("\n【辅助功能权限】- 用于监听快捷键和自动粘贴")
+                print("1. 打开 系统设置 > 隐私与安全性 > 辅助功能")
+                print("2. 点击 '+' 按钮添加您的终端应用：")
+                print("   - Terminal.app (系统终端)")
+                print("   - iTerm.app (如果使用 iTerm)")
+                print("   - PyCharm (如果使用 PyCharm)")
+                print("   - VS Code (如果使用 VS Code)")
+                print("3. 确保对应应用已勾选")
+                print("\n【麦克风权限】- 用于录制音频")
+                print("1. 打开 系统设置 > 隐私与安全性 > 麦克风")
+                print("2. 确保您的终端应用已勾选")
+                print("\n完成权限设置后，请重新运行程序")
+                
+                # 尝试打开系统设置
+                try:
+                    subprocess.run(['open', 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'], check=False)
+                    print("\n✓ 已尝试打开系统设置页面")
+                except:
+                    pass
+                
+                print("\n提示：打包后的应用 (bash tools/build_app.sh) 会自动请求权限")
+                
+                # 给用户一些时间查看信息
+                import time
+                time.sleep(3)
+            else:
+                print("✓ 权限检查通过")
+                
+        except Exception as e:
+            print(f"权限检查失败: {e}")
+            print("如果快捷键无法正常工作，请手动检查系统权限设置")
+
     def cleanup_resources(self):
         """清理资源"""
         try:
+            # 恢复系统音量（如果有保存的音量）
+            if hasattr(self, 'previous_volume') and self.previous_volume is not None:
+                self._set_system_volume(self.previous_volume)
+                print("✓ 系统音量已恢复")
+            
             # 停止所有线程
             if hasattr(self, 'audio_capture_thread') and self.audio_capture_thread:
                 self.audio_capture_thread.stop()
@@ -220,16 +297,7 @@ class Application(QObject):
         volume: 0-100 的整数，或者 None 表示静音"""
         try:
             if volume is None:
-                # 检查当前是否已经静音
-                result = subprocess.run([
-                    'osascript',
-                    '-e', 'get volume settings'
-                ], capture_output=True, text=True)
-                if "output muted:true" in result.stdout:
-                    print("系统已经处于静音状态")
-                    return
-                
-                # 静音所有音频输出
+                # 直接静音，不检查当前状态以减少延迟
                 subprocess.run([
                     'osascript',
                     '-e', 'set volume output muted true'
@@ -238,8 +306,6 @@ class Application(QObject):
             else:
                 # 设置音量并取消静音
                 volume = max(0, min(100, volume))  # 确保音量在 0-100 范围内
-                # 将 0-100 的音量转换为 0-7 的范围（macOS 使用 0-7 的音量范围）
-                mac_volume = int((volume / 100.0) * 7)
                 subprocess.run([
                     'osascript',
                     '-e', f'set volume output volume {volume}',
@@ -285,6 +351,14 @@ class Application(QObject):
             self.recording = True
             
             try:
+                # 先播放音效，让用户立即听到反馈
+                self.state_manager.start_recording()
+                
+                # 然后保存当前音量并静音系统
+                self.previous_volume = self._get_system_volume()
+                if self.previous_volume is not None:
+                    self._set_system_volume(None)  # 静音
+                
                 # 重新初始化录音线程（如果之前已经使用过）
                 if self.audio_capture_thread.isFinished():
                     self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
@@ -293,7 +367,21 @@ class Application(QObject):
                 
                 # 启动录音线程
                 self.audio_capture_thread.start()
-                self.state_manager.start_recording()
+                
+                # 从设置中获取录音时长并设置定时器，自动停止录音
+                if hasattr(self, 'recording_timer'):
+                    self.recording_timer.stop()
+                    self.recording_timer.deleteLater()
+                
+                # 确保定时器在主线程中创建，设置parent为self
+                max_duration = self.settings_manager.get_setting('audio.max_recording_duration', 10)
+                self.recording_timer = QTimer(self)
+                self.recording_timer.setSingleShot(True)
+                self.recording_timer.timeout.connect(self._auto_stop_recording)
+                self.recording_timer.start(max_duration * 1000)  # 转换为毫秒
+                print(f"✓ 录音开始，将在{max_duration}秒后自动停止 (定时器ID: {id(self.recording_timer)})")
+                print(f"✓ 定时器状态: active={self.recording_timer.isActive()}, interval={self.recording_timer.interval()}ms")
+                
             except Exception as e:
                 error_msg = f"开始录音时出错: {str(e)}"
                 print(error_msg)
@@ -303,14 +391,31 @@ class Application(QObject):
         """停止录音"""
         if self.recording:
             self.recording = False
+            
+            # 停止定时器
+            if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
+                self.recording_timer.stop()
+            
             self.audio_capture_thread.stop()
             self.audio_capture_thread.wait()
+            
+            # 临时恢复音量以确保音效能正常播放
+            if self.previous_volume is not None:
+                self._set_system_volume(self.previous_volume)
+                # 添加短暂延迟，确保音量恢复完成
+                import time
+                time.sleep(0.1)
+            
+            # 播放停止音效
+            self.state_manager.stop_recording()
+            
+            # 重置 previous_volume
+            self.previous_volume = None
             
             try:
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
-                    self.state_manager.stop_recording()
                     self.transcription_thread = TranscriptionThread(audio_data, self.funasr_engine)
                     self.transcription_thread.transcription_done.connect(self.on_transcription_done)
                     self.transcription_thread.start()
@@ -320,10 +425,23 @@ class Application(QObject):
             except Exception as e:
                 print(f"❌ 录音失败: {e}")
                 self.update_ui_signal.emit(f"❌ 录音失败: {e}", "")
+    
+    def _auto_stop_recording(self):
+        """定时器触发的自动停止录音"""
+        print(f"⏰ 定时器触发！当前录音状态: {self.recording}")
+        if self.recording:
+            print("⏰ 录音时间达到10秒，自动停止录音")
+            self.stop_recording()
+        else:
+            print("⏰ 定时器触发，但当前未在录音状态")
 
     def cleanup(self):
         """清理资源"""
         try:
+            # 停止录音定时器
+            if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
+                self.recording_timer.stop()
+            
             self.audio_capture.clear_recording_data()
             if hasattr(self, 'transcription_thread'):
                 self.transcription_thread.quit()
@@ -352,6 +470,9 @@ class Application(QObject):
         self.state_manager.status_changed.connect(self.main_window.update_status)
         # 连接窗口显示信号
         self.show_window_signal.connect(self._show_window_internal)
+        # 连接录音信号，确保在主线程中执行
+        self.start_recording_signal.connect(self.start_recording)
+        self.stop_recording_signal.connect(self.stop_recording)
 
     def toggle_recording(self):
         """切换录音状态"""
@@ -364,7 +485,8 @@ class Application(QObject):
         """处理Control键按下事件"""
         if not self.recording:
             print("✓ Control 键按下，开始录音")
-            self.start_recording()
+            # 使用信号确保在主线程中执行
+            self.start_recording_signal.emit()
         else:
             print("⚠️ Control 键按下，但已经在录音中")
 
@@ -372,7 +494,8 @@ class Application(QObject):
         """处理Control键释放事件"""
         if self.recording:
             print("✓ Control 键释放，停止录音")
-            self.stop_recording()
+            # 使用信号确保在主线程中执行
+            self.stop_recording_signal.emit()
         else:
             print("⚠️ Control 键释放，但未在录音中")
 

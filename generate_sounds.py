@@ -62,4 +62,4 @@ def create_stop_sound():
 sr = 44100
 wavfile.write("resources/start.wav", sr, create_start_sound())
 wavfile.write("resources/stop.wav", sr, create_stop_sound())
-print("✓ 音效文件已生成") 
+print("✓ 音效文件已生成")
