@@ -15,8 +15,9 @@ class MainWindow(QMainWindow):
     record_button_clicked = pyqtSignal()
     history_item_clicked = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, app_instance=None):
         super().__init__()
+        self.app_instance = app_instance  # 保存应用程序实例的引用
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(400, 600)
         
@@ -147,6 +148,11 @@ class MainWindow(QMainWindow):
         version_label.setStyleSheet("color: #666666; font-size: 12px;")
         title_layout.addWidget(version_label)
         
+        # 添加加载状态标签
+        self.loading_status_label = QLabel("")
+        self.loading_status_label.setStyleSheet("color: #999999; font-size: 11px; margin-left: 8px;")
+        title_layout.addWidget(self.loading_status_label)
+        
         layout.addWidget(title_container)
         
         # 添加弹性空间
@@ -195,7 +201,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.close_button.mousePressEvent = lambda e: self.hide()
+        self.close_button.mousePressEvent = lambda e: self.quit_application()
         layout.addWidget(self.close_button)
         
         return title_bar
@@ -243,6 +249,15 @@ class MainWindow(QMainWindow):
         is_recording = status == "录音中"
         self.record_button.set_recording_state(is_recording)
     
+    def update_loading_status(self, status):
+        """更新加载状态显示"""
+        if hasattr(self, 'loading_status_label'):
+            self.loading_status_label.setText(status)
+            if status:
+                self.loading_status_label.show()
+            else:
+                self.loading_status_label.hide()
+    
     def set_state_manager(self, state_manager):
         """设置状态管理器"""
         self.state_manager = state_manager
@@ -262,8 +277,8 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """处理窗口关闭事件"""
-        event.ignore()  # 忽略关闭事件
-        self.hide()  # 只是隐藏窗口
+        event.accept()  # 接受关闭事件
+        self.quit_application()  # 退出程序
     
     def center_on_screen(self):
         """将窗口移动到屏幕中央"""
@@ -347,3 +362,11 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+    
+    def quit_application(self):
+        """退出应用程序"""
+        if self.app_instance:
+            self.app_instance.quit_application()
+        else:
+            # 如果没有应用程序实例引用，直接退出
+            QApplication.instance().quit()

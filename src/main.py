@@ -75,10 +75,6 @@ class Application(QObject):
         atexit.register(self.cleanup_resources)
         
         try:
-            # 在开发环境中检查权限
-            if not getattr(sys, 'frozen', False):
-                self._check_development_permissions()
-            
             self.app = QApplication(sys.argv)
             
             # 初始化设置管理器
@@ -138,13 +134,66 @@ class Application(QObject):
             # 移除托盘图标的点击事件连接
             self.tray_icon.show()
             
-            # 初始化组件
+            # 初始化基础组件
             self.state_manager = StateManager()
-            self.main_window = MainWindow()
+            self.main_window = MainWindow(app_instance=self)
             self.main_window.set_state_manager(self.state_manager)
             
-            # 初始化其他组件
+            # 初始化基础音频组件
             self.audio_capture = AudioCapture()
+            
+            # 初始化状态变量
+            self.recording = False
+            self.previous_volume = None
+            self.funasr_engine = None  # 延迟初始化
+            self.hotkey_manager = None  # 延迟初始化
+            self.clipboard_manager = None  # 延迟初始化
+            self.context = None  # 延迟初始化
+            self.audio_manager = None  # 延迟初始化
+            self.audio_capture_thread = None  # 延迟初始化
+            
+            # 连接信号
+            self.show_window_signal.connect(self._show_window_internal)
+            
+            # 显示主窗口
+            self.main_window.show()
+            print("✓ 主界面已启动")
+            
+            # 启动后台初始化
+            self._start_background_initialization()
+
+        except Exception as e:
+            print(f"❌ 初始化失败: {e}")
+            print(traceback.format_exc())
+            sys.exit(1)
+    
+    def _start_background_initialization(self):
+        """启动后台初始化任务"""
+        from PyQt6.QtCore import QTimer
+        
+        # 使用QTimer延迟执行，确保主界面已完全显示
+        self.init_timer = QTimer()
+        self.init_timer.setSingleShot(True)
+        self.init_timer.timeout.connect(self._background_initialization)
+        self.init_timer.start(100)  # 100ms后开始后台初始化
+    
+    def _background_initialization(self):
+        """后台初始化耗时组件"""
+        import time
+        try:
+            # 在开发环境中检查权限
+            if not getattr(sys, 'frozen', False):
+                self.main_window.update_loading_status("正在检查权限...")
+                self.app.processEvents()  # 强制刷新UI
+                time.sleep(0.5)  # 让用户看到状态
+                print("正在检查权限...")
+                self._check_development_permissions()
+                print("✓ 权限检查完成")
+            
+            # 初始化语音识别引擎
+            self.main_window.update_loading_status("正在加载语音识别模型...")
+            self.app.processEvents()  # 强制刷新UI
+            time.sleep(0.3)  # 让用户看到状态
             print("正在加载语音识别模型...")
             self.funasr_engine = FunASREngine()
             
@@ -153,13 +202,13 @@ class Application(QObject):
             self.settings_manager.update_model_paths(model_paths)
             print("✓ 语音识别就绪")
             
+            self.main_window.update_loading_status("正在初始化组件...")
+            self.app.processEvents()  # 强制刷新UI
+            time.sleep(0.3)  # 让用户看到状态
             # 初始化热键管理器，传入设置管理器
             self.hotkey_manager = HotkeyManager(self.settings_manager)
             self.clipboard_manager = ClipboardManager()
             self.context = Context()
-            
-            self.recording = False
-            self.previous_volume = None
             
             # 初始化音频管理器
             self.audio_manager = AudioManager(self)
@@ -169,17 +218,28 @@ class Application(QObject):
             self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
             self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
             
-            # 连接信号
-            self.show_window_signal.connect(self._show_window_internal)
+            # 设置连接
             self.setup_connections()
             
             # 应用初始设置
             self.apply_settings()
-
+            
+            # 显示完成状态
+            self.main_window.update_loading_status("初始化完成")
+            self.app.processEvents()  # 强制刷新UI
+            time.sleep(1)  # 显示完成状态1秒
+            
+            # 清除加载状态
+            self.main_window.update_loading_status("")
+            self.app.processEvents()  # 强制刷新UI
+            print("✓ 所有组件初始化完成")
+            
         except Exception as e:
-            print(f"❌ 初始化失败: {e}")
-            print(traceback.format_exc())
-            sys.exit(1)
+            self.main_window.update_loading_status("初始化失败")
+            self.app.processEvents()  # 强制刷新UI
+            time.sleep(2)  # 显示错误状态2秒
+            print(f"后台初始化失败: {e}")
+            # 可以选择显示错误对话框或其他处理方式
 
     def _check_development_permissions(self):
         """检查开发环境权限"""
@@ -347,6 +407,11 @@ class Application(QObject):
 
     def start_recording(self):
         """开始录音"""
+        # 检查必要组件是否已初始化
+        if not self.audio_capture_thread:
+            print("⚠️ 录音功能尚未就绪，请稍后再试")
+            return
+            
         if not self.recording:
             self.recording = True
             
@@ -396,8 +461,10 @@ class Application(QObject):
             if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
                 self.recording_timer.stop()
             
-            self.audio_capture_thread.stop()
-            self.audio_capture_thread.wait()
+            # 检查录音线程是否存在
+            if self.audio_capture_thread:
+                self.audio_capture_thread.stop()
+                self.audio_capture_thread.wait()
             
             # 临时恢复音量以确保音效能正常播放
             if self.previous_volume is not None:
@@ -416,6 +483,12 @@ class Application(QObject):
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
+                    # 检查语音识别引擎是否已初始化
+                    if not self.funasr_engine:
+                        print("⚠️ 语音识别引擎尚未就绪，无法处理录音")
+                        self.update_ui_signal.emit("⚠️ 语音识别引擎尚未就绪，无法处理录音", "")
+                        return
+                        
                     self.transcription_thread = TranscriptionThread(audio_data, self.funasr_engine)
                     self.transcription_thread.transcription_done.connect(self.on_transcription_done)
                     self.transcription_thread.start()
@@ -442,11 +515,15 @@ class Application(QObject):
             if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
                 self.recording_timer.stop()
             
-            self.audio_capture.clear_recording_data()
+            if hasattr(self, 'audio_capture') and self.audio_capture:
+                self.audio_capture.clear_recording_data()
+                
             if hasattr(self, 'transcription_thread'):
                 self.transcription_thread.quit()
                 self.transcription_thread.wait()
-            self.hotkey_manager.stop_listening()
+                
+            if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
+                self.hotkey_manager.stop_listening()
         except Exception as e:
             print(f"❌ 清理资源失败: {e}")
 
@@ -462,8 +539,10 @@ class Application(QObject):
 
     def setup_connections(self):
         """设置信号连接"""
-        self.hotkey_manager.set_press_callback(self.on_option_press)
-        self.hotkey_manager.set_release_callback(self.on_option_release)
+        if self.hotkey_manager:
+            self.hotkey_manager.set_press_callback(self.on_option_press)
+            self.hotkey_manager.set_release_callback(self.on_option_release)
+            
         self.update_ui_signal.connect(self.update_ui)
         self.main_window.record_button_clicked.connect(self.toggle_recording)
         self.main_window.history_item_clicked.connect(self.on_history_item_clicked)
@@ -556,6 +635,11 @@ class Application(QObject):
     def _paste_and_reactivate(self, text):
         """执行粘贴操作"""
         try:
+            # 检查剪贴板管理器是否已初始化
+            if not self.clipboard_manager:
+                print("⚠️ 剪贴板管理器尚未就绪，无法执行粘贴操作")
+                return
+                
             # 只执行粘贴，不影响窗口状态
             self.clipboard_manager.paste_to_current_app()
         except Exception as e:
@@ -565,8 +649,9 @@ class Application(QObject):
     def on_transcription_done(self, text):
         """转写完成的回调"""
         if text and text.strip():
-            # 1. 先复制到剪贴板
-            self.clipboard_manager.copy_to_clipboard(text)
+            # 1. 先复制到剪贴板（如果剪贴板管理器已就绪）
+            if self.clipboard_manager:
+                self.clipboard_manager.copy_to_clipboard(text)
             # 2. 更新UI并添加到历史记录（无论窗口是否可见）
             self.main_window.display_result(text)
             # 3. 延迟执行粘贴操作
@@ -576,8 +661,9 @@ class Application(QObject):
     
     def on_history_item_clicked(self, text):
         """处理历史记录点击事件"""
-        # 1. 先复制到剪贴板
-        self.clipboard_manager.copy_to_clipboard(text)
+        # 1. 先复制到剪贴板（如果剪贴板管理器已就绪）
+        if self.clipboard_manager:
+            self.clipboard_manager.copy_to_clipboard(text)
         # 2. 更新UI
         self.update_ui_signal.emit("准备粘贴历史记录", text)
         # 3. 延迟执行粘贴操作
@@ -594,11 +680,11 @@ class Application(QObject):
     def run(self):
         """运行应用程序"""
         try:
-            # 显示主窗口
-            self.main_window.show()
+            # 主窗口已在初始化时显示，这里不需要重复显示
             
-            # 启动热键监听
-            self.hotkey_manager.start_listening()
+            # 启动热键监听（如果热键管理器已初始化）
+            if self.hotkey_manager:
+                self.hotkey_manager.start_listening()
             
             # 运行应用程序主循环
             return self.app.exec()
@@ -694,24 +780,27 @@ class Application(QObject):
     def apply_settings(self):
         """应用设置"""
         try:
-            # 应用热键设置
-            current_hotkey = self.settings_manager.get_hotkey()
-            self.hotkey_manager.stop_listening()  # 先停止监听
-            self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
-            self.hotkey_manager.start_listening()  # 重新开始监听
+            # 应用热键设置（如果热键管理器已初始化）
+            if self.hotkey_manager:
+                current_hotkey = self.settings_manager.get_hotkey()
+                self.hotkey_manager.stop_listening()  # 先停止监听
+                self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
+                self.hotkey_manager.start_listening()  # 重新开始监听
             
             # 应用音频设置
-            volume_threshold = self.settings_manager.get_setting('audio.volume_threshold')
-            self.audio_capture.set_volume_threshold(volume_threshold)
+            if hasattr(self, 'audio_capture') and self.audio_capture:
+                volume_threshold = self.settings_manager.get_setting('audio.volume_threshold')
+                self.audio_capture.set_volume_threshold(volume_threshold)
             
-            # 应用ASR设置
-            model_path = self.settings_manager.get_setting('asr.model_path')
-            if model_path and hasattr(self.funasr_engine, 'load_model'):
-                self.funasr_engine.load_model(model_path)
-            
-            punc_model_path = self.settings_manager.get_setting('asr.punc_model_path')
-            if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
-                self.funasr_engine.load_punctuation_model(punc_model_path)
+            # 应用ASR设置（如果语音识别引擎已初始化）
+            if self.funasr_engine:
+                model_path = self.settings_manager.get_setting('asr.model_path')
+                if model_path and hasattr(self.funasr_engine, 'load_model'):
+                    self.funasr_engine.load_model(model_path)
+                
+                punc_model_path = self.settings_manager.get_setting('asr.punc_model_path')
+                if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
+                    self.funasr_engine.load_punctuation_model(punc_model_path)
             
             print("✓ 所有设置已应用")
         except Exception as e:
