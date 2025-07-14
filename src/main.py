@@ -16,6 +16,7 @@ from global_hotkey import GlobalHotkeyManager
 import time
 import re
 import subprocess
+import threading
 from audio_manager import AudioManager
 from config import APP_VERSION  # 从config导入版本号
 
@@ -124,7 +125,9 @@ class Application(QObject):
             settings_action = tray_menu.addAction("快捷键设置...")
             settings_action.triggered.connect(self.show_settings)
             
-
+            # 重启热键功能
+            restart_hotkey_action = tray_menu.addAction("重启热键功能")
+            restart_hotkey_action.triggered.connect(self.restart_hotkey_manager)
             
             # 检查权限
             check_permissions_action = tray_menu.addAction("检查权限")
@@ -223,7 +226,11 @@ class Application(QObject):
                             asr_available = bool(model_paths.get('asr_model_path'))
                             punc_available = bool(model_paths.get('punc_model_path'))
                             self.settings_manager.update_models_cache(asr_available, punc_available)
-                            print("✓ 语音识别就绪")
+                            if getattr(self.funasr_engine, 'is_ready', False):
+                                print("✓ 语音识别引擎已就绪")
+                                self.main_window.update_loading_status("语音识别引擎已就绪")
+                            else:
+                                print("⚠️ 语音识别引擎初始化未完成")
                         except Exception as e:
                             print(f"❌ 模型加载失败: {e}")
                             self.settings_manager.update_models_cache(False, False)
@@ -234,14 +241,34 @@ class Application(QObject):
                         if cache['asr_available']:
                             try:
                                 self.funasr_engine = FunASREngine(self.settings_manager)
-                                print("✓ 基于缓存快速初始化语音识别")
+                                if getattr(self.funasr_engine, 'is_ready', False):
+                                    print("✓ 基于缓存快速初始化语音识别引擎已就绪")
+                                    self.main_window.update_loading_status("语音识别引擎已就绪")
+                                else:
+                                    print("⚠️ 基于缓存初始化但引擎未就绪")
                             except Exception as e:
                                 print(f"⚠️  缓存显示模型可用但初始化失败: {e}")
                                 self.funasr_engine = None
                                 self.settings_manager.update_models_cache(False, False)
                         else:
-                            print("⚠️  缓存显示模型不可用")
-                            self.funasr_engine = None
+                            print("⚠️  缓存显示模型不可用，尝试重新加载...")
+                            try:
+                                self.main_window.update_loading_status("正在重新加载语音识别模型...")
+                                self.funasr_engine = FunASREngine(self.settings_manager)
+                                model_paths = self.funasr_engine.get_model_paths()
+                                self.settings_manager.update_model_paths(model_paths)
+                                asr_available = bool(model_paths.get('asr_model_path'))
+                                punc_available = bool(model_paths.get('punc_model_path'))
+                                self.settings_manager.update_models_cache(asr_available, punc_available)
+                                if getattr(self.funasr_engine, 'is_ready', False):
+                                    print("✓ 语音识别引擎重新加载成功并已就绪")
+                                    self.main_window.update_loading_status("语音识别引擎已就绪")
+                                else:
+                                    print("⚠️ 语音识别引擎重新加载但未就绪")
+                            except Exception as e:
+                                print(f"❌ 重新加载模型失败: {e}")
+                                self.funasr_engine = None
+                                self.settings_manager.update_models_cache(False, False)
                 except Exception as e:
                     print(f"⚠️  语音识别引擎初始化失败: {e}")
                     self.funasr_engine = None
@@ -256,8 +283,10 @@ class Application(QObject):
                     # 安全初始化各个组件
                     try:
                         self.hotkey_manager = HotkeyManager(self.settings_manager)
+                        print("✓ 热键管理器初始化成功")
                     except Exception as e:
                         print(f"⚠️  热键管理器初始化失败: {e}")
+                        print(f"详细错误信息: {traceback.format_exc()}")
                         self.hotkey_manager = None
                     
                     try:
@@ -298,6 +327,8 @@ class Application(QObject):
                 try:
                     self.setup_connections()
                     self.apply_settings()
+                    # 启动热键状态监控
+                    self.start_hotkey_monitor()
                 except Exception as e:
                     print(f"⚠️  设置连接和应用设置失败: {e}")
                 self._init_step = 4
@@ -402,6 +433,83 @@ class Application(QObject):
             # 权限检查失败时也更新缓存，避免重复检查
             self.settings_manager.update_permissions_cache(False, False)
 
+    def restart_hotkey_manager(self):
+        """重启热键管理器"""
+        try:
+            print("开始重启热键管理器...")
+            
+            # 停止现有的热键管理器
+            if self.hotkey_manager:
+                try:
+                    self.hotkey_manager.stop_listening()
+                    self.hotkey_manager.cleanup()
+                except Exception as e:
+                    print(f"停止现有热键管理器时出错: {e}")
+            
+            # 重新创建热键管理器
+            try:
+                self.hotkey_manager = HotkeyManager(self.settings_manager)
+                self.hotkey_manager.set_press_callback(self.on_option_press)
+                self.hotkey_manager.set_release_callback(self.on_option_release)
+                
+                # 应用当前热键设置
+                current_hotkey = self.settings_manager.get_hotkey()
+                self.hotkey_manager.update_hotkey(current_hotkey)
+                
+                # 启动监听
+                self.hotkey_manager.start_listening()
+                
+                print("✓ 热键管理器重启成功")
+                
+                # 显示成功通知
+                if hasattr(self, 'tray_icon') and self.tray_icon:
+                    self.tray_icon.showMessage(
+                        "热键功能",
+                        "热键功能已成功重启",
+                        QSystemTrayIcon.MessageIcon.Information,
+                        3000
+                    )
+                    
+            except Exception as e:
+                print(f"❌ 重新创建热键管理器失败: {e}")
+                import traceback
+                print(f"详细错误信息: {traceback.format_exc()}")
+                
+                # 显示失败通知
+                if hasattr(self, 'tray_icon') and self.tray_icon:
+                    self.tray_icon.showMessage(
+                        "热键功能",
+                        f"热键功能重启失败: {e}",
+                        QSystemTrayIcon.MessageIcon.Critical,
+                        5000
+                    )
+                    
+        except Exception as e:
+            print(f"❌ 重启热键管理器过程中出错: {e}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
+    
+    def start_hotkey_monitor(self):
+        """启动热键状态监控"""
+        def monitor_hotkey_status():
+            while True:
+                try:
+                    time.sleep(10)  # 每10秒检查一次
+                    if self.hotkey_manager:
+                        # 检查热键监听器是否还在运行
+                        if (not hasattr(self.hotkey_manager, 'keyboard_listener') or 
+                            not self.hotkey_manager.keyboard_listener or 
+                            not self.hotkey_manager.keyboard_listener.running):
+                            print("⚠️  检测到热键监听器已停止，尝试重启...")
+                            self.restart_hotkey_manager()
+                except Exception as e:
+                    print(f"热键状态监控出错: {e}")
+        
+        # 启动监控线程
+        monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
+        monitor_thread.start()
+        print("✓ 热键状态监控已启动")
+    
     def cleanup_resources(self):
         """清理资源"""
         try:
@@ -590,8 +698,8 @@ class Application(QObject):
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
-                    # 检查语音识别引擎是否已初始化
-                    if not self.funasr_engine:
+                    # 检查语音识别引擎是否已初始化并就绪
+                    if not self.funasr_engine or not getattr(self.funasr_engine, 'is_ready', False):
                         print("⚠️ 语音识别引擎尚未就绪，无法处理录音")
                         self.update_ui_signal.emit("⚠️ 语音识别引擎尚未就绪，无法处理录音", "")
                         return
@@ -661,6 +769,7 @@ class Application(QObject):
         if self.hotkey_manager:
             self.hotkey_manager.set_press_callback(self.on_option_press)
             self.hotkey_manager.set_release_callback(self.on_option_release)
+            print("✓ 热键回调函数已设置")
             
         self.update_ui_signal.connect(self.update_ui)
         self.main_window.record_button_clicked.connect(self.toggle_recording)
@@ -837,7 +946,34 @@ class Application(QObject):
             
             # 启动热键监听（如果热键管理器已初始化）
             if self.hotkey_manager:
-                self.hotkey_manager.start_listening()
+                try:
+                    self.hotkey_manager.start_listening()
+                    print("✓ 热键监听已启动")
+                except Exception as e:
+                    print(f"❌ 启动热键监听失败: {e}")
+                    print(f"详细错误信息: {traceback.format_exc()}")
+                    # 尝试重新初始化热键管理器
+                    try:
+                        print("尝试重新初始化热键管理器...")
+                        self.hotkey_manager = HotkeyManager(self.settings_manager)
+                        self.hotkey_manager.set_press_callback(self.on_option_press)
+                        self.hotkey_manager.set_release_callback(self.on_option_release)
+                        self.hotkey_manager.start_listening()
+                        print("✓ 热键管理器重新初始化成功")
+                    except Exception as e2:
+                        print(f"❌ 重新初始化热键管理器失败: {e2}")
+                        self.hotkey_manager = None
+            else:
+                print("⚠️  热键管理器未初始化，尝试重新创建...")
+                try:
+                    self.hotkey_manager = HotkeyManager(self.settings_manager)
+                    self.hotkey_manager.set_press_callback(self.on_option_press)
+                    self.hotkey_manager.set_release_callback(self.on_option_release)
+                    self.hotkey_manager.start_listening()
+                    print("✓ 热键管理器重新创建成功")
+                except Exception as e:
+                    print(f"❌ 重新创建热键管理器失败: {e}")
+                    print(f"详细错误信息: {traceback.format_exc()}")
             
             # 运行应用程序主循环
             return self.app.exec()
@@ -953,8 +1089,22 @@ class Application(QObject):
                     self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
                     self.hotkey_manager.start_listening()  # 重新开始监听
                     print("✓ 热键设置已应用")
+                else:
+                    print("⚠️  热键管理器不存在，尝试重新创建...")
+                    try:
+                        self.hotkey_manager = HotkeyManager(self.settings_manager)
+                        self.hotkey_manager.set_press_callback(self.on_option_press)
+                        self.hotkey_manager.set_release_callback(self.on_option_release)
+                        current_hotkey = self.settings_manager.get_hotkey()
+                        self.hotkey_manager.update_hotkey(current_hotkey)
+                        self.hotkey_manager.start_listening()
+                        print("✓ 热键管理器重新创建并应用设置成功")
+                    except Exception as e2:
+                        print(f"❌ 重新创建热键管理器失败: {e2}")
+                        print(f"详细错误信息: {traceback.format_exc()}")
             except Exception as e:
                 print(f"❌ 应用热键设置失败: {e}")
+                print(f"详细错误信息: {traceback.format_exc()}")
             
             # 应用音频设置
             try:

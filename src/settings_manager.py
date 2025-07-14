@@ -18,6 +18,7 @@ class SettingsManager:
             'model_path': '',          # ASR模型路径
             'punc_model_path': '',     # 标点符号模型路径
             'auto_punctuation': True,  # 自动添加标点
+            'real_time_display': True, # 实时显示识别结果
             'hotword_weight': 80,      # 热词权重 (0-100)
             'enable_pronunciation_correction': True,  # 启用发音相似词纠错
         },

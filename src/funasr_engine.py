@@ -18,6 +18,8 @@ class FunASREngine:
         try:
             # 保存设置管理器引用
             self.settings_manager = settings_manager
+            # 初始化状态标志
+            self.is_ready = False
             # 获取应用程序的基础路径
             if getattr(sys, 'frozen', False):
                 application_path = sys._MEIPASS
@@ -47,8 +49,14 @@ class FunASREngine:
             print(f"ASR模型路径: {asr_model_dir}")
             print(f"标点模型路径: {punc_model_dir}")
             
-            if not os.path.exists(asr_model_dir) or not os.path.exists(punc_model_dir):
-                raise Exception(f"模型文件不存在: ASR模型: {os.path.exists(asr_model_dir)}, 标点模型: {os.path.exists(punc_model_dir)}")
+            # ASR模型是必需的
+            if not os.path.exists(asr_model_dir):
+                raise Exception(f"ASR模型文件不存在: {asr_model_dir}")
+            
+            # 标点模型是可选的
+            self.has_punc_model = os.path.exists(punc_model_dir)
+            if not self.has_punc_model:
+                print("⚠️ 标点模型不存在，将跳过标点处理")
             
             # 使用 redirect_stdout 来捕获输出
             f = io.StringIO()
@@ -62,16 +70,25 @@ class FunASREngine:
                 )
                 print("ASR模型加载完成")
                 
-                print("开始加载标点模型...")
-                # 初始化标点模型
-                self.punc_model = AutoModel(
-                    model=punc_model_dir,
-                    model_revision="v2.0.4",
-                    disable_update=True
-                )
-                print("标点模型加载完成")
+                # 只在标点模型存在时才加载
+                if self.has_punc_model:
+                    print("开始加载标点模型...")
+                    self.punc_model = AutoModel(
+                        model=punc_model_dir,
+                        model_revision="v2.0.4",
+                        disable_update=True
+                    )
+                    print("标点模型加载完成")
+                else:
+                    self.punc_model = None
+                    print("跳过标点模型加载")
+                
+            # 设置引擎就绪状态
+            self.is_ready = True
+            print("✓ FunASR引擎初始化完成，已就绪")
                 
         except Exception as e:
+            self.is_ready = False
             error_msg = f"❌ 模型加载失败: {str(e)}\n"
             error_msg += f"系统路径: {sys.path}\n"
             error_msg += f"当前目录: {os.getcwd()}\n"
@@ -396,6 +413,9 @@ class FunASREngine:
     def cleanup(self):
         """清理FunASR引擎资源"""
         try:
+            # 重置就绪状态
+            self.is_ready = False
+            
             # 清理模型资源
             if hasattr(self, 'model') and self.model:
                 # 尝试释放模型资源

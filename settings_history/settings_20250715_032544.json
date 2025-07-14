@@ -4,39 +4,28 @@
   "audio": {
     "input_device": null,
     "volume_threshold": 150,
-    "max_recording_duration": 12,
-    "mute_other_apps": true
+    "max_recording_duration": 15
   },
   "asr": {
     "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
     "auto_punctuation": true,
-    "hotword_weight": 90.0,
-    "enable_pronunciation_correction": true,
-    "real_time_display": true
+    "real_time_display": true,
+    "hotword_weight": 88,
+    "enable_pronunciation_correction": true
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-14T23:32:38.038935",
+      "last_check": "2025-07-15T02:46:13.071202",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-14T23:32:42.242977",
+      "last_check": "2025-07-15T03:22:59.406362",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168
     }
-  },
-  "ui": {
-    "start_minimized": false,
-    "show_notifications": true,
-    "theme": "light"
-  },
-  "clipboard": {
-    "auto_paste": true,
-    "keep_history": true,
-    "max_history": 40
   }
 }

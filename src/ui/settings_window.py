@@ -400,10 +400,10 @@ class SettingsWindow(QWidget):
         recognition_layout = QVBoxLayout()
         
         self.auto_punctuation = QCheckBox("自动添加标点")
-        self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation'))
+        self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation', True))
         
         self.real_time_display = QCheckBox("实时显示识别结果")
-        self.real_time_display.setChecked(self.settings_manager.get_setting('asr.real_time_display'))
+        self.real_time_display.setChecked(self.settings_manager.get_setting('asr.real_time_display', True))
         
         recognition_layout.addWidget(self.auto_punctuation)
         recognition_layout.addWidget(self.real_time_display)
@@ -563,9 +563,10 @@ class SettingsWindow(QWidget):
         self.duration_value_label.setText(f"{duration_value}秒")
         
         # 更新ASR设置
-        self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path'))
-        self.punc_model_path.setText(self.settings_manager.get_setting('asr.punc_model_path'))
-        self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation'))
+        self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path', ''))
+        self.punc_model_path.setText(self.settings_manager.get_setting('asr.punc_model_path', ''))
+        self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation', True))
+        self.real_time_display.setChecked(self.settings_manager.get_setting('asr.real_time_display', True))
         
         # 更新热词设置
         hotword_weight = int(self.settings_manager.get_setting('asr.hotword_weight', 80))

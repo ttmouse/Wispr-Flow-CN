@@ -353,17 +353,24 @@ class HotkeyManager:
                 )
                 self.keyboard_listener.daemon = True
                 self.keyboard_listener.start()
+                print("✓ 键盘监听器已启动")
                 
                 # 启动 fn 键监听线程
                 self.should_stop = False
                 self.fn_listener_thread = threading.Thread(target=self._monitor_fn_key)
                 self.fn_listener_thread.daemon = True
                 self.fn_listener_thread.start()
+                print("✓ Fn键监听线程已启动")
                 
                 self.logger.info("热键监听器已启动")
+                print(f"✓ 热键监听已启动，当前热键: {self.hotkey_type}")
         except Exception as e:
             self.logger.error(f"启动热键监听器失败: {e}")
+            print(f"❌ 启动热键监听失败: {e}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
             self.stop_listening()
+            raise
 
     def stop_listening(self):
         """停止热键监听"""
@@ -372,15 +379,21 @@ class HotkeyManager:
             self.should_stop = True
             if self.fn_listener_thread and self.fn_listener_thread.is_alive():
                 self.fn_listener_thread.join(timeout=1.0)
+                print("✓ Fn键监听线程已停止")
             
             # 停止键盘监听器
             if self.keyboard_listener:
                 self.keyboard_listener.stop()
                 self.keyboard_listener = None
+                print("✓ 键盘监听器已停止")
             
             self.logger.info("热键监听器已停止")
+            print("✓ 热键监听已停止")
         except Exception as e:
             self.logger.error(f"停止热键监听器失败: {e}")
+            print(f"❌ 停止热键监听时出错: {e}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
         finally:
             self.reset_state()  # 确保状态被重置
     

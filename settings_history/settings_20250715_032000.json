@@ -11,20 +11,20 @@
     "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
     "auto_punctuation": true,
     "real_time_display": true,
-    "hotword_weight": 88,
+    "hotword_weight": 90,
     "enable_pronunciation_correction": true
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-15T03:32:09.841586",
+      "last_check": "2025-07-15T02:46:13.071202",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-15T03:32:12.482948",
-      "asr_available": true,
-      "punc_available": true,
+      "last_check": "2025-07-15T03:18:57.812579",
+      "asr_available": false,
+      "punc_available": false,
       "check_interval_hours": 168
     }
   }
