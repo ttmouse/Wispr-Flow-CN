@@ -18,7 +18,7 @@ class SettingsManager:
             'model_path': '',          # ASR模型路径
             'punc_model_path': '',     # 标点符号模型路径
             'auto_punctuation': True,  # 自动添加标点
-            'hotword_weight': 80.0,    # 热词权重 (0-100)
+            'hotword_weight': 80,      # 热词权重 (0-100)
             'enable_pronunciation_correction': True,  # 启用发音相似词纠错
         },
         'cache': {
@@ -40,7 +40,10 @@ class SettingsManager:
     def __init__(self):
         self.settings = {}
         self.settings_file = 'settings.json'
+        self.settings_history_dir = 'settings_history'
+        self.max_history_files = 10  # 最多保留10个历史版本
         self.logger = logging.getLogger('SettingsManager')
+        self._ensure_history_dir()
         self.load_settings()
 
     def load_settings(self) -> None:
@@ -58,14 +61,115 @@ class SettingsManager:
             self.logger.error(f"加载设置失败: {e}")
             self.settings = self.DEFAULT_SETTINGS.copy()
 
-    def save_settings(self) -> bool:
-        """保存设置"""
+    def _ensure_history_dir(self) -> None:
+        """确保历史记录目录存在"""
+        if not os.path.exists(self.settings_history_dir):
+            try:
+                os.makedirs(self.settings_history_dir)
+            except Exception as e:
+                self.logger.error(f"创建历史记录目录失败: {e}")
+    
+    def _save_to_history(self) -> bool:
+        """保存当前设置到历史记录"""
         try:
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+            if not os.path.exists(self.settings_file):
+                return True  # 没有现有文件，无需保存历史
+            
+            # 生成带时间戳的历史文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            history_file = os.path.join(self.settings_history_dir, f"settings_{timestamp}.json")
+            
+            # 复制当前设置文件到历史目录
+            import shutil
+            shutil.copy2(self.settings_file, history_file)
+            
+            # 清理旧的历史文件
+            self._cleanup_old_history()
+            
+            self.logger.info(f"设置历史已保存: {history_file}")
             return True
+            
+        except Exception as e:
+            self.logger.error(f"保存设置历史失败: {e}")
+            return False
+    
+    def _cleanup_old_history(self) -> None:
+        """清理过多的历史文件"""
+        try:
+            if not os.path.exists(self.settings_history_dir):
+                return
+            
+            # 获取所有历史文件并按时间排序
+            history_files = []
+            for filename in os.listdir(self.settings_history_dir):
+                if filename.startswith('settings_') and filename.endswith('.json'):
+                    filepath = os.path.join(self.settings_history_dir, filename)
+                    if os.path.isfile(filepath):
+                        history_files.append((filepath, os.path.getmtime(filepath)))
+            
+            # 按修改时间排序（最新的在前）
+            history_files.sort(key=lambda x: x[1], reverse=True)
+            
+            # 删除超出限制的文件
+            for filepath, _ in history_files[self.max_history_files:]:
+                try:
+                    os.remove(filepath)
+                    self.logger.info(f"已删除旧的历史文件: {filepath}")
+                except Exception as e:
+                    self.logger.error(f"删除历史文件失败 {filepath}: {e}")
+                    
+        except Exception as e:
+            self.logger.error(f"清理历史文件失败: {e}")
+    
+    def save_settings(self) -> bool:
+        """保存设置到文件，包含备份、历史记录和恢复机制"""
+        backup_file = f"{self.settings_file}.backup"
+        temp_file = f"{self.settings_file}.tmp"
+        
+        try:
+            # 保存到历史记录
+            self._save_to_history()
+            
+            # 如果原文件存在，先创建备份
+            if os.path.exists(self.settings_file):
+                import shutil
+                shutil.copy2(self.settings_file, backup_file)
+            
+            # 先写入临时文件
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+            
+            # 验证临时文件是否有效
+            with open(temp_file, 'r', encoding='utf-8') as f:
+                json.load(f)  # 验证JSON格式
+            
+            # 原子性替换
+            if os.path.exists(self.settings_file):
+                os.remove(self.settings_file)
+            os.rename(temp_file, self.settings_file)
+            
+            self.logger.info("设置保存成功")
+            return True
+            
         except Exception as e:
             self.logger.error(f"保存设置失败: {e}")
+            
+            # 清理临时文件
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+            
+            # 尝试从备份恢复
+            if os.path.exists(backup_file):
+                try:
+                    import shutil
+                    shutil.copy2(backup_file, self.settings_file)
+                    self.logger.info("已从备份恢复设置文件")
+                except Exception as restore_error:
+                    self.logger.error(f"从备份恢复失败: {restore_error}")
+            
             return False
 
     def get_setting(self, key: str, default: Any = None) -> Any:
@@ -80,18 +184,38 @@ class SettingsManager:
         except (KeyError, TypeError):
             return default
 
-    def set_setting(self, key: str, value: Any) -> bool:
-        """设置值"""
+    def set_setting(self, key: str, value: Any, auto_save: bool = True) -> bool:
+        """设置值
+        
+        Args:
+            key: 设置键名，支持点号分隔的嵌套键
+            value: 设置值
+            auto_save: 是否自动保存到文件，默认True
+        """
         try:
             # 支持使用点号设置嵌套设置
             keys = key.split('.')
             target = self.settings
+            
+            # 确保所有中间键都存在
             for k in keys[:-1]:
+                if k not in target:
+                    target[k] = {}
+                elif not isinstance(target[k], dict):
+                    # 如果中间键不是字典，创建新的字典
+                    target[k] = {}
                 target = target[k]
+            
+            # 设置最终值
             target[keys[-1]] = value
-            return self.save_settings()
+            
+            if auto_save:
+                return self.save_settings()
+            return True
         except Exception as e:
             self.logger.error(f"设置值失败 {key}: {e}")
+            import traceback
+            self.logger.error(f"设置值错误详情: {traceback.format_exc()}")
             return False
 
     def get_hotkey(self) -> str:
@@ -101,6 +225,29 @@ class SettingsManager:
     def set_hotkey(self, hotkey: str) -> bool:
         """设置快捷键"""
         return self.set_setting('hotkey', hotkey)
+    
+    def set_multiple_settings(self, settings_dict: Dict[str, Any]) -> bool:
+        """批量设置多个配置项
+        
+        Args:
+            settings_dict: 设置字典，键为设置名，值为设置值
+            
+        Returns:
+            bool: 所有设置是否成功保存
+        """
+        try:
+            # 先设置所有值但不保存
+            for key, value in settings_dict.items():
+                if not self.set_setting(key, value, auto_save=False):
+                    self.logger.error(f"设置 {key} 失败")
+                    return False
+            
+            # 最后一次性保存所有设置
+            return self.save_settings()
+            
+        except Exception as e:
+            self.logger.error(f"批量设置失败: {e}")
+            return False
 
     def get_high_frequency_words(self) -> List[str]:
         """获取高频词列表"""
@@ -201,11 +348,11 @@ class SettingsManager:
             'microphone': self.get_setting('cache.permissions.microphone', False)
         }
     
-    def get_hotword_weight(self) -> float:
+    def get_hotword_weight(self) -> int:
         """获取热词权重"""
-        return self.get_setting('asr.hotword_weight', 80.0)
+        return self.get_setting('asr.hotword_weight', 80)
     
-    def set_hotword_weight(self, weight: float) -> bool:
+    def set_hotword_weight(self, weight: int) -> bool:
         """设置热词权重"""
         return self.set_setting('asr.hotword_weight', weight)
     
@@ -223,3 +370,162 @@ class SettingsManager:
             'asr_available': self.get_setting('cache.models.asr_available', False),
             'punc_available': self.get_setting('cache.models.punc_available', False)
         }
+    
+    def get_settings_history(self) -> List[Dict[str, Any]]:
+        """获取设置历史记录列表
+        
+        Returns:
+            List[Dict]: 历史记录列表，每个元素包含 {'filename', 'timestamp', 'readable_time'}
+        """
+        history_list = []
+        
+        try:
+            if not os.path.exists(self.settings_history_dir):
+                return history_list
+            
+            for filename in os.listdir(self.settings_history_dir):
+                if filename.startswith('settings_') and filename.endswith('.json'):
+                    filepath = os.path.join(self.settings_history_dir, filename)
+                    if os.path.isfile(filepath):
+                        # 从文件名提取时间戳
+                        timestamp_str = filename.replace('settings_', '').replace('.json', '')
+                        try:
+                            timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                            readable_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            history_list.append({
+                                'filename': filename,
+                                'filepath': filepath,
+                                'timestamp': timestamp,
+                                'readable_time': readable_time
+                            })
+                        except ValueError:
+                            # 跳过无法解析时间戳的文件
+                            continue
+            
+            # 按时间排序（最新的在前）
+            history_list.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+        except Exception as e:
+            self.logger.error(f"获取设置历史失败: {e}")
+        
+        return history_list
+    
+    def restore_from_history(self, history_filename: str) -> bool:
+        """从历史记录恢复设置
+        
+        Args:
+            history_filename: 历史文件名
+            
+        Returns:
+            bool: 恢复是否成功
+        """
+        try:
+            history_filepath = os.path.join(self.settings_history_dir, history_filename)
+            
+            if not os.path.exists(history_filepath):
+                self.logger.error(f"历史文件不存在: {history_filepath}")
+                return False
+            
+            # 读取历史设置
+            with open(history_filepath, 'r', encoding='utf-8') as f:
+                historical_settings = json.load(f)
+            
+            # 验证设置格式
+            if not isinstance(historical_settings, dict):
+                self.logger.error("历史设置格式无效")
+                return False
+            
+            # 保存当前设置到历史（作为恢复前的备份）
+            self._save_to_history()
+            
+            # 合并历史设置和默认设置
+            self.settings = self._merge_settings(self.DEFAULT_SETTINGS, historical_settings)
+            
+            # 保存恢复的设置
+            if self.save_settings():
+                self.logger.info(f"已从历史记录恢复设置: {history_filename}")
+                return True
+            else:
+                self.logger.error("保存恢复的设置失败")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"从历史记录恢复设置失败: {e}")
+            return False
+    
+    def export_settings(self, export_path: str) -> bool:
+        """导出当前设置到指定文件
+        
+        Args:
+            export_path: 导出文件路径
+            
+        Returns:
+            bool: 导出是否成功
+        """
+        try:
+            # 添加导出信息
+            export_data = {
+                'export_info': {
+                    'timestamp': datetime.now().isoformat(),
+                    'version': '1.0',
+                    'description': 'Dou-flow 设置导出文件'
+                },
+                'settings': self.settings
+            }
+            
+            with open(export_path, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, ensure_ascii=False, indent=2)
+            
+            self.logger.info(f"设置已导出到: {export_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"导出设置失败: {e}")
+            return False
+    
+    def import_settings(self, import_path: str) -> bool:
+        """从文件导入设置
+        
+        Args:
+            import_path: 导入文件路径
+            
+        Returns:
+            bool: 导入是否成功
+        """
+        try:
+            if not os.path.exists(import_path):
+                self.logger.error(f"导入文件不存在: {import_path}")
+                return False
+            
+            with open(import_path, 'r', encoding='utf-8') as f:
+                import_data = json.load(f)
+            
+            # 检查是否是导出格式
+            if isinstance(import_data, dict) and 'settings' in import_data:
+                imported_settings = import_data['settings']
+            else:
+                # 假设是直接的设置文件
+                imported_settings = import_data
+            
+            if not isinstance(imported_settings, dict):
+                self.logger.error("导入文件格式无效")
+                return False
+            
+            # 保存当前设置到历史
+            self._save_to_history()
+            
+            # 合并导入的设置和默认设置
+            self.settings = self._merge_settings(self.DEFAULT_SETTINGS, imported_settings)
+            
+            # 保存导入的设置
+            if self.save_settings():
+                self.logger.info(f"已导入设置: {import_path}")
+                return True
+            else:
+                self.logger.error("保存导入的设置失败")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"导入设置失败: {e}")
+            return False

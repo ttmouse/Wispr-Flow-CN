@@ -622,6 +622,18 @@ class Application(QObject):
             if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
                 self.recording_timer.stop()
             
+            # 清理设置窗口
+            if hasattr(self, 'settings_window') and self.settings_window:
+                try:
+                    # 断开信号连接
+                    self.settings_window.settings_saved.disconnect()
+                    # 关闭窗口
+                    self.settings_window.close()
+                    self.settings_window = None
+                    print("✓ 设置窗口已清理")
+                except Exception as e:
+                    print(f"⚠️ 清理设置窗口失败: {e}")
+            
             if hasattr(self, 'audio_capture') and self.audio_capture:
                 self.audio_capture.clear_recording_data()
                 
@@ -907,45 +919,74 @@ class Application(QObject):
 
     def show_settings(self):
         """显示设置窗口"""
-        if not hasattr(self, 'settings_window'):
-            self.settings_window = SettingsWindow(
-                settings_manager=self.settings_manager,
-                audio_capture=self.audio_capture
-            )
-            self.settings_window.settings_saved.connect(self.apply_settings)
-        
-        self.settings_window.show()
-        self.settings_window.raise_()
-        self.settings_window.activateWindow()
+        try:
+            if not hasattr(self, 'settings_window') or self.settings_window is None:
+                self.settings_window = SettingsWindow(
+                    settings_manager=self.settings_manager,
+                    audio_capture=self.audio_capture
+                )
+                # 使用线程安全的方式连接信号
+                self.settings_window.settings_saved.connect(
+                    self.apply_settings, 
+                    Qt.ConnectionType.QueuedConnection
+                )
+            
+            self.settings_window.show()
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
+        except Exception as e:
+            print(f"❌ 显示设置窗口失败: {e}")
+            import traceback
+            print(traceback.format_exc())
 
     def apply_settings(self):
         """应用设置"""
         try:
+            print("开始应用设置...")
+            
             # 应用热键设置（如果热键管理器已初始化）
-            if self.hotkey_manager:
-                current_hotkey = self.settings_manager.get_hotkey()
-                self.hotkey_manager.stop_listening()  # 先停止监听
-                self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
-                self.hotkey_manager.start_listening()  # 重新开始监听
+            try:
+                if self.hotkey_manager:
+                    current_hotkey = self.settings_manager.get_hotkey()
+                    print(f"应用热键设置: {current_hotkey}")
+                    self.hotkey_manager.stop_listening()  # 先停止监听
+                    self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
+                    self.hotkey_manager.start_listening()  # 重新开始监听
+                    print("✓ 热键设置已应用")
+            except Exception as e:
+                print(f"❌ 应用热键设置失败: {e}")
             
             # 应用音频设置
-            if hasattr(self, 'audio_capture') and self.audio_capture:
-                volume_threshold = self.settings_manager.get_setting('audio.volume_threshold')
-                self.audio_capture.set_volume_threshold(volume_threshold)
+            try:
+                if hasattr(self, 'audio_capture') and self.audio_capture:
+                    volume_threshold = self.settings_manager.get_setting('audio.volume_threshold')
+                    print(f"应用音量阈值: {volume_threshold}")
+                    self.audio_capture.set_volume_threshold(volume_threshold)
+                    print("✓ 音频设置已应用")
+            except Exception as e:
+                print(f"❌ 应用音频设置失败: {e}")
             
             # 应用ASR设置（如果语音识别引擎已初始化）
-            if self.funasr_engine:
-                model_path = self.settings_manager.get_setting('asr.model_path')
-                if model_path and hasattr(self.funasr_engine, 'load_model'):
-                    self.funasr_engine.load_model(model_path)
-                
-                punc_model_path = self.settings_manager.get_setting('asr.punc_model_path')
-                if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
-                    self.funasr_engine.load_punctuation_model(punc_model_path)
+            try:
+                if self.funasr_engine:
+                    model_path = self.settings_manager.get_setting('asr.model_path')
+                    if model_path and hasattr(self.funasr_engine, 'load_model'):
+                        print(f"加载ASR模型: {model_path}")
+                        self.funasr_engine.load_model(model_path)
+                    
+                    punc_model_path = self.settings_manager.get_setting('asr.punc_model_path')
+                    if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
+                        print(f"加载标点模型: {punc_model_path}")
+                        self.funasr_engine.load_punctuation_model(punc_model_path)
+                    print("✓ ASR设置已应用")
+            except Exception as e:
+                print(f"❌ 应用ASR设置失败: {e}")
             
             print("✓ 所有设置已应用")
         except Exception as e:
+            import traceback
             print(f"❌ 应用设置失败: {e}")
+            print(traceback.format_exc())
 
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统

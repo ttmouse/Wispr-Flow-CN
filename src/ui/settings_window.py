@@ -38,6 +38,8 @@ class SettingsWindow(QWidget):
         tab_widget.addTab(self._create_general_tab(), "常规")
         tab_widget.addTab(self._create_audio_tab(), "音频")
         tab_widget.addTab(self._create_asr_tab(), "语音识别")
+        tab_widget.addTab(self._create_hotwords_settings_tab(), "热词设置")
+        tab_widget.addTab(self._create_hotwords_edit_tab(), "热词编辑")
         
         # 创建按钮布局
         button_layout = QHBoxLayout()
@@ -58,57 +60,164 @@ class SettingsWindow(QWidget):
     def save_settings(self):
         """保存设置"""
         try:
-            # 保存快捷键设置
-            self.settings_manager.set_hotkey(self.hotkey_combo.currentText())
+            print("开始保存设置...")
             
-            # 保存音频设置
-            device_text = self.input_device.currentText()
-            # 如果是系统默认设备，提取实际的设备名称
-            if device_text.startswith("系统默认 ("):
-                device_name = None  # 使用 None 表示系统默认设备
-            else:
-                device_name = device_text
+            # 收集所有设置到字典中
+            settings_to_save = {}
+            
+            # 收集快捷键设置
+            try:
+                hotkey_value = self.hotkey_combo.currentText()
+                print(f"收集快捷键设置: {hotkey_value}")
+                settings_to_save['hotkey'] = hotkey_value
+            except Exception as e:
+                print(f"收集快捷键设置失败: {e}")
+                raise
+            
+            # 收集音频设备设置
+            try:
+                device_text = self.input_device.currentText()
+                print(f"当前选择的设备: {device_text}")
                 
-            # 更新音频设备
-            if self.audio_capture:
-                self.audio_capture.set_device(device_name)
+                # 如果是系统默认设备，提取实际的设备名称
+                if device_text.startswith("系统默认 ("):
+                    device_name = None  # 使用 None 表示系统默认设备
+                else:
+                    device_name = device_text
                 
-            self.settings_manager.set_setting('audio.input_device', device_name)
+                print(f"收集音频设备设置: {device_name}")
+                settings_to_save['audio.input_device'] = device_name
+            except Exception as e:
+                print(f"收集音频设备设置失败: {e}")
+                # 不抛出异常，继续收集其他设置
             
-            # 将0-20的值转换为0-1000范围后保存
-            volume_value = int(self.volume_threshold.value() * 1000 / 20)
-            self.settings_manager.set_setting('audio.volume_threshold', volume_value)
+            # 收集音频控制设置
+            try:
+                # 将0-20的值转换为0-1000范围后保存
+                volume_value = int(self.volume_threshold.value() * 1000 / 20)
+                print(f"收集音量阈值: {volume_value}")
+                settings_to_save['audio.volume_threshold'] = volume_value
+                
+                # 收集录音时长设置
+                duration_value = self.recording_duration.value()
+                print(f"收集录音时长: {duration_value}")
+                settings_to_save['audio.max_recording_duration'] = duration_value
+            except Exception as e:
+                print(f"收集音频控制设置失败: {e}")
+                raise
             
-            # 保存录音时长设置
-            self.settings_manager.set_setting('audio.max_recording_duration', self.recording_duration.value())
+            # 收集ASR设置
+            try:
+                asr_model_path = self.asr_model_path.text()
+                punc_model_path = self.punc_model_path.text()
+                auto_punctuation = self.auto_punctuation.isChecked()
+                
+                print(f"收集ASR模型路径: {asr_model_path}")
+                print(f"收集标点模型路径: {punc_model_path}")
+                print(f"收集自动标点设置: {auto_punctuation}")
+                
+                settings_to_save['asr.model_path'] = asr_model_path
+                settings_to_save['asr.punc_model_path'] = punc_model_path
+                settings_to_save['asr.auto_punctuation'] = auto_punctuation
+            except Exception as e:
+                print(f"收集ASR设置失败: {e}")
+                raise
             
-            # 保存ASR设置
-            self.settings_manager.set_setting('asr.model_path', 
-                self.asr_model_path.text())
-            self.settings_manager.set_setting('asr.punc_model_path', 
-                self.punc_model_path.text())
-            self.settings_manager.set_setting('asr.auto_punctuation', 
-                self.auto_punctuation.isChecked())
+            # 收集热词设置
+            try:
+                hotword_weight = self.hotword_weight.value()  # 保持为int类型
+                pronunciation_correction = self.enable_pronunciation_correction.isChecked()
+                
+                print(f"收集热词权重: {hotword_weight} (类型: {type(hotword_weight)})")
+                print(f"收集发音纠错设置: {pronunciation_correction}")
+                
+                # 确保热词权重是有效的整数值
+                if not isinstance(hotword_weight, int) or hotword_weight < 10 or hotword_weight > 100:
+                    raise ValueError(f"热词权重值无效: {hotword_weight}，应该是10-100之间的整数")
+                
+                settings_to_save['asr.hotword_weight'] = hotword_weight
+                settings_to_save['asr.enable_pronunciation_correction'] = pronunciation_correction
+            except Exception as e:
+                print(f"收集热词设置失败: {e}")
+                import traceback
+                print(f"热词设置错误详情: {traceback.format_exc()}")
+                raise
             
-            # 保存热词设置
-            self.settings_manager.set_setting('asr.hotword_weight', 
-                float(self.hotword_weight.value()))
-            self.settings_manager.set_setting('asr.enable_pronunciation_correction', 
-                self.enable_pronunciation_correction.isChecked())
+            # 批量保存所有设置
+            print(f"批量保存设置: {settings_to_save}")
+            if not self.settings_manager.set_multiple_settings(settings_to_save):
+                raise Exception("批量保存设置失败")
             
-            self.settings_saved.emit()
-            print("✓ 设置已保存")
+            # 应用音频设备设置
+            try:
+                device_text = self.input_device.currentText()
+                if device_text.startswith("系统默认 ("):
+                    device_name = None
+                else:
+                    device_name = device_text
+                
+                if self.audio_capture:
+                    print("更新 AudioCapture 设备...")
+                    success = self.audio_capture.set_device(device_name)
+                    if not success:
+                        print("警告: 音频设备设置失败，但设置已保存")
+                else:
+                    print("警告: audio_capture 实例不存在")
+            except Exception as e:
+                print(f"应用音频设备设置失败: {e}")
+                # 不抛出异常，因为设置已经保存成功
             
-            # 关闭设置窗口
-            self.close()
+            # 发出保存完成信号（使用线程安全的方式）
+            try:
+                print("发出设置保存信号...")
+                # 使用 QTimer.singleShot 确保信号在主线程中发射
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.settings_saved.emit())
+                print("✓ 设置已保存")
+            except Exception as e:
+                print(f"发出保存信号失败: {e}")
+                # 不抛出异常，因为设置已经保存成功
+            
+            # 直接关闭设置窗口，不显示成功提示
+            try:
+                print("设置保存成功，关闭设置窗口...")
+                self.close()
+            except Exception as e:
+                print(f"关闭窗口失败: {e}")
+                # 不抛出异常
             
         except Exception as e:
-            print(f"❌ 保存设置失败: {e}")
+            import traceback
+            error_msg = f"保存设置失败: {e}\n{traceback.format_exc()}"
+            print(f"❌ {error_msg}")
+            
+            # 显示错误对话框
+            try:
+                QMessageBox.critical(self, "保存失败", f"保存设置时发生错误:\n\n{str(e)}\n\n请检查控制台输出获取详细信息。")
+            except Exception as dialog_error:
+                print(f"显示错误对话框失败: {dialog_error}")
 
     def closeEvent(self, event):
         """窗口关闭事件"""
-        self._cleanup_audio()
-        event.accept()
+        try:
+            # 清理音频资源
+            self._cleanup_audio()
+            
+            # 断开所有信号连接，防止悬空指针
+            try:
+                self.settings_changed.disconnect()
+            except:
+                pass
+            try:
+                self.settings_saved.disconnect()
+            except:
+                pass
+            
+            print("设置窗口已关闭")
+        except Exception as e:
+            print(f"关闭设置窗口时出错: {e}")
+        finally:
+            event.accept()
 
     def _cleanup_audio(self):
         """清理音频资源"""
@@ -300,12 +409,22 @@ class SettingsWindow(QWidget):
         recognition_layout.addWidget(self.real_time_display)
         recognition_group.setLayout(recognition_layout)
         
-        # 热词设置
-        hotword_group = QGroupBox("热词设置")
-        hotword_layout = QVBoxLayout()
+        layout.addWidget(model_group)
+        layout.addWidget(recognition_group)
+        layout.addStretch()
+        tab.setLayout(layout)
+        return tab
+
+    def _create_hotwords_settings_tab(self):
+        """创建热词设置标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
         
         # 热词权重设置
-        weight_layout = QHBoxLayout()
+        weight_group = QGroupBox("热词权重")
+        weight_layout = QVBoxLayout()
+        
+        weight_slider_layout = QHBoxLayout()
         weight_label = QLabel("热词权重：")
         self.hotword_weight_value_label = QLabel("80")
         self.hotword_weight_value_label.setMinimumWidth(30)
@@ -321,16 +440,23 @@ class SettingsWindow(QWidget):
             lambda value: self.hotword_weight_value_label.setText(str(value))
         )
         
-        weight_layout.addWidget(weight_label)
-        weight_layout.addWidget(self.hotword_weight)
-        weight_layout.addWidget(self.hotword_weight_value_label)
+        weight_slider_layout.addWidget(weight_label)
+        weight_slider_layout.addWidget(self.hotword_weight)
+        weight_slider_layout.addWidget(self.hotword_weight_value_label)
         
         # 添加帮助文本
         weight_help = QLabel("数值越大，热词识别优先级越高。建议值：60-90")
         weight_help.setStyleSheet("color: gray; font-size: 12px;")
         weight_help.setWordWrap(True)
         
+        weight_layout.addLayout(weight_slider_layout)
+        weight_layout.addWidget(weight_help)
+        weight_group.setLayout(weight_layout)
+        
         # 发音纠错设置
+        correction_group = QGroupBox("发音纠错")
+        correction_layout = QVBoxLayout()
+        
         self.enable_pronunciation_correction = QCheckBox("启用发音相似词纠错")
         self.enable_pronunciation_correction.setChecked(
             self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
@@ -340,11 +466,28 @@ class SettingsWindow(QWidget):
         correction_help.setStyleSheet("color: gray; font-size: 12px;")
         correction_help.setWordWrap(True)
         
+        correction_layout.addWidget(self.enable_pronunciation_correction)
+        correction_layout.addWidget(correction_help)
+        correction_group.setLayout(correction_layout)
+        
+        layout.addWidget(weight_group)
+        layout.addWidget(correction_group)
+        layout.addStretch()
+        tab.setLayout(layout)
+        return tab
+
+    def _create_hotwords_edit_tab(self):
+        """创建热词编辑标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
         # 热词编辑区域
-        hotword_edit_label = QLabel("热词列表：")
+        hotword_edit_group = QGroupBox("热词列表")
+        hotword_edit_layout = QVBoxLayout()
+        
         self.hotword_text_edit = QTextEdit()
         self.hotword_text_edit.setPlaceholderText("每行输入一个热词，以#开头的行为注释")
-        self.hotword_text_edit.setMaximumHeight(150)
+        self.hotword_text_edit.setMinimumHeight(300)
         self.hotword_text_edit.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #ccc;
@@ -357,34 +500,28 @@ class SettingsWindow(QWidget):
         
         # 热词编辑按钮
         hotword_button_layout = QHBoxLayout()
-        load_hotwords_btn = QPushButton("重新加载")
-        load_hotwords_btn.clicked.connect(self._load_hotwords)
         save_hotwords_btn = QPushButton("保存热词")
         save_hotwords_btn.clicked.connect(self._save_hotwords)
         
-        hotword_button_layout.addWidget(load_hotwords_btn)
         hotword_button_layout.addWidget(save_hotwords_btn)
         hotword_button_layout.addStretch()
         
-        hotword_edit_help = QLabel("修改后请点击'保存热词'按钮保存更改")
+        hotword_edit_help = QLabel("修改后请点击'保存热词'按钮保存更改，重新开始录音后生效")
         hotword_edit_help.setStyleSheet("color: gray; font-size: 12px;")
         hotword_edit_help.setWordWrap(True)
         
-        hotword_layout.addLayout(weight_layout)
-        hotword_layout.addWidget(weight_help)
-        hotword_layout.addWidget(self.enable_pronunciation_correction)
-        hotword_layout.addWidget(correction_help)
-        hotword_layout.addWidget(hotword_edit_label)
-        hotword_layout.addWidget(self.hotword_text_edit)
-        hotword_layout.addLayout(hotword_button_layout)
-        hotword_layout.addWidget(hotword_edit_help)
-        hotword_group.setLayout(hotword_layout)
+        hotword_edit_layout.addWidget(self.hotword_text_edit)
+        hotword_edit_layout.addLayout(hotword_button_layout)
+        hotword_edit_layout.addWidget(hotword_edit_help)
+        hotword_edit_group.setLayout(hotword_edit_layout)
         
-        layout.addWidget(model_group)
-        layout.addWidget(recognition_group)
-        layout.addWidget(hotword_group)
+        layout.addWidget(hotword_edit_group)
         layout.addStretch()
         tab.setLayout(layout)
+        
+        # 自动加载热词
+        self._load_hotwords()
+        
         return tab
 
     def _browse_model(self, model_type):

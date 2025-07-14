@@ -1,3 +1,4 @@
+prompt
 cursor
 禁音
 行高
@@ -5,3 +6,5 @@ cursor
 热词
 HTML
 facebook
+tab
+闪退

@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings
-from PyQt6.QtGui import QIcon, QFont, QAction
+from PyQt6.QtGui import QIcon, QFont, QAction, QKeySequence, QShortcut
 from .components.modern_button import ModernButton
 from .components.modern_list import ModernListWidget
 import os
@@ -79,11 +79,18 @@ class MainWindow(QMainWindow):
         # 初始化状态
         self.state_manager = None
         
+        # 初始化拖动相关的状态变量
+        self._is_dragging = False
+        self._drag_start_pos = None
+        
         # 恢复窗口位置
         self.restore_window_position()
         
         # 加载历史记录
         self.load_history()
+        
+        # 设置快捷键
+        self.setup_shortcuts()
         
         # 标记初始化完成
         self._initialization_complete = True
@@ -136,12 +143,26 @@ class MainWindow(QMainWindow):
         # 添加底部按钮区域
         self.setup_bottom_bar(main_layout)
         
-        # 保存拖动相关的状态
-        self._is_dragging = False
-        self._drag_start_pos = None
-        
         # 设置焦点策略，使窗口可以接收键盘事件
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    
+    def setup_shortcuts(self):
+        """设置快捷键"""
+        # Command+逗号 打开设置面板
+        settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
+        settings_shortcut.activated.connect(self.open_settings)
+        
+        # 在 macOS 上使用 Cmd+逗号
+        if sys.platform == 'darwin':
+            settings_shortcut_mac = QShortcut(QKeySequence("Meta+,"), self)
+            settings_shortcut_mac.activated.connect(self.open_settings)
+    
+    def open_settings(self):
+        """打开设置窗口"""
+        if self.app_instance and hasattr(self.app_instance, 'show_settings'):
+            self.app_instance.show_settings()
+        else:
+            print("无法打开设置窗口：应用程序实例不可用")
     
     def setup_title_bar(self):
         """设置标题栏"""
@@ -247,19 +268,32 @@ class MainWindow(QMainWindow):
     
     def _on_title_bar_mouse_press(self, event):
         """处理标题栏的鼠标按下事件"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._is_dragging = True
-            self._drag_start_pos = event.pos()
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._is_dragging = True
+                self._drag_start_pos = event.pos()
+        except Exception as e:
+            print(f"标题栏鼠标按下事件处理错误: {e}")
+            self._is_dragging = False
+            self._drag_start_pos = None
     
     def _on_title_bar_mouse_move(self, event):
         """处理标题栏的鼠标移动事件"""
-        if self._is_dragging and self._drag_start_pos is not None:
-            self.move(self.pos() + event.pos() - self._drag_start_pos)
+        try:
+            if self._is_dragging and self._drag_start_pos is not None:
+                self.move(self.pos() + event.pos() - self._drag_start_pos)
+        except Exception as e:
+            print(f"标题栏鼠标移动事件处理错误: {e}")
+            self._is_dragging = False
+            self._drag_start_pos = None
     
     def mouseReleaseEvent(self, event):
         """处理鼠标释放事件"""
-        self._is_dragging = False
-        self._drag_start_pos = None
+        try:
+            self._is_dragging = False
+            self._drag_start_pos = None
+        except Exception as e:
+            print(f"鼠标释放事件处理错误: {e}")
     
     def add_to_history(self, text):
         """添加新的识别结果到历史记录"""

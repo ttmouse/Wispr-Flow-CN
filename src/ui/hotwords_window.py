@@ -160,22 +160,31 @@ class ModernTitleBar(QWidget):
         """
         当鼠标在标题栏区域被按下时，记录按下的位置用于拖拽。
         """
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._is_dragging = True
-            self._drag_start_pos = event.pos()
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._is_dragging = True
+                self._drag_start_pos = event.pos()
+        except Exception as e:
+            print(f"标题栏鼠标按下事件错误: {e}")
 
     def mouseMoveEvent(self, event) -> None:
         """
         当鼠标移动时，如果处于拖拽状态，则移动父窗体的位置。
         """
-        if self._is_dragging:
-            self.parent.move(self.parent.pos() + event.pos() - self._drag_start_pos)
+        try:
+            if self._is_dragging:
+                self.parent.move(self.parent.pos() + event.pos() - self._drag_start_pos)
+        except Exception as e:
+            print(f"标题栏鼠标移动事件错误: {e}")
 
     def mouseReleaseEvent(self, event) -> None:
         """
         当鼠标释放时，结束拖拽状态。
         """
-        self._is_dragging = False
+        try:
+            self._is_dragging = False
+        except Exception as e:
+            print(f"标题栏鼠标释放事件错误: {e}")
 
 
 class ModernDialog(QDialog):
@@ -313,4 +322,4 @@ class HotwordsWindow(ModernDialog):
         在窗口显示时，将焦点定位到文本框并调用父类事件。
         """
         super().showEvent(event)
-        self.text_edit.setFocus() 
+        self.text_edit.setFocus()
