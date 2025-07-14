@@ -3,12 +3,22 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings
 from PyQt6.QtGui import QIcon, QFont, QAction
 from .components.modern_button import ModernButton
 from .components.modern_list import ModernListWidget
-from .hotwords_window import HotwordsWindow
 import os
 import sys
 import json
+import re
 from datetime import datetime
 from config import APP_VERSION  # 使用绝对导入
+
+def clean_html_tags(text):
+    """清理HTML标签，返回纯文本"""
+    if not text:
+        return text
+    # 移除HTML标签
+    clean_text = re.sub(r'<[^>]+>', '', text)
+    # 解码HTML实体
+    clean_text = clean_text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+    return clean_text
 
 class MainWindow(QMainWindow):
     # 常量定义
@@ -20,6 +30,7 @@ class MainWindow(QMainWindow):
     def __init__(self, app_instance=None):
         super().__init__()
         self.app_instance = app_instance  # 保存应用程序实例的引用
+        self._initialization_complete = False  # 标志初始化是否完成
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(400, 600)
         
@@ -73,6 +84,9 @@ class MainWindow(QMainWindow):
         
         # 加载历史记录
         self.load_history()
+        
+        # 标记初始化完成
+        self._initialization_complete = True
     
     def setup_ui(self, main_layout):
         """设置UI组件"""
@@ -250,14 +264,29 @@ class MainWindow(QMainWindow):
     def add_to_history(self, text):
         """添加新的识别结果到历史记录"""
         if text and text.strip():
+            # 获取纯文本用于重复检查
+            clean_text = clean_html_tags(text)
+            
             # 检查是否已存在相同文本，避免重复
             for i in range(self.history_list.count()):
                 existing_item = self.history_list.item(i)
-                if existing_item and existing_item.text() == text:
-                    return  # 已存在，不重复添加
+                if existing_item:
+                    # 获取实际的widget来比较文本
+                    widget = self.history_list.itemWidget(existing_item)
+                    if widget and hasattr(widget, 'getText'):
+                        existing_clean_text = clean_html_tags(widget.getText())
+                        if existing_clean_text == clean_text:
+                            return  # 已存在，不重复添加
             
-            item = QListWidgetItem(text)
-            self.history_list.addItem(item)  # ModernListWidget会自动添加到顶部
+            # 直接使用传入的文本（可能已包含热词高亮）
+            # 如果文本中没有HTML标签，则应用热词高亮
+            if '<' not in text:
+                highlighted_text = self._apply_hotword_highlight(text)
+            else:
+                highlighted_text = text
+            
+            # 传递高亮后的文本给ModernListWidget
+            self.history_list.addItem(highlighted_text)
             
             # 只有在不是加载历史记录时才保存
             if not self._loading_history:
@@ -282,10 +311,51 @@ class MainWindow(QMainWindow):
         self.state_manager = state_manager
         if state_manager:
             self.update_status("就绪")
+            # 重新应用热词高亮到已加载的历史记录
+            self._reapply_hotword_highlight_to_history()
+    
+    def _reapply_hotword_highlight_to_history(self):
+        """重新应用热词高亮到所有历史记录项"""
+        try:
+            if not hasattr(self, 'state_manager') or not self.state_manager:
+                return
+            
+            print(f"开始重新应用热词高亮，历史记录项数量: {self.history_list.count()}")
+            
+            # 遍历所有历史记录项
+            for i in range(self.history_list.count()):
+                item = self.history_list.item(i)
+                if item:
+                    # 获取原始文本（去除HTML标签）
+                    widget = self.history_list.itemWidget(item)
+                    if widget and hasattr(widget, 'getText'):
+                        original_text = clean_html_tags(widget.getText())
+                    else:
+                        original_text = clean_html_tags(item.text())
+                    
+                    # 重新应用热词高亮
+                    highlighted_text = self._apply_hotword_highlight(original_text)
+                    
+                    # 更新widget的显示内容
+                    if widget and hasattr(widget, 'setText'):
+                        widget.setText(highlighted_text)
+                        print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
+            
+            print("✓ 热词高亮重新应用完成")
+        except Exception as e:
+            print(f"❌ 重新应用热词高亮失败: {e}")
+            import traceback
+            print(traceback.format_exc())
     
     def _on_history_item_clicked(self, item):
         """处理历史记录项点击事件"""
-        text = item.text()
+        # 获取实际的widget来获取HTML文本
+        widget = self.history_list.itemWidget(item)
+        if widget and hasattr(widget, 'getText'):
+            text = widget.getText()
+        else:
+            text = item.text()
+        
         if text:
             self.history_item_clicked.emit(text)
     
@@ -308,18 +378,14 @@ class MainWindow(QMainWindow):
             geo.moveCenter(center)
             self.move(geo.topLeft())
     
-    def show_hotwords_window(self):
-        """显示热词编辑窗口"""
-        dialog = HotwordsWindow(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 如果用户点击了保存，重新加载热词
-            if hasattr(self, 'state_manager'):
-                self.state_manager.reload_hotwords()
+
     
     def moveEvent(self, event):
         """处理窗口移动事件，保存新位置"""
         super().moveEvent(event)
-        self.save_window_position()
+        # 只有在初始化完成后才保存窗口位置，避免初始化期间的移动事件导致崩溃
+        if hasattr(self, '_initialization_complete') and self._initialization_complete:
+            self.save_window_position()
     
     def save_window_position(self):
         """保存窗口位置"""
@@ -386,15 +452,25 @@ class MainWindow(QMainWindow):
         """保存历史记录到文件"""
         try:
             history_data = []
-            # 限制历史记录数量为100条
-            max_history = 100
+            # 限制历史记录数量为30条
+            max_history = 30
             count = min(self.history_list.count(), max_history)
             
             for i in range(count):
                 item = self.history_list.item(i)
                 if item:
+                    # 获取实际的widget来获取HTML文本
+                    widget = self.history_list.itemWidget(item)
+                    if widget and hasattr(widget, 'getText'):
+                        text = widget.getText()
+                    else:
+                        text = item.text()
+                    
+                    # 清理HTML标签，保存纯文本
+                    clean_text = clean_html_tags(text)
+                    
                     history_data.append({
-                        'text': item.text(),
+                        'text': clean_text,
                         'timestamp': datetime.now().isoformat()
                     })
             
@@ -406,34 +482,88 @@ class MainWindow(QMainWindow):
     def load_history(self):
         """从文件加载历史记录"""
         try:
+            print(f"开始加载历史记录，文件路径: {self.history_file}")
             if os.path.exists(self.history_file):
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     history_data = json.load(f)
                 
+                print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
+                
                 # 清空现有历史记录
                 self.history_list.clear()
+                print("✓ 已清空现有历史记录列表")
                 
                 # 按时间倒序排列（最新的在前）
                 if history_data:
                     # 如果有时间戳，按时间排序
                     if isinstance(history_data[0], dict) and 'timestamp' in history_data[0]:
                         history_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                        print("✓ 已按时间戳排序历史记录")
                     
+                    loaded_count = 0
                     for entry in history_data:
                         if isinstance(entry, dict) and 'text' in entry:
                             # 临时禁用保存，避免加载时重复保存
                             self._loading_history = True
-                            item = QListWidgetItem(entry['text'])
-                            self.history_list.addItem(item)
+                            # 加载时重新应用热词高亮
+                            text_with_highlight = self._apply_hotword_highlight(entry['text'])
+                            # 直接传递字符串给ModernListWidget，让它创建支持HTML的widget
+                            self.history_list.addItem(text_with_highlight)
                             self._loading_history = False
+                            loaded_count += 1
+                            print(f"✓ 已加载历史记录 {loaded_count}: {entry['text'][:50]}...")
                         elif isinstance(entry, str):
                             # 兼容旧格式
                             self._loading_history = True
-                            item = QListWidgetItem(entry)
-                            self.history_list.addItem(item)
+                            # 加载时重新应用热词高亮
+                            text_with_highlight = self._apply_hotword_highlight(entry)
+                            # 直接传递字符串给ModernListWidget，让它创建支持HTML的widget
+                            self.history_list.addItem(text_with_highlight)
                             self._loading_history = False
+                            loaded_count += 1
+                            print(f"✓ 已加载历史记录 {loaded_count}: {entry[:50]}...")
+                    
+                    print(f"✓ 历史记录加载完成，共加载 {loaded_count} 条记录")
+                    print(f"✓ 当前列表项数量: {self.history_list.count()}")
+                else:
+                    print("⚠️ 历史记录文件为空")
+            else:
+                print(f"⚠️ 历史记录文件不存在: {self.history_file}")
         except Exception as e:
-            print(f"加载历史记录失败: {e}")
+            print(f"❌ 加载历史记录失败: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _apply_hotword_highlight(self, text):
+        """应用热词高亮（使用简单的加粗效果）"""
+        if not text or not hasattr(self, 'state_manager') or not self.state_manager:
+            return text
+        
+        try:
+            # 获取热词列表
+            hotwords = self.state_manager.get_hotwords() if hasattr(self.state_manager, 'get_hotwords') else []
+            if not hotwords:
+                return text
+            
+            highlighted_text = text
+            # 按长度降序排列热词，避免短词覆盖长词
+            sorted_hotwords = sorted(hotwords, key=len, reverse=True)
+            
+            for hotword in sorted_hotwords:
+                if hotword and hotword.strip():
+                    # 使用正则表达式进行不区分大小写的替换，使用简单的加粗标签
+                    pattern = re.escape(hotword.strip())
+                    highlighted_text = re.sub(
+                        f'({pattern})',
+                        r'<b>\1</b>',
+                        highlighted_text,
+                        flags=re.IGNORECASE
+                    )
+            
+            return highlighted_text
+        except Exception as e:
+            print(f"应用热词高亮失败: {e}")
+            return text
     
     def quit_application(self):
         """退出应用程序"""

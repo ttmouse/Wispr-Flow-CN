@@ -31,6 +31,9 @@ class HotkeyManager:
         
         # 从设置管理器获取快捷键类型
         self.hotkey_type = self.settings_manager.get_hotkey() if self.settings_manager else 'fn'
+        
+        # 资源清理标志
+        self._cleanup_done = False
 
     def set_press_callback(self, callback):
         self.press_callback = callback
@@ -380,3 +383,37 @@ class HotkeyManager:
             self.logger.error(f"停止热键监听器失败: {e}")
         finally:
             self.reset_state()  # 确保状态被重置
+    
+    def cleanup(self):
+        """清理所有资源"""
+        if self._cleanup_done:
+            return
+            
+        try:
+            self.logger.info("开始清理热键管理器资源")
+            
+            # 停止监听
+            self.stop_listening()
+            
+            # 等待并清理所有延迟线程
+            for thread in self.delayed_threads:
+                if thread.is_alive():
+                    thread.join(timeout=0.5)
+            self.delayed_threads.clear()
+            
+            # 清理回调
+            self.press_callback = None
+            self.release_callback = None
+            
+            self._cleanup_done = True
+            self.logger.info("热键管理器资源清理完成")
+            
+        except Exception as e:
+            self.logger.error(f"清理热键管理器资源失败: {e}")
+    
+    def __del__(self):
+        """析构函数，确保资源被释放"""
+        try:
+            self.cleanup()
+        except:
+            pass

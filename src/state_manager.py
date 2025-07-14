@@ -105,3 +105,9 @@ class StateManager(QObject):
         """重新加载热词"""
         if hasattr(self, 'funasr_engine'):
             self.funasr_engine.reload_hotwords()
+    
+    def get_hotwords(self):
+        """获取热词列表"""
+        if hasattr(self, 'funasr_engine'):
+            return getattr(self.funasr_engine, 'hotwords', [])
+        return []

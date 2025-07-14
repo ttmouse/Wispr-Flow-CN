@@ -1,3 +1,3 @@
 """配置文件"""
 
-APP_VERSION = "1.0.55" 
+APP_VERSION = "1.0.75" 

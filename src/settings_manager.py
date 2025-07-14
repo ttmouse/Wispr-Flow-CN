@@ -18,6 +18,8 @@ class SettingsManager:
             'model_path': '',          # ASR模型路径
             'punc_model_path': '',     # 标点符号模型路径
             'auto_punctuation': True,  # 自动添加标点
+            'hotword_weight': 80.0,    # 热词权重 (0-100)
+            'enable_pronunciation_correction': True,  # 启用发音相似词纠错
         },
         'cache': {
             'permissions': {
@@ -198,6 +200,22 @@ class SettingsManager:
             'accessibility': self.get_setting('cache.permissions.accessibility', False),
             'microphone': self.get_setting('cache.permissions.microphone', False)
         }
+    
+    def get_hotword_weight(self) -> float:
+        """获取热词权重"""
+        return self.get_setting('asr.hotword_weight', 80.0)
+    
+    def set_hotword_weight(self, weight: float) -> bool:
+        """设置热词权重"""
+        return self.set_setting('asr.hotword_weight', weight)
+    
+    def get_pronunciation_correction_enabled(self) -> bool:
+        """获取发音纠错启用状态"""
+        return self.get_setting('asr.enable_pronunciation_correction', True)
+    
+    def set_pronunciation_correction_enabled(self, enabled: bool) -> bool:
+        """设置发音纠错启用状态"""
+        return self.set_setting('asr.enable_pronunciation_correction', enabled)
 
     def get_models_cache(self) -> Dict[str, bool]:
         """获取模型缓存状态"""

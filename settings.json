@@ -11,6 +11,8 @@
     "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
     "auto_punctuation": true,
+    "hotword_weight": 96.0,
+    "enable_pronunciation_correction": true,
     "real_time_display": true
   },
   "cache": {

@@ -18,6 +18,16 @@ import re
 import subprocess
 from audio_manager import AudioManager
 from config import APP_VERSION  # 从config导入版本号
+
+def clean_html_tags(text):
+    """清理HTML标签，返回纯文本"""
+    if not text:
+        return text
+    # 移除HTML标签
+    clean_text = re.sub(r'<[^>]+>', '', text)
+    # 解码HTML实体
+    clean_text = clean_text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+    return clean_text
 import atexit
 import multiprocessing
 import logging
@@ -114,9 +124,7 @@ class Application(QObject):
             settings_action = tray_menu.addAction("快捷键设置...")
             settings_action.triggered.connect(self.show_settings)
             
-            # 编辑热词
-            edit_hotwords_action = tray_menu.addAction("编辑热词...")
-            edit_hotwords_action.triggered.connect(lambda: self.main_window.show_hotwords_window())
+
             
             # 检查权限
             check_permissions_action = tray_menu.addAction("检查权限")
@@ -209,7 +217,7 @@ class Application(QObject):
                         self.main_window.update_loading_status("正在加载语音识别模型...")
                         print("正在加载语音识别模型...")
                         try:
-                            self.funasr_engine = FunASREngine()
+                            self.funasr_engine = FunASREngine(self.settings_manager)
                             model_paths = self.funasr_engine.get_model_paths()
                             self.settings_manager.update_model_paths(model_paths)
                             asr_available = bool(model_paths.get('asr_model_path'))
@@ -225,7 +233,7 @@ class Application(QObject):
                         cache = self.settings_manager.get_models_cache()
                         if cache['asr_available']:
                             try:
-                                self.funasr_engine = FunASREngine()
+                                self.funasr_engine = FunASREngine(self.settings_manager)
                                 print("✓ 基于缓存快速初始化语音识别")
                             except Exception as e:
                                 print(f"⚠️  缓存显示模型可用但初始化失败: {e}")
@@ -416,12 +424,24 @@ class Application(QObject):
             if hasattr(self, 'audio_capture'):
                 self.audio_capture.cleanup()
             
+            # 清理FunASR引擎资源
+            if hasattr(self, 'funasr_engine') and self.funasr_engine:
+                self.funasr_engine.cleanup()
+            
+            # 清理热键管理器资源
+            if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
+                self.hotkey_manager.cleanup()
+            
             # 清理其他资源
             if hasattr(self, 'state_manager'):
                 self.state_manager.cleanup()
             
             # 清理多进程资源
-            multiprocessing.current_process()._clean()
+            try:
+                import multiprocessing
+                multiprocessing.current_process()._clean()
+            except Exception as e:
+                print(f"❌ 清理多进程资源失败: {e}")
             
             print("✓ 资源清理完成")
         except Exception as e:
@@ -745,12 +765,15 @@ class Application(QObject):
                 print("⚠️ 剪贴板管理器尚未就绪，无法执行粘贴操作")
                 return
             
+            # 清理HTML标签，确保复制纯文本
+            clean_text = clean_html_tags(text)
+            
             # 确保文本已复制到剪贴板
-            self.clipboard_manager.copy_to_clipboard(text)
+            self.clipboard_manager.copy_to_clipboard(clean_text)
             
             # 执行粘贴操作
             self.clipboard_manager.paste_to_current_app()
-            print(f"✓ 已粘贴文本: {text[:50]}{'...' if len(text) > 50 else ''}")
+            print(f"✓ 已粘贴文本: {clean_text[:50]}{'...' if len(clean_text) > 50 else ''}")
             
         except Exception as e:
             print(f"❌ 粘贴操作失败: {e}")
@@ -759,26 +782,32 @@ class Application(QObject):
     def on_transcription_done(self, text):
         """转写完成的回调"""
         if text and text.strip():
+            # 清理HTML标签用于剪贴板复制
+            clean_text = clean_html_tags(text)
+            
             # 1. 先复制到剪贴板（如果剪贴板管理器已就绪）
             if self.clipboard_manager:
-                self.clipboard_manager.copy_to_clipboard(text)
+                self.clipboard_manager.copy_to_clipboard(clean_text)
             # 2. 更新UI并添加到历史记录（无论窗口是否可见）
-            self.main_window.display_result(text)
+            self.main_window.display_result(text)  # UI显示保留HTML格式
             # 3. 延迟执行粘贴操作
-            self._pending_paste_text = text
+            self._pending_paste_text = clean_text  # 粘贴使用纯文本
             QTimer.singleShot(100, self._delayed_paste)
             # 打印日志
             print(f"✓ {text}")
     
     def on_history_item_clicked(self, text):
         """处理历史记录点击事件"""
+        # 清理HTML标签
+        clean_text = clean_html_tags(text)
+        
         # 1. 先复制到剪贴板（如果剪贴板管理器已就绪）
         if self.clipboard_manager:
-            self.clipboard_manager.copy_to_clipboard(text)
+            self.clipboard_manager.copy_to_clipboard(clean_text)
         # 2. 更新UI
-        self.update_ui_signal.emit("准备粘贴历史记录", text)
+        self.update_ui_signal.emit("准备粘贴历史记录", clean_text)
         # 3. 延迟执行粘贴操作
-        self._pending_paste_text = text
+        self._pending_paste_text = clean_text
         QTimer.singleShot(100, self._delayed_paste)
 
     def update_ui(self, status, result):

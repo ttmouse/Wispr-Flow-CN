@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QComboBox, QPushButton, QGroupBox,
                             QCheckBox, QSlider, QTabWidget,
-                            QLineEdit, QFileDialog)
+                            QLineEdit, QFileDialog, QTextEdit, QMessageBox)
 from PyQt6.QtCore import Qt, pyqtSignal
+from pathlib import Path
 import pyaudio
 
 class SettingsWindow(QWidget):
@@ -88,6 +89,12 @@ class SettingsWindow(QWidget):
                 self.punc_model_path.text())
             self.settings_manager.set_setting('asr.auto_punctuation', 
                 self.auto_punctuation.isChecked())
+            
+            # 保存热词设置
+            self.settings_manager.set_setting('asr.hotword_weight', 
+                float(self.hotword_weight.value()))
+            self.settings_manager.set_setting('asr.enable_pronunciation_correction', 
+                self.enable_pronunciation_correction.isChecked())
             
             self.settings_saved.emit()
             print("✓ 设置已保存")
@@ -293,8 +300,89 @@ class SettingsWindow(QWidget):
         recognition_layout.addWidget(self.real_time_display)
         recognition_group.setLayout(recognition_layout)
         
+        # 热词设置
+        hotword_group = QGroupBox("热词设置")
+        hotword_layout = QVBoxLayout()
+        
+        # 热词权重设置
+        weight_layout = QHBoxLayout()
+        weight_label = QLabel("热词权重：")
+        self.hotword_weight_value_label = QLabel("80")
+        self.hotword_weight_value_label.setMinimumWidth(30)
+        
+        self.hotword_weight = QSlider(Qt.Orientation.Horizontal)
+        self.hotword_weight.setRange(10, 100)  # 10-100
+        self.hotword_weight.setValue(int(self.settings_manager.get_setting('asr.hotword_weight', 80)))
+        self.hotword_weight.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.hotword_weight.setTickInterval(10)
+        
+        # 连接滑块值变化信号
+        self.hotword_weight.valueChanged.connect(
+            lambda value: self.hotword_weight_value_label.setText(str(value))
+        )
+        
+        weight_layout.addWidget(weight_label)
+        weight_layout.addWidget(self.hotword_weight)
+        weight_layout.addWidget(self.hotword_weight_value_label)
+        
+        # 添加帮助文本
+        weight_help = QLabel("数值越大，热词识别优先级越高。建议值：60-90")
+        weight_help.setStyleSheet("color: gray; font-size: 12px;")
+        weight_help.setWordWrap(True)
+        
+        # 发音纠错设置
+        self.enable_pronunciation_correction = QCheckBox("启用发音相似词纠错")
+        self.enable_pronunciation_correction.setChecked(
+            self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
+        )
+        
+        correction_help = QLabel("自动将发音相似的词纠正为热词（如：含高→行高）")
+        correction_help.setStyleSheet("color: gray; font-size: 12px;")
+        correction_help.setWordWrap(True)
+        
+        # 热词编辑区域
+        hotword_edit_label = QLabel("热词列表：")
+        self.hotword_text_edit = QTextEdit()
+        self.hotword_text_edit.setPlaceholderText("每行输入一个热词，以#开头的行为注释")
+        self.hotword_text_edit.setMaximumHeight(150)
+        self.hotword_text_edit.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: monospace;
+                font-size: 13px;
+            }
+        """)
+        
+        # 热词编辑按钮
+        hotword_button_layout = QHBoxLayout()
+        load_hotwords_btn = QPushButton("重新加载")
+        load_hotwords_btn.clicked.connect(self._load_hotwords)
+        save_hotwords_btn = QPushButton("保存热词")
+        save_hotwords_btn.clicked.connect(self._save_hotwords)
+        
+        hotword_button_layout.addWidget(load_hotwords_btn)
+        hotword_button_layout.addWidget(save_hotwords_btn)
+        hotword_button_layout.addStretch()
+        
+        hotword_edit_help = QLabel("修改后请点击'保存热词'按钮保存更改")
+        hotword_edit_help.setStyleSheet("color: gray; font-size: 12px;")
+        hotword_edit_help.setWordWrap(True)
+        
+        hotword_layout.addLayout(weight_layout)
+        hotword_layout.addWidget(weight_help)
+        hotword_layout.addWidget(self.enable_pronunciation_correction)
+        hotword_layout.addWidget(correction_help)
+        hotword_layout.addWidget(hotword_edit_label)
+        hotword_layout.addWidget(self.hotword_text_edit)
+        hotword_layout.addLayout(hotword_button_layout)
+        hotword_layout.addWidget(hotword_edit_help)
+        hotword_group.setLayout(hotword_layout)
+        
         layout.addWidget(model_group)
         layout.addWidget(recognition_group)
+        layout.addWidget(hotword_group)
         layout.addStretch()
         tab.setLayout(layout)
         return tab
@@ -341,6 +429,17 @@ class SettingsWindow(QWidget):
         self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path'))
         self.punc_model_path.setText(self.settings_manager.get_setting('asr.punc_model_path'))
         self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation'))
+        
+        # 更新热词设置
+        hotword_weight = int(self.settings_manager.get_setting('asr.hotword_weight', 80))
+        self.hotword_weight.setValue(hotword_weight)
+        self.hotword_weight_value_label.setText(str(hotword_weight))
+        self.enable_pronunciation_correction.setChecked(
+            self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
+        )
+        
+        # 加载热词内容
+        self._load_hotwords()
 
     def _get_audio_devices(self):
         """获取系统中所有可用的音频输入设备"""
@@ -427,3 +526,37 @@ class SettingsWindow(QWidget):
             # 确保至少有一个选项
             if self.input_device.count() == 0:
                 self.input_device.addItem("系统默认")
+    
+    def _load_hotwords(self):
+        """从文件加载热词到文本编辑框"""
+        try:
+            hotwords_file = Path("resources") / "hotwords.txt"
+            if hotwords_file.exists():
+                content = hotwords_file.read_text(encoding="utf-8")
+                self.hotword_text_edit.setText(content)
+            else:
+                self.hotword_text_edit.setText("# 热词列表\n# 每行一个热词，以#开头的行为注释\n")
+        except Exception as e:
+            print(f"❌ 加载热词失败: {e}")
+            QMessageBox.warning(self, "错误", f"加载热词失败: {e}")
+    
+    def _save_hotwords(self):
+        """保存热词到文件"""
+        try:
+            content = self.hotword_text_edit.toPlainText()
+            hotwords_file = Path("resources") / "hotwords.txt"
+            hotwords_file.parent.mkdir(exist_ok=True)
+            hotwords_file.write_text(content, encoding="utf-8")
+            
+            # 通知用户保存成功
+            QMessageBox.information(self, "成功", "热词已保存成功！\n\n重新开始录音后生效。")
+            print("✓ 热词已保存")
+            
+            # 如果有状态管理器，重新加载热词
+            if hasattr(self, 'parent') and self.parent and hasattr(self.parent, 'state_manager'):
+                if hasattr(self.parent.state_manager, 'reload_hotwords'):
+                    self.parent.state_manager.reload_hotwords()
+                    
+        except Exception as e:
+            print(f"❌ 保存热词失败: {e}")
+            QMessageBox.critical(self, "错误", f"保存热词失败: {e}")

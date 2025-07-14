@@ -14,8 +14,10 @@ import math
 logging.getLogger('modelscope').setLevel(logging.WARNING)
 
 class FunASREngine:
-    def __init__(self):
+    def __init__(self, settings_manager=None):
         try:
+            # 保存设置管理器引用
+            self.settings_manager = settings_manager
             # 获取应用程序的基础路径
             if getattr(sys, 'frozen', False):
                 application_path = sys._MEIPASS
@@ -143,7 +145,7 @@ class FunASREngine:
                     mode='offline',
                     decode_method='greedy_search',  # 改回greedy_search
                     disable_progress_bar=True,
-                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None,  # 恢复原来的热词权重
+                    hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None,  # 热词权重
                     cache_size=2000,           # 恢复原来的缓存大小
                     beam_size=5                # 恢复原来的beam size
                 )
@@ -189,7 +191,7 @@ class FunASREngine:
                     cache_size=1000,
                     hotword_score=2.0,
                     min_sentence_length=2,
-                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None
+                    hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None  # 热词权重
                 )
             
             if isinstance(result, list) and len(result) > 0:
@@ -214,7 +216,7 @@ class FunASREngine:
                     mode='offline',      # 使用离线模式以提高准确率
                     decode_method='greedy_search',  # 使用贪婪搜索解码
                     disable_progress_bar=True,  # 禁用进度条
-                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None
+                    hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None  # 热词权重
                 )
             
             if isinstance(result, list) and len(result) > 0:
@@ -224,7 +226,13 @@ class FunASREngine:
             text = self._add_punctuation(text)
             
             # 3. 处理英文单词间的空格
-            final_text = self._process_text(text)
+            processed_text = self._process_text(text)
+            
+            # 4. 发音相似词纠错
+            corrected_text = self._correct_similar_pronunciation(processed_text)
+            
+            # 5. 添加热词高亮
+            final_text = self._highlight_hotwords(corrected_text)
             
             return [{"text": final_text}]
             
@@ -292,7 +300,64 @@ class FunASREngine:
         except Exception as e:
             print(f"重新加载热词失败: {e}")
             self.hotwords = []
+    
+    def _get_hotword_weight(self):
+        """获取热词权重"""
+        if self.settings_manager:
+            return self.settings_manager.get_hotword_weight()
+        return 80.0  # 默认权重
+    
+    def _is_pronunciation_correction_enabled(self):
+        """检查是否启用发音纠错"""
+        if self.settings_manager:
+            return self.settings_manager.get_pronunciation_correction_enabled()
+        return True  # 默认启用
 
+    def _correct_similar_pronunciation(self, text):
+        """纠正发音相似的词"""
+        if not text or not self._is_pronunciation_correction_enabled():
+            return text
+        
+        # 定义发音相似词映射表
+        pronunciation_map = {
+            '浮沉': '浮层',
+            '浮尘': '浮层',
+            '浮城': '浮层',
+            '胡成': '浮层',  # 根据用户需求添加
+            '含高': '行高',  # 添加含高到行高的映射
+            '韩高': '行高',  # 可能的其他发音变体
+            '汉高': '行高',  # 可能的其他发音变体
+            '梵高': '行高',  # 修复梵高被错误识别为行高的问题
+        }
+        
+        corrected_text = text
+        
+        # 只有当目标热词在热词列表中时才进行纠错
+        for similar_word, correct_word in pronunciation_map.items():
+            if similar_word in corrected_text and correct_word in self.hotwords:
+                corrected_text = corrected_text.replace(similar_word, correct_word)
+                print(f"🔧 发音纠错: '{similar_word}' -> '{correct_word}'")
+        
+        return corrected_text
+    
+    def _highlight_hotwords(self, text):
+        """在文本中高亮显示热词（使用简单的加粗效果）"""
+        if not self.hotwords or not text:
+            return text
+        
+        highlighted_text = text
+        
+        # 按长度降序排列热词，避免短词覆盖长词
+        sorted_hotwords = sorted(self.hotwords, key=len, reverse=True)
+        
+        for hotword in sorted_hotwords:
+            if hotword in highlighted_text:
+                # 使用简单的加粗标签高亮热词
+                highlighted_hotword = f'<b>{hotword}</b>'
+                highlighted_text = highlighted_text.replace(hotword, highlighted_hotword)
+        
+        return highlighted_text
+    
     def _post_process_text(self, text):
         """文本后处理"""
         # 1. 修复常见的错误模式
@@ -327,3 +392,30 @@ class FunASREngine:
             'asr_model_path': asr_model_dir if os.path.exists(asr_model_dir) else '未找到ASR模型',
             'punc_model_path': punc_model_dir if os.path.exists(punc_model_dir) else '未找到标点模型'
         }
+    
+    def cleanup(self):
+        """清理FunASR引擎资源"""
+        try:
+            # 清理模型资源
+            if hasattr(self, 'model') and self.model:
+                # 尝试释放模型资源
+                del self.model
+                self.model = None
+                
+            if hasattr(self, 'punc_model') and self.punc_model:
+                # 尝试释放标点模型资源
+                del self.punc_model
+                self.punc_model = None
+                
+            # 清理热词列表
+            if hasattr(self, 'hotwords'):
+                self.hotwords.clear()
+                
+            print("✓ FunASR引擎资源已清理")
+            
+        except Exception as e:
+            print(f"❌ 清理FunASR引擎资源失败: {e}")
+    
+    def __del__(self):
+        """析构函数，确保资源被释放"""
+        self.cleanup()
