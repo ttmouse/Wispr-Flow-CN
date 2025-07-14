@@ -4,7 +4,7 @@
   "audio": {
     "input_device": null,
     "volume_threshold": 150,
-    "max_recording_duration": 5,
+    "max_recording_duration": 10,
     "mute_other_apps": true
   },
   "asr": {

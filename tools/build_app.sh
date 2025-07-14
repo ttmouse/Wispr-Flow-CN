@@ -9,8 +9,8 @@ python tools/version_manager.py
 # 安装依赖
 pip install pillow
 
-# 检查并创建图标（仅在需要时）
-python tools/create_icon.py
+# 跳过图标处理（图标已存在）
+echo "跳过图标处理，使用现有图标文件"
 
 # 创建应用
 bash run_local.command

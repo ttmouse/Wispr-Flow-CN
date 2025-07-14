@@ -95,4 +95,4 @@ fi
 xattr -cr "${APP_NAME}.app"
 
 # 对应用进行签名
-codesign --force --deep --sign - --entitlements "${APP_NAME}.app/Contents/entitlements.plist" "${APP_NAME}.app" 
+codesign --force --deep --sign - --entitlements "${APP_NAME}.app/Contents/entitlements.plist" "${APP_NAME}.app"
