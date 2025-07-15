@@ -470,7 +470,7 @@ class MainWindow(QMainWindow):
                     # 更新widget的显示内容
                     if widget and hasattr(widget, 'setText'):
                         widget.setText(highlighted_text)
-                        print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
+                        # print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
             
             print("✓ 热词高亮重新应用完成")
         except Exception as e:

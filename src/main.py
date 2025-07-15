@@ -85,6 +85,9 @@ class Application(QObject):
         # 初始化资源清理
         atexit.register(self.cleanup_resources)
         
+        # 添加应用级别的线程锁
+        self._app_lock = threading.RLock()
+        
         try:
             self.app = QApplication(sys.argv)
             
@@ -302,6 +305,11 @@ class Application(QObject):
             elif self._init_step == 3:
                 # 步骤4：设置连接和应用设置
                 try:
+                    # 将funasr_engine设置给state_manager，以便热词高亮功能正常工作
+                    if hasattr(self, 'funasr_engine') and self.funasr_engine:
+                        self.state_manager.funasr_engine = self.funasr_engine
+                        print("✓ FunASR引擎已关联到状态管理器")
+                    
                     self.setup_connections()
                     self.apply_settings()
                     # 启动热键状态监控
@@ -627,49 +635,59 @@ class Application(QObject):
 
     def start_recording(self):
         """开始录音"""
-        # 检查必要组件是否已初始化
-        if not self.audio_capture_thread:
-            print("⚠️ 录音功能尚未就绪，请稍后再试")
-            return
-            
-        if not self.recording:
-            self.recording = True
-            
+        with self._app_lock:
             try:
-                # 先播放音效，让用户立即听到反馈
-                self.state_manager.start_recording()
-                
-                # 然后保存当前音量并静音系统
-                self.previous_volume = self._get_system_volume()
-                if self.previous_volume is not None:
-                    self._set_system_volume(None)  # 静音
-                
-                # 重新初始化录音线程（如果之前已经使用过）
-                if self.audio_capture_thread.isFinished():
-                    self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
-                    self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-                    self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
-                
-                # 启动录音线程
-                self.audio_capture_thread.start()
-                
-                # 从设置中获取录音时长并设置定时器，自动停止录音
-                if hasattr(self, 'recording_timer'):
-                    self.recording_timer.stop()
-                    self.recording_timer.deleteLater()
-                
-                # 确保定时器在主线程中创建，设置parent为self
-                max_duration = self.settings_manager.get_setting('audio.max_recording_duration', 10)
-                self.recording_timer = QTimer(self)
-                self.recording_timer.setSingleShot(True)
-                self.recording_timer.timeout.connect(self._auto_stop_recording)
-                self.recording_timer.start(max_duration * 1000)  # 转换为毫秒
-                print(f"✓ 录音开始，将在{max_duration}秒后自动停止 (定时器ID: {id(self.recording_timer)})")
-                print(f"✓ 定时器状态: active={self.recording_timer.isActive()}, interval={self.recording_timer.interval()}ms")
-                
+                # 检查必要组件是否已初始化
+                if not self.audio_capture_thread:
+                    print("⚠️ 录音功能尚未就绪，请稍后再试")
+                    return
+                    
+                if not self.recording:
+                    self.recording = True
+                    
+                    try:
+                        # 先播放音效，让用户立即听到反馈
+                        self.state_manager.start_recording()
+                        
+                        # 然后保存当前音量并静音系统
+                        self.previous_volume = self._get_system_volume()
+                        if self.previous_volume is not None:
+                            self._set_system_volume(None)  # 静音
+                        
+                        # 重新初始化录音线程（如果之前已经使用过）
+                        if self.audio_capture_thread.isFinished():
+                            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
+                            self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
+                            self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
+                        
+                        # 启动录音线程
+                        self.audio_capture_thread.start()
+                        
+                        # 从设置中获取录音时长并设置定时器，自动停止录音
+                        if hasattr(self, 'recording_timer'):
+                            self.recording_timer.stop()
+                            self.recording_timer.deleteLater()
+                        
+                        # 确保定时器在主线程中创建，设置parent为self
+                        max_duration = self.settings_manager.get_setting('audio.max_recording_duration', 10)
+                        self.recording_timer = QTimer(self)
+                        self.recording_timer.setSingleShot(True)
+                        self.recording_timer.timeout.connect(self._auto_stop_recording)
+                        self.recording_timer.start(max_duration * 1000)  # 转换为毫秒
+                        print(f"✓ 录音开始，将在{max_duration}秒后自动停止 (定时器ID: {id(self.recording_timer)})")
+                        print(f"✓ 定时器状态: active={self.recording_timer.isActive()}, interval={self.recording_timer.interval()}ms")
+                        
+                    except Exception as e:
+                        error_msg = f"开始录音时出错: {str(e)}"
+                        print(error_msg)
+                        self.update_ui_signal.emit(f"❌ {error_msg}", "")
+                        
             except Exception as e:
-                error_msg = f"开始录音时出错: {str(e)}"
-                print(error_msg)
+                import traceback
+                error_msg = f"start_recording线程安全异常: {str(e)}"
+                print(f"❌ {error_msg}")
+                print(f"当前线程: {threading.current_thread().name}")
+                print(f"详细堆栈: {traceback.format_exc()}")
                 self.update_ui_signal.emit(f"❌ {error_msg}", "")
 
     def stop_recording(self):
@@ -686,7 +704,7 @@ class Application(QObject):
                 self.audio_capture_thread.stop()
                 self.audio_capture_thread.wait()
             
-            # 临时恢复音量以确保音效能正常播放
+            # 临时恢复音量以确保音能正常播放
             if self.previous_volume is not None:
                 self._set_system_volume(self.previous_volume)
                 # 添加短暂延迟，确保音量恢复完成
@@ -1138,6 +1156,17 @@ class Application(QObject):
                     if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
                         print(f"加载标点模型: {punc_model_path}")
                         self.funasr_engine.load_punctuation_model(punc_model_path)
+                    
+                    # 重新加载热词
+                    if hasattr(self.funasr_engine, 'reload_hotwords'):
+                        self.funasr_engine.reload_hotwords()
+                        print("✓ 热词已重新加载")
+                    
+                    # 确保state_manager有funasr_engine的引用
+                    if hasattr(self, 'state_manager') and self.state_manager:
+                        self.state_manager.funasr_engine = self.funasr_engine
+                        print("✓ FunASR引擎已重新关联到状态管理器")
+                    
                     print("✓ ASR设置已应用")
             except Exception as e:
                 print(f"❌ 应用ASR设置失败: {e}")

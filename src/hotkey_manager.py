@@ -34,6 +34,9 @@ class HotkeyManager:
         
         # 资源清理标志
         self._cleanup_done = False
+        
+        # 线程安全保护
+        self._state_lock = threading.Lock()  # 添加状态锁保护共享变量
 
     def set_press_callback(self, callback):
         self.press_callback = callback
@@ -59,31 +62,32 @@ class HotkeyManager:
     
     def reset_state(self):
         """重置所有状态"""
-        self.other_keys_pressed.clear()
-        self.hotkey_pressed = False
-        self.is_recording = False
-        self.last_press_time = 0
-        self.last_state_check = 0
-        self.state_stable_count = 0
-        self.hotkey_press_time = 0  # 重置热键按下时间
-        
-        # 清理延迟线程 - 改进清理逻辑
-        active_threads = [t for t in self.delayed_threads if t.is_alive()]
-        if active_threads:
-            self.logger.debug(f"清理 {len(active_threads)} 个活跃的延迟线程")
-            for thread in active_threads:
-                thread.join(timeout=0.1)
-        # 清理所有线程引用，包括已结束的
-        self.delayed_threads.clear()
-        
-        # 额外检查确保系统级修饰键状态正确
-        if self.hotkey_type != 'fn':
-            # 检查当前实际的修饰键状态
-            flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
-            # 如果没有任何修饰键被按下，确保状态完全重置
-            if not (flags & (0x800000 | 0x100000 | 0x200000)):  # fn, cmd, shift flags
-                self.hotkey_pressed = False
-                self.other_keys_pressed.clear()
+        with self._state_lock:
+            self.other_keys_pressed.clear()
+            self.hotkey_pressed = False
+            self.is_recording = False
+            self.last_press_time = 0
+            self.last_state_check = 0
+            self.state_stable_count = 0
+            self.hotkey_press_time = 0  # 重置热键按下时间
+            
+            # 清理延迟线程 - 改进清理逻辑
+            active_threads = [t for t in self.delayed_threads if t.is_alive()]
+            if active_threads:
+                self.logger.debug(f"清理 {len(active_threads)} 个活跃的延迟线程")
+                for thread in active_threads:
+                    thread.join(timeout=0.1)
+            # 清理所有线程引用，包括已结束的
+            self.delayed_threads.clear()
+            
+            # 额外检查确保系统级修饰键状态正确
+            if self.hotkey_type != 'fn':
+                # 检查当前实际的修饰键状态
+                flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
+                # 如果没有任何修饰键被按下，确保状态完全重置
+                if not (flags & (0x800000 | 0x100000 | 0x200000)):  # fn, cmd, shift flags
+                    self.hotkey_pressed = False
+                    self.other_keys_pressed.clear()
         
         self.logger.info("热键状态已重置，并验证系统修饰键状态")
 
@@ -113,39 +117,54 @@ class HotkeyManager:
     
     def _start_delayed_hotkey_check(self):
         """启动延迟检测线程"""
-        if self.hotkey_press_time == 0:
-            self.hotkey_press_time = time.time()
-            # 启动一个线程来持续检查
-            import threading
-            thread = threading.Thread(target=self._delayed_check_worker, daemon=True)
-            thread.start()
-            # 将线程添加到管理列表中
-            self.delayed_threads.append(thread)
+        with self._state_lock:
+            if self.hotkey_press_time == 0:
+                self.hotkey_press_time = time.time()
+                # 启动一个线程来持续检查
+                import threading
+                thread = threading.Thread(target=self._delayed_check_worker, daemon=True)
+                thread.start()
+                # 将线程添加到管理列表中
+                self.delayed_threads.append(thread)
     
     def _delayed_check_worker(self):
         """延迟检测工作线程"""
         try:
-            start_time = self.hotkey_press_time
+            with self._state_lock:
+                start_time = self.hotkey_press_time
             has_other_keys = False  # 标记是否检测到其他修饰键或字母键
             
-            while self.hotkey_press_time == start_time:
+            while True:
+                with self._state_lock:
+                    current_hotkey_press_time = self.hotkey_press_time
+                    other_keys_count = len(self.other_keys_pressed)
+                
+                if current_hotkey_press_time != start_time:
+                    break
+                    
                 time.sleep(0.01)  # 10ms 检查间隔
                 current_time = time.time()
                 
                 # 检查是否有其他修饰键被按下或者有其他按键被按下
-                if self._has_other_modifier_keys() or len(self.other_keys_pressed) > 0:
+                if self._has_other_modifier_keys() or other_keys_count > 0:
                     has_other_keys = True
-                    self.logger.debug(f"检测到其他按键，取消录音触发。修饰键: {self._has_other_modifier_keys()}, 其他按键: {self.other_keys_pressed}")
+                    with self._state_lock:
+                        self.logger.debug(f"检测到其他按键，取消录音触发。修饰键: {self._has_other_modifier_keys()}, 其他按键: {self.other_keys_pressed}")
                     break  # 检测到其他按键，立即退出
                 
                 # 如果超过延迟阈值且没有检测到其他按键，触发录音
                 if current_time - start_time >= self.delay_threshold:
                     if not has_other_keys:
                         # 通过检查，触发录音
-                        if not self.hotkey_pressed and not self.other_keys_pressed and not self.is_recording and self.press_callback:
-                            try:
+                        with self._state_lock:
+                            should_trigger = (not self.hotkey_pressed and not self.other_keys_pressed and 
+                                            not self.is_recording and self.press_callback)
+                            if should_trigger:
                                 self.hotkey_pressed = True
                                 self.is_recording = True
+                        
+                        if should_trigger:
+                            try:
                                 self.logger.info("开始录音（延迟检测通过）")
                                 self.press_callback()
                             except Exception as e:
@@ -167,13 +186,17 @@ class HotkeyManager:
             shift_flag = Quartz.kCGEventFlagMaskShift
             alt_flag = Quartz.kCGEventFlagMaskAlternate
             
-            if self.hotkey_type == 'ctrl':
+            # 线程安全地获取热键类型
+            with self._state_lock:
+                current_hotkey_type = self.hotkey_type
+            
+            if current_hotkey_type == 'ctrl':
                 # 检查是否有除了 ctrl 之外的其他修饰键
                 return bool(flags & (cmd_flag | shift_flag | alt_flag))
-            elif self.hotkey_type == 'alt':
+            elif current_hotkey_type == 'alt':
                 # 检查是否有除了 alt 之外的其他修饰键
                 return bool(flags & (cmd_flag | shift_flag | ctrl_flag))
-            elif self.hotkey_type == 'fn':
+            elif current_hotkey_type == 'fn':
                 # fn 键不是标准修饰键，检查是否有任何修饰键
                 return bool(flags & (cmd_flag | shift_flag | ctrl_flag | alt_flag))
             
@@ -195,11 +218,15 @@ class HotkeyManager:
             shift_flag = Quartz.kCGEventFlagMaskShift
             alt_flag = Quartz.kCGEventFlagMaskAlternate
             
-            if self.hotkey_type == 'ctrl':
+            # 线程安全地获取热键类型
+            with self._state_lock:
+                current_hotkey_type = self.hotkey_type
+            
+            if current_hotkey_type == 'ctrl':
                 return bool(flags & ctrl_flag) and not bool(flags & (cmd_flag | shift_flag | alt_flag))
-            elif self.hotkey_type == 'alt':
+            elif current_hotkey_type == 'alt':
                 return bool(flags & alt_flag) and not bool(flags & (cmd_flag | shift_flag | ctrl_flag))
-            elif self.hotkey_type == 'fn':
+            elif current_hotkey_type == 'fn':
                 # 检查 fn 键状态
                 fn_flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
                 fn_pressed = bool(fn_flags & 0x800000)
@@ -291,44 +318,54 @@ class HotkeyManager:
             current_time = time.time()
             
             # 检查是否需要强制重置状态
-            # 1. 如果上次按键时间超过5秒
-            # 2. 如果检测到Command键（但不包括单独的Shift或Alt键，因为它们可能与热键组合）
-            if (current_time - self.last_press_time > 5 and (self.hotkey_pressed or self.other_keys_pressed)) or \
-               (isinstance(key, keyboard.Key) and key == keyboard.Key.cmd):
+            with self._state_lock:
+                should_reset = ((current_time - self.last_press_time > 5 and (self.hotkey_pressed or self.other_keys_pressed)) or
+                               (isinstance(key, keyboard.Key) and key == keyboard.Key.cmd))
+                self.last_press_time = current_time
+            
+            if should_reset:
                 self.logger.info("检测到可能的状态异常或系统快捷键，执行强制重置")
                 self.reset_state()
-            
-            self.last_press_time = current_time
             
             # 记录按键
             key_str = str(key)
             # 减少debug日志输出频率
-            if current_time - self.last_state_check > 1.0:  # 每秒最多一次debug日志
-                self.logger.debug(f"按键按下: {key_str}")
-                self.last_state_check = current_time
+            with self._state_lock:
+                if current_time - self.last_state_check > 1.0:  # 每秒最多一次debug日志
+                    self.logger.debug(f"按键按下: {key_str}")
+                    self.last_state_check = current_time
             
             if self.hotkey_type != 'fn' and self._is_hotkey_pressed(key):
                 self.logger.info(f"{self.hotkey_type} 键按下")
-                if not self.hotkey_pressed:  # 防止重复触发
+                with self._state_lock:
+                    should_start_check = not self.hotkey_pressed
+                if should_start_check:  # 防止重复触发
                     # 启动延迟检测线程
                     self._start_delayed_hotkey_check()
             else:
                 # 记录其他按键
-                if key_str not in self.other_keys_pressed:
-                    self.other_keys_pressed.add(key_str)
+                with self._state_lock:
+                    key_already_pressed = key_str in self.other_keys_pressed
+                    if not key_already_pressed:
+                        self.other_keys_pressed.add(key_str)
+                        should_stop_recording = self.is_recording and self.release_callback
+                        
+                if not key_already_pressed:
                     self.logger.debug(f"检测到其他按键: {key_str}")
                     
                     # 如果检测到常见的组合键字母，立即重置热键按下时间以阻止录音触发
                     if self._is_common_combination_key(key):
                         self.logger.info(f"检测到组合键字母 {key_str}，重置热键状态")
-                        self.hotkey_press_time = 0  # 重置时间，阻止延迟检测触发
+                        with self._state_lock:
+                            self.hotkey_press_time = 0  # 重置时间，阻止延迟检测触发
                     
                     # 如果正在录音，则停止录音
-                    if self.is_recording and self.release_callback:
+                    if should_stop_recording:
                         try:
                             self.logger.info("由于其他键按下，停止录音")
                             self.release_callback()
-                            self.is_recording = False
+                            with self._state_lock:
+                                self.is_recording = False
                         except Exception as e:
                             self.logger.error(f"释放回调执行失败: {e}")
         
@@ -348,15 +385,21 @@ class HotkeyManager:
             if self.hotkey_type != 'fn' and self._is_hotkey_pressed(key):
                 self.logger.info(f"{self.hotkey_type} 键释放")
                 # 重置热键按下时间
-                self.hotkey_press_time = 0
-                if self.hotkey_pressed:  # 防止重复触发
-                    self.hotkey_pressed = False
+                with self._state_lock:
+                    self.hotkey_press_time = 0
+                    should_stop_recording = self.hotkey_pressed
+                    if should_stop_recording:
+                        self.hotkey_pressed = False
+                        is_currently_recording = self.is_recording and self.release_callback
+                
+                if should_stop_recording:  # 防止重复触发
                     # 如果正在录音，则停止录音
-                    if self.is_recording and self.release_callback:
+                    if is_currently_recording:
                         try:
                             self.logger.info("停止录音")
                             self.release_callback()
-                            self.is_recording = False
+                            with self._state_lock:
+                                self.is_recording = False
                         except Exception as e:
                             self.logger.error(f"释放回调执行失败: {e}")
             

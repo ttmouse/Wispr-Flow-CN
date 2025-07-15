@@ -82,7 +82,7 @@ class ModernListWidget(QListWidget):
     
     def updateEmptyState(self):
         """更新空状态显示"""
-        print(f"更新空状态显示: 列表项数量={self.count()}, 有空状态widget={self.empty_widget is not None}")
+        # print(f"更新空状态显示: 列表项数量={self.count()}, 有空状态widget={self.empty_widget is not None}")
         
         if self.count() == 0 and self.empty_widget:
             self._show_empty_state()
@@ -99,7 +99,7 @@ class ModernListWidget(QListWidget):
     def _hide_empty_state(self):
         """隐藏空状态"""
         self.empty_widget.hide()
-        print("✓ 隐藏空状态提示，显示历史记录列表")
+        # print("✓ 隐藏空状态提示，显示历史记录列表")
     
     def mousePressEvent(self, event):
         """处理鼠标点击事件"""

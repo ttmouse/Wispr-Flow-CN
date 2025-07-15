@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
@@ -44,23 +45,25 @@ class SettingsManager:
         self.settings_history_dir = 'settings_history'
         self.max_history_files = 10  # 最多保留10个历史版本
         self.logger = logging.getLogger('SettingsManager')
+        self._lock = threading.RLock()  # 添加可重入锁保护字典访问
         self._ensure_history_dir()
         self.load_settings()
 
     def load_settings(self) -> None:
         """加载设置"""
-        try:
-            if os.path.exists(self.settings_file):
-                with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    loaded_settings = json.load(f)
-                    # 合并加载的设置和默认设置
-                    self.settings = self._merge_settings(self.DEFAULT_SETTINGS, loaded_settings)
-            else:
+        with self._lock:  # 线程安全保护
+            try:
+                if os.path.exists(self.settings_file):
+                    with open(self.settings_file, 'r', encoding='utf-8') as f:
+                        loaded_settings = json.load(f)
+                        # 合并加载的设置和默认设置
+                        self.settings = self._merge_settings(self.DEFAULT_SETTINGS, loaded_settings)
+                else:
+                    self.settings = self.DEFAULT_SETTINGS.copy()
+                    self.save_settings()  # 保存默认设置
+            except Exception as e:
+                self.logger.error(f"加载设置失败: {e}")
                 self.settings = self.DEFAULT_SETTINGS.copy()
-                self.save_settings()  # 保存默认设置
-        except Exception as e:
-            self.logger.error(f"加载设置失败: {e}")
-            self.settings = self.DEFAULT_SETTINGS.copy()
 
     def _ensure_history_dir(self) -> None:
         """确保历史记录目录存在"""
@@ -124,66 +127,72 @@ class SettingsManager:
     
     def save_settings(self) -> bool:
         """保存设置到文件，包含备份、历史记录和恢复机制"""
-        backup_file = f"{self.settings_file}.backup"
-        temp_file = f"{self.settings_file}.tmp"
-        
-        try:
-            # 保存到历史记录
-            self._save_to_history()
+        with self._lock:  # 线程安全保护
+            backup_file = f"{self.settings_file}.backup"
+            temp_file = f"{self.settings_file}.tmp"
             
-            # 如果原文件存在，先创建备份
-            if os.path.exists(self.settings_file):
-                import shutil
-                shutil.copy2(self.settings_file, backup_file)
-            
-            # 先写入临时文件
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(self.settings, f, ensure_ascii=False, indent=2)
-            
-            # 验证临时文件是否有效
-            with open(temp_file, 'r', encoding='utf-8') as f:
-                json.load(f)  # 验证JSON格式
-            
-            # 原子性替换
-            if os.path.exists(self.settings_file):
-                os.remove(self.settings_file)
-            os.rename(temp_file, self.settings_file)
-            
-            self.logger.info("设置保存成功")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"保存设置失败: {e}")
-            
-            # 清理临时文件
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
-            
-            # 尝试从备份恢复
-            if os.path.exists(backup_file):
-                try:
+            try:
+                # 保存到历史记录
+                self._save_to_history()
+                
+                # 如果原文件存在，先创建备份
+                if os.path.exists(self.settings_file):
                     import shutil
-                    shutil.copy2(backup_file, self.settings_file)
-                    self.logger.info("已从备份恢复设置文件")
-                except Exception as restore_error:
-                    self.logger.error(f"从备份恢复失败: {restore_error}")
-            
-            return False
+                    shutil.copy2(self.settings_file, backup_file)
+                
+                # 创建设置的深拷贝以避免在写入过程中被修改
+                import copy
+                settings_copy = copy.deepcopy(self.settings)
+                
+                # 先写入临时文件
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    json.dump(settings_copy, f, ensure_ascii=False, indent=2)
+                
+                # 验证临时文件是否有效
+                with open(temp_file, 'r', encoding='utf-8') as f:
+                    json.load(f)  # 验证JSON格式
+                
+                # 原子性替换
+                if os.path.exists(self.settings_file):
+                    os.remove(self.settings_file)
+                os.rename(temp_file, self.settings_file)
+                
+                self.logger.info("设置保存成功")
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"保存设置失败: {e}")
+                
+                # 清理临时文件
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                
+                # 尝试从备份恢复
+                if os.path.exists(backup_file):
+                    try:
+                        import shutil
+                        shutil.copy2(backup_file, self.settings_file)
+                        self.logger.info("已从备份恢复设置文件")
+                    except Exception as restore_error:
+                        self.logger.error(f"从备份恢复失败: {restore_error}")
+                
+                return False
 
     def get_setting(self, key: str, default: Any = None) -> Any:
         """获取设置值"""
-        try:
-            # 支持使用点号访问嵌套设置，如 'audio.volume_threshold'
-            keys = key.split('.')
-            value = self.settings
-            for k in keys:
-                value = value[k]
-            return value
-        except (KeyError, TypeError):
-            return default
+        with self._lock:  # 线程安全保护
+            try:
+                # 支持使用点号访问嵌套设置，如 'audio.volume_threshold'
+                keys = key.split('.')
+                value = self.settings
+                for k in keys:
+                    value = value[k]
+                return value
+            except (KeyError, TypeError):
+                return default
 
     def set_setting(self, key: str, value: Any, auto_save: bool = True) -> bool:
         """设置值
@@ -193,31 +202,32 @@ class SettingsManager:
             value: 设置值
             auto_save: 是否自动保存到文件，默认True
         """
-        try:
-            # 支持使用点号设置嵌套设置
-            keys = key.split('.')
-            target = self.settings
-            
-            # 确保所有中间键都存在
-            for k in keys[:-1]:
-                if k not in target:
-                    target[k] = {}
-                elif not isinstance(target[k], dict):
-                    # 如果中间键不是字典，创建新的字典
-                    target[k] = {}
-                target = target[k]
-            
-            # 设置最终值
-            target[keys[-1]] = value
-            
-            if auto_save:
-                return self.save_settings()
-            return True
-        except Exception as e:
-            self.logger.error(f"设置值失败 {key}: {e}")
-            import traceback
-            self.logger.error(f"设置值错误详情: {traceback.format_exc()}")
-            return False
+        with self._lock:  # 线程安全保护
+            try:
+                # 支持使用点号设置嵌套设置
+                keys = key.split('.')
+                target = self.settings
+                
+                # 确保所有中间键都存在
+                for k in keys[:-1]:
+                    if k not in target:
+                        target[k] = {}
+                    elif not isinstance(target[k], dict):
+                        # 如果中间键不是字典，创建新的字典
+                        target[k] = {}
+                    target = target[k]
+                
+                # 设置最终值
+                target[keys[-1]] = value
+                
+                if auto_save:
+                    return self.save_settings()
+                return True
+            except Exception as e:
+                self.logger.error(f"设置值失败 {key}: {e}")
+                import traceback
+                self.logger.error(f"设置值错误详情: {traceback.format_exc()}")
+                return False
 
     def get_hotkey(self) -> str:
         """获取当前快捷键设置"""
@@ -236,19 +246,20 @@ class SettingsManager:
         Returns:
             bool: 所有设置是否成功保存
         """
-        try:
-            # 先设置所有值但不保存
-            for key, value in settings_dict.items():
-                if not self.set_setting(key, value, auto_save=False):
-                    self.logger.error(f"设置 {key} 失败")
-                    return False
-            
-            # 最后一次性保存所有设置
-            return self.save_settings()
-            
-        except Exception as e:
-            self.logger.error(f"批量设置失败: {e}")
-            return False
+        with self._lock:  # 线程安全保护
+            try:
+                # 先设置所有值但不保存
+                for key, value in settings_dict.items():
+                    if not self.set_setting(key, value, auto_save=False):
+                        self.logger.error(f"设置 {key} 失败")
+                        return False
+                
+                # 最后一次性保存所有设置
+                return self.save_settings()
+                
+            except Exception as e:
+                self.logger.error(f"批量设置失败: {e}")
+                return False
 
     def get_high_frequency_words(self) -> List[str]:
         """获取高频词列表"""

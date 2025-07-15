@@ -186,7 +186,7 @@ class HistoryManager:
                 # 重新应用热词高亮
                 highlighted_text = self.apply_hotword_highlight(original_text)
                 highlighted_items.append(highlighted_text)
-                print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
+                # print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
             
             print("✓ 热词高亮重新应用完成")
             return highlighted_items

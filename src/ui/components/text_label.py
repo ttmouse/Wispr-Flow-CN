@@ -27,7 +27,7 @@ class TextLabel(QLabel):
     def _setup_ui(self):
         """设置UI基本属性"""
         self.setWordWrap(True)
-        self.setTextFormat(Qt.TextFormat.PlainText)  # 使用纯文本格式
+        self.setTextFormat(Qt.TextFormat.RichText)  # 使用富文本格式支持HTML
         self.setOpenExternalLinks(False)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
@@ -76,9 +76,8 @@ class TextLabel(QLabel):
     
     def setText(self, text):
         """设置文本内容"""
-        # 清理HTML标签，保留纯文本
-        clean_text = self._clean_html_tags(text)
-        super().setText(clean_text)
+        # 直接设置文本，支持HTML格式
+        super().setText(text if text else "")
         self.updateGeometry()
     
     def _clean_html_tags(self, text):
