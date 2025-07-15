@@ -3,7 +3,7 @@
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
-    "volume_threshold": 300,
+    "volume_threshold": 150,
     "max_recording_duration": 25
   },
   "asr": {

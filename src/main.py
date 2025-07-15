@@ -88,6 +88,9 @@ class Application(QObject):
         try:
             self.app = QApplication(sys.argv)
             
+            # 设置Qt应用程序的异常处理
+            self.app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
+            
             # 初始化设置管理器
             self.settings_manager = SettingsManager()
             
@@ -198,7 +201,6 @@ class Application(QObject):
                 try:
                     if not getattr(sys, 'frozen', False):
                         if self.settings_manager.is_cache_expired('permissions'):
-                            self.main_window.update_loading_status("正在检查权限...")
                             print("正在检查权限...")
                             self._check_development_permissions()
                             print("✓ 权限检查完成")
@@ -217,7 +219,6 @@ class Application(QObject):
                 # 步骤2：初始化语音识别引擎
                 try:
                     if self.settings_manager.is_cache_expired('models'):
-                        self.main_window.update_loading_status("正在加载语音识别模型...")
                         print("正在加载语音识别模型...")
                         try:
                             self.funasr_engine = FunASREngine(self.settings_manager)
@@ -228,7 +229,6 @@ class Application(QObject):
                             self.settings_manager.update_models_cache(asr_available, punc_available)
                             if getattr(self.funasr_engine, 'is_ready', False):
                                 print("✓ 语音识别引擎已就绪")
-                                self.main_window.update_loading_status("语音识别引擎已就绪")
                             else:
                                 print("⚠️ 语音识别引擎初始化未完成")
                         except Exception as e:
@@ -243,7 +243,6 @@ class Application(QObject):
                                 self.funasr_engine = FunASREngine(self.settings_manager)
                                 if getattr(self.funasr_engine, 'is_ready', False):
                                     print("✓ 基于缓存快速初始化语音识别引擎已就绪")
-                                    self.main_window.update_loading_status("语音识别引擎已就绪")
                                 else:
                                     print("⚠️ 基于缓存初始化但引擎未就绪")
                             except Exception as e:
@@ -253,7 +252,6 @@ class Application(QObject):
                         else:
                             print("⚠️  缓存显示模型不可用，尝试重新加载...")
                             try:
-                                self.main_window.update_loading_status("正在重新加载语音识别模型...")
                                 self.funasr_engine = FunASREngine(self.settings_manager)
                                 model_paths = self.funasr_engine.get_model_paths()
                                 self.settings_manager.update_model_paths(model_paths)
@@ -262,7 +260,6 @@ class Application(QObject):
                                 self.settings_manager.update_models_cache(asr_available, punc_available)
                                 if getattr(self.funasr_engine, 'is_ready', False):
                                     print("✓ 语音识别引擎重新加载成功并已就绪")
-                                    self.main_window.update_loading_status("语音识别引擎已就绪")
                                 else:
                                     print("⚠️ 语音识别引擎重新加载但未就绪")
                             except Exception as e:
@@ -278,7 +275,6 @@ class Application(QObject):
             elif self._init_step == 2:
                 # 步骤3：初始化其他组件
                 try:
-                    self.main_window.update_loading_status("正在初始化组件...")
                     
                     # 安全初始化各个组件
                     try:
@@ -336,13 +332,15 @@ class Application(QObject):
                 
             elif self._init_step == 4:
                 # 步骤5：完成初始化
-                self.main_window.update_loading_status("初始化完成")
                 self._init_step = 5
                 self._init_timer.start(1000)  # 1秒后清除状态
                 
             elif self._init_step == 5:
-                # 步骤6：清除加载状态
-                self.main_window.update_loading_status("")
+                # 步骤6：标记主窗口初始化完成
+                # 标记主窗口初始化完成，允许拖拽等交互操作
+                if hasattr(self.main_window, '_initialization_complete'):
+                    self.main_window._initialization_complete = True
+                    print("✓ 主窗口初始化完成，已启用交互功能")
                 print("✓ 所有组件初始化完成")
                 self._init_step = -1  # 标记完成
                 
@@ -350,17 +348,9 @@ class Application(QObject):
             print(f"❌ 初始化步骤 {self._init_step} 发生严重错误: {e}")
             import traceback
             print(traceback.format_exc())
-            self.main_window.update_loading_status("初始化失败")
             self._init_step = -1  # 标记完成（即使失败）
-            # 2秒后清除错误状态
-            QTimer.singleShot(2000, self._clear_error_status)
 
-    def _clear_error_status(self):
-        """清除错误状态"""
-        try:
-            self.main_window.update_loading_status("")
-        except Exception as e:
-            print(f"清除错误状态失败: {e}")
+
 
     def _check_development_permissions(self):
         """检查开发环境权限"""
@@ -1174,9 +1164,33 @@ class Application(QObject):
             print(f"❌ 应用设置失败: {e}")
             print(traceback.format_exc())
 
+def global_exception_handler(exc_type, exc_value, exc_traceback):
+    """全局异常处理器，防止应用程序闪退"""
+    if issubclass(exc_type, KeyboardInterrupt):
+        # 允许 Ctrl+C 正常退出
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    
+    # 记录异常到日志
+    error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    logging.error(f"未捕获的异常: {error_msg}")
+    print(f"❌ 未捕获的异常: {exc_type.__name__}: {exc_value}")
+    print(f"详细信息: {error_msg}")
+    
+    # 对于UI相关的异常，尝试继续运行而不是崩溃
+    if 'Qt' in str(exc_type) or 'PyQt' in str(exc_type):
+        print("⚠️  检测到Qt/PyQt异常，尝试继续运行...")
+        return
+    
+    # 对于其他严重异常，调用默认处理器
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统
     logging.info("应用程序启动")
+    
+    # 设置全局异常处理器
+    sys.excepthook = global_exception_handler
     
     try:
         print("正在创建应用程实例...")

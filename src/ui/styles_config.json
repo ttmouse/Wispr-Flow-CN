@@ -1,0 +1,39 @@
+{
+  "colors": {
+    "background": "white",
+    "text": "#1D1D1F",
+    "border": "#eee",
+    "hover": "#f5f5f5",
+    "selected": "#e3f2fd",
+    "scrollbar": "#C0C0C0",
+    "scrollbar_hover": "#A0A0A0",
+    "separator": "#E5E5E7"
+  },
+  "fonts": {
+    "family": "PingFang SC",
+    "size": 14,
+    "weight": "normal"
+  },
+  "spacing": {
+    "list_item_padding": 6,
+    "list_spacing": 0,
+    "text_padding": 0,
+    "text_margin": 0,
+    "line_height": 1.4,
+    "line_spacing_multiplier": 1.2
+  },
+  "layout": {
+    "history_item_margins": {
+      "left": 6,
+      "top": 2,
+      "right": 6,
+      "bottom": 2
+    },
+    "min_item_height": 36,
+    "min_text_width": 251,
+    "scrollbar_width": 3,
+    "scrollbar_radius": 1,
+    "min_handle_height": 20,
+    "text_width_margin": 32
+  }
+}

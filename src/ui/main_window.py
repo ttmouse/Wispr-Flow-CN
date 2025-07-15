@@ -1,8 +1,10 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings, QEvent
 from PyQt6.QtGui import QIcon, QFont, QAction, QKeySequence, QShortcut
+from .style_editor import StyleEditor
 from .components.modern_button import ModernButton
-from .components.modern_list import ModernListWidget
+from .components.modern_list_widget import ModernListWidget
+from .components.history_manager import HistoryManager
 import os
 import sys
 import json
@@ -45,8 +47,6 @@ class MainWindow(QMainWindow):
         # 设置窗口属性
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)  # 显示时需要激活
         
-        # 历史记录文件路径
-        self.history_file = 'history.json'
         self._loading_history = False  # 标志是否正在加载历史记录
         
         # 创建中央部件
@@ -105,6 +105,12 @@ class MainWindow(QMainWindow):
         # 添加标题栏
         self.title_bar = self.setup_title_bar()
         main_layout.addWidget(self.title_bar)
+        
+        # 创建历史记录管理器
+        # 使用项目根目录下的history.json文件
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self.history_file = os.path.join(project_root, "history.json")
+        self.history_manager = HistoryManager(self.history_file)
         
         # 添加历史记录列表
         self.history_list = ModernListWidget()
@@ -169,15 +175,56 @@ class MainWindow(QMainWindow):
         else:
             print("无法打开设置窗口：应用程序实例不可用")
     
+    def open_style_editor(self):
+        """打开样式编辑器"""
+        try:
+            style_editor = StyleEditor(self)
+            style_editor.style_updated.connect(self._on_style_updated)
+            style_editor.exec()
+        except Exception as e:
+            print(f"打开样式编辑器失败: {e}")
+    
+    def _on_style_updated(self):
+        """处理样式更新信号"""
+        try:
+            # 重新应用样式到所有组件
+            self._refresh_all_styles()
+            print("✓ 样式已更新")
+        except Exception as e:
+            print(f"更新样式失败: {e}")
+    
+    def _refresh_all_styles(self):
+        """刷新所有组件的样式"""
+        try:
+            # 刷新历史列表样式
+            if hasattr(self, 'history_list'):
+                self.history_list._setup_styles()
+            
+            # 刷新所有历史项的样式和布局
+            for i in range(self.history_list.count()):
+                item = self.history_list.item(i)
+                widget = self.history_list.itemWidget(item)
+                if widget and hasattr(widget, 'refresh_styles'):
+                    widget.refresh_styles()
+            
+            # 重新应用热词高亮到所有历史记录
+            self._reapply_hotword_highlight_to_history()
+            
+            # 强制重绘
+            self.update()
+        except Exception as e:
+            print(f"刷新样式失败: {e}")
+    
     def setup_title_bar(self):
         """设置标题栏"""
         title_bar = QWidget()
         title_bar.setStyleSheet("background-color: black;")
         title_bar.setFixedHeight(50)
         
-        # 添加鼠标事件追踪
-        title_bar.mousePressEvent = self._on_title_bar_mouse_press
-        title_bar.mouseMoveEvent = self._on_title_bar_mouse_move
+        # 使用事件过滤器而不是直接绑定事件，避免初始化期间的事件处理
+        title_bar.installEventFilter(self)
+        # 标记这是标题栏widget，用于事件过滤
+        title_bar.setProperty("is_title_bar", True)
         
         layout = QHBoxLayout(title_bar)
         layout.setContentsMargins(16, 0, 8, 0)
@@ -197,15 +244,34 @@ class MainWindow(QMainWindow):
         version_label.setStyleSheet("color: #666666; font-size: 12px;")
         title_layout.addWidget(version_label)
         
-        # 添加加载状态标签
-        self.loading_status_label = QLabel("")
-        self.loading_status_label.setStyleSheet("color: #999999; font-size: 11px; margin-left: 8px;")
-        title_layout.addWidget(self.loading_status_label)
-        
         layout.addWidget(title_container)
         
         # 添加弹性空间
         layout.addStretch()
+        
+        # 样式设置按钮
+        self.style_button = QLabel("⚙")
+        self.style_button.setStyleSheet("""
+            QLabel {
+                color: #999999;
+                font-size: 14px;
+                padding: 4px 8px;
+                border-radius: 3px;
+                margin: 12px 0;
+                background-color: rgba(255, 255, 255, 0.05);
+                min-width: 16px;
+                min-height: 16px;
+                text-align: center;
+            }
+            QLabel:hover {
+                color: white;
+                background-color: rgba(255, 255, 255, 0.15);
+            }
+        """)
+        self.style_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.style_button.mousePressEvent = lambda e: self.open_style_editor()
+        self.style_button.setToolTip("样式设置")
+        layout.addWidget(self.style_button)
         
         # 最小化按钮
         self.minimize_button = QLabel("−")
@@ -271,52 +337,104 @@ class MainWindow(QMainWindow):
         
         main_layout.addWidget(bottom_bar)
     
-    def _on_title_bar_mouse_press(self, event):
+    def eventFilter(self, obj, event):
+        """事件过滤器，用于安全处理标题栏事件"""
+        try:
+            # 检查是否是标题栏的事件
+            if obj.property("is_title_bar"):
+                # 如果初始化未完成，直接阻止所有鼠标事件
+                if not self._initialization_complete:
+                    if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.MouseButtonRelease]:
+                        print("⚠️  界面未完全加载，暂时禁用标题栏交互")
+                        return True  # 阻止事件传播
+                
+                # 处理鼠标按下事件
+                if event.type() == QEvent.Type.MouseButtonPress:
+                    return self._handle_title_bar_mouse_press(event)
+                # 处理鼠标移动事件
+                elif event.type() == QEvent.Type.MouseMove:
+                    return self._handle_title_bar_mouse_move(event)
+                # 处理鼠标释放事件
+                elif event.type() == QEvent.Type.MouseButtonRelease:
+                    return self._handle_title_bar_mouse_release(event)
+            
+            # 对于其他事件，调用父类处理
+            return super().eventFilter(obj, event)
+        except Exception as e:
+            print(f"❌ 事件过滤器处理错误: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+    
+    def _handle_title_bar_mouse_press(self, event):
         """处理标题栏的鼠标按下事件"""
         try:
-            if event.button() == Qt.MouseButton.LeftButton:
+            if event and hasattr(event, 'button') and event.button() == Qt.MouseButton.LeftButton:
                 self._is_dragging = True
                 self._drag_start_pos = event.pos()
+                return True  # 事件已处理
         except Exception as e:
-            print(f"标题栏鼠标按下事件处理错误: {e}")
+            print(f"❌ 标题栏鼠标按下事件处理错误: {e}")
+            import traceback
+            print(traceback.format_exc())
             self._is_dragging = False
             self._drag_start_pos = None
+        return False
     
-    def _on_title_bar_mouse_move(self, event):
+    def _handle_title_bar_mouse_move(self, event):
         """处理标题栏的鼠标移动事件"""
         try:
-            if self._is_dragging and self._drag_start_pos is not None:
-                self.move(self.pos() + event.pos() - self._drag_start_pos)
+            if (self._is_dragging and self._drag_start_pos is not None and 
+                event and hasattr(event, 'pos')):
+                current_pos = self.pos()
+                event_pos = event.pos()
+                if current_pos and event_pos and self._drag_start_pos:
+                    self.move(current_pos + event_pos - self._drag_start_pos)
+                return True  # 事件已处理
         except Exception as e:
-            print(f"标题栏鼠标移动事件处理错误: {e}")
+            print(f"❌ 标题栏鼠标移动事件处理错误: {e}")
+            import traceback
+            print(traceback.format_exc())
             self._is_dragging = False
             self._drag_start_pos = None
+        return False
+    
+    def _handle_title_bar_mouse_release(self, event):
+        """处理标题栏的鼠标释放事件"""
+        try:
+            self._is_dragging = False
+            self._drag_start_pos = None
+            return True  # 事件已处理
+        except Exception as e:
+            print(f"❌ 标题栏鼠标释放事件处理错误: {e}")
+            import traceback
+            print(traceback.format_exc())
+            self._is_dragging = False
+            self._drag_start_pos = None
+        return False
     
     def mouseReleaseEvent(self, event):
         """处理鼠标释放事件"""
         try:
             self._is_dragging = False
             self._drag_start_pos = None
+            super().mouseReleaseEvent(event)
         except Exception as e:
-            print(f"鼠标释放事件处理错误: {e}")
+            print(f"❌ 鼠标释放事件处理错误: {e}")
+            import traceback
+            print(traceback.format_exc())
+            # 确保状态被重置
+            self._is_dragging = False
+            self._drag_start_pos = None
     
     def add_to_history(self, text):
         """添加新的识别结果到历史记录"""
-        if text and text.strip():
-            # 获取纯文本用于重复检查
-            clean_text = clean_html_tags(text)
-            
-            # 检查是否已存在相同文本，避免重复
-            for i in range(self.history_list.count()):
-                existing_item = self.history_list.item(i)
-                if existing_item:
-                    # 获取实际的widget来比较文本
-                    widget = self.history_list.itemWidget(existing_item)
-                    if widget and hasattr(widget, 'getText'):
-                        existing_clean_text = clean_html_tags(widget.getText())
-                        if existing_clean_text == clean_text:
-                            return  # 已存在，不重复添加
-            
+        if not text or not text.strip():
+            return
+        
+        # 使用历史记录管理器添加记录
+        if self.history_manager.add_history_item(text):
+            # 如果成功添加（非重复），更新UI
             # 直接使用传入的文本（可能已包含热词高亮）
             # 如果文本中没有HTML标签，则应用热词高亮
             if '<' not in text:
@@ -326,24 +444,20 @@ class MainWindow(QMainWindow):
             
             # 传递高亮后的文本给ModernListWidget
             self.history_list.addItem(highlighted_text)
+            print(f"添加到历史记录: {text[:50]}...")
             
             # 只有在不是加载历史记录时才保存
             if not self._loading_history:
                 self.save_history()
+        else:
+            print(f"跳过重复文本: {text[:50]}...")
     
     def update_status(self, status):
         """更新状态显示"""
         is_recording = status == "录音中"
         self.record_button.set_recording_state(is_recording)
     
-    def update_loading_status(self, status):
-        """更新加载状态显示"""
-        if hasattr(self, 'loading_status_label'):
-            self.loading_status_label.setText(status)
-            if status:
-                self.loading_status_label.show()
-            else:
-                self.loading_status_label.hide()
+
     
     def set_state_manager(self, state_manager):
         """设置状态管理器"""
@@ -490,31 +604,12 @@ class MainWindow(QMainWindow):
     def save_history(self):
         """保存历史记录到文件"""
         try:
-            history_data = []
-            # 限制历史记录数量为30条
-            max_history = 30
-            count = min(self.history_list.count(), max_history)
-            
-            for i in range(count):
-                item = self.history_list.item(i)
-                if item:
-                    # 获取实际的widget来获取HTML文本
-                    widget = self.history_list.itemWidget(item)
-                    if widget and hasattr(widget, 'getText'):
-                        text = widget.getText()
-                    else:
-                        text = item.text()
-                    
-                    # 清理HTML标签，保存纯文本
-                    clean_text = clean_html_tags(text)
-                    
-                    history_data.append({
-                        'text': clean_text,
-                        'timestamp': datetime.now().isoformat()
-                    })
+            # 使用历史记录管理器保存
+            history_data = self.history_manager.get_history_for_save()
             
             with open(self.history_file, 'w', encoding='utf-8') as f:
                 json.dump(history_data, f, ensure_ascii=False, indent=2)
+            print(f"保存了 {len(history_data)} 条历史记录")
         except Exception as e:
             print(f"保存历史记录失败: {e}")
     
@@ -530,38 +625,20 @@ class MainWindow(QMainWindow):
                 
                 # 清空现有历史记录
                 self.history_list.clear()
+                self.history_manager.clear_history()
                 print("✓ 已清空现有历史记录列表")
                 
-                # 按时间倒序排列（最新的在前）
+                # 使用历史记录管理器加载数据
                 if history_data:
-                    # 如果有时间戳，按时间排序
-                    if isinstance(history_data[0], dict) and 'timestamp' in history_data[0]:
-                        history_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-                        print("✓ 已按时间戳排序历史记录")
+                    self._loading_history = True
+                    loaded_count = self.history_manager.load_history_data(history_data)
                     
-                    loaded_count = 0
-                    for entry in history_data:
-                        if isinstance(entry, dict) and 'text' in entry:
-                            # 临时禁用保存，避免加载时重复保存
-                            self._loading_history = True
-                            # 加载时重新应用热词高亮
-                            text_with_highlight = self._apply_hotword_highlight(entry['text'])
-                            # 直接传递字符串给ModernListWidget，让它创建支持HTML的widget
-                            self.history_list.addItem(text_with_highlight)
-                            self._loading_history = False
-                            loaded_count += 1
-                            print(f"✓ 已加载历史记录 {loaded_count}: {entry['text'][:50]}...")
-                        elif isinstance(entry, str):
-                            # 兼容旧格式
-                            self._loading_history = True
-                            # 加载时重新应用热词高亮
-                            text_with_highlight = self._apply_hotword_highlight(entry)
-                            # 直接传递字符串给ModernListWidget，让它创建支持HTML的widget
-                            self.history_list.addItem(text_with_highlight)
-                            self._loading_history = False
-                            loaded_count += 1
-                            print(f"✓ 已加载历史记录 {loaded_count}: {entry[:50]}...")
+                    # 将历史记录添加到UI
+                    for text in self.history_manager.get_history_texts():
+                        text_with_highlight = self._apply_hotword_highlight(text)
+                        self.history_list.addItem(text_with_highlight)
                     
+                    self._loading_history = False
                     print(f"✓ 历史记录加载完成，共加载 {loaded_count} 条记录")
                     print(f"✓ 当前列表项数量: {self.history_list.count()}")
                 else:
