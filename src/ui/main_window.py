@@ -69,7 +69,12 @@ class MainWindow(QMainWindow):
         self.setup_ui(main_layout)
         
         # 设置应用图标
-        icon = QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "mic1.png"))
+        # 导入资源工具
+        import sys
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        from resource_utils import get_icon_path
+        
+        icon = QIcon(get_icon_path("mic1.png"))
         self.setWindowIcon(icon)
         
         # 设置焦点策略

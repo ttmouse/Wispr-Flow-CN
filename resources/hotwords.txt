@@ -8,3 +8,5 @@ HTML
 facebook
 tab
 闪退
+蓝标
+录制

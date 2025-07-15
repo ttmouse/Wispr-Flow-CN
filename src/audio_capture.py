@@ -111,30 +111,55 @@ class AudioCapture:
 
     def _cleanup(self):
         """清理音频资源"""
+        # 清理音频流
         if self.stream:
             try:
-                if self.stream.is_active():
+                if hasattr(self.stream, 'is_active') and self.stream.is_active():
                     self.stream.stop_stream()
-                self.stream.close()
+                if hasattr(self.stream, 'close'):
+                    self.stream.close()
             except Exception as e:
                 print(f"清理音频流失败: {e}")
             finally:
                 self.stream = None
             
+        # 清理PyAudio实例
         if self.audio:
             try:
-                self.audio.terminate()
+                # 确保所有流都已关闭
+                if hasattr(self.audio, 'get_device_count'):
+                    # 检查是否还有活跃的流
+                    pass
+                
+                # 终止PyAudio
+                if hasattr(self.audio, 'terminate'):
+                    self.audio.terminate()
+                    
             except Exception as e:
                 print(f"清理音频系统失败: {e}")
             finally:
                 self.audio = None
-                time.sleep(0.2)  # 给系统一些时间完全释放资源
+                # 给系统更多时间释放音频资源
+                time.sleep(0.5)
         
+        # 清理数据
         self.frames = []
         self.read_count = 0
         self.valid_frame_count = 0
         self.silence_frame_count = 0
+        
+        # 强制垃圾回收
+        import gc
+        gc.collect()
 
+    def cleanup(self):
+        """公共清理方法，供外部调用"""
+        try:
+            self._cleanup()
+            print("✓ 音频捕获资源已清理")
+        except Exception as e:
+            print(f"❌ 清理音频捕获资源失败: {e}")
+    
     def __del__(self):
         """析构函数，确保资源被正确释放"""
         try:

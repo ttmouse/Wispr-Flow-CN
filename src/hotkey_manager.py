@@ -24,7 +24,7 @@ class HotkeyManager:
         
         # 时间延迟检测相关变量
         self.hotkey_press_time = 0      # 热键按下的时间
-        self.delay_threshold = 0.15     # 延迟阈值（150ms）
+        self.delay_threshold = 0.3      # 延迟阈值（300ms）
         
         # 配置日志
         self.logger = logging.getLogger('HotkeyManager')
@@ -67,10 +67,13 @@ class HotkeyManager:
         self.state_stable_count = 0
         self.hotkey_press_time = 0  # 重置热键按下时间
         
-        # 清理延迟线程
-        for thread in self.delayed_threads:
-            if thread.is_alive():
+        # 清理延迟线程 - 改进清理逻辑
+        active_threads = [t for t in self.delayed_threads if t.is_alive()]
+        if active_threads:
+            self.logger.debug(f"清理 {len(active_threads)} 个活跃的延迟线程")
+            for thread in active_threads:
                 thread.join(timeout=0.1)
+        # 清理所有线程引用，包括已结束的
         self.delayed_threads.clear()
         
         # 额外检查确保系统级修饰键状态正确
@@ -114,25 +117,29 @@ class HotkeyManager:
             self.hotkey_press_time = time.time()
             # 启动一个线程来持续检查
             import threading
-            threading.Thread(target=self._delayed_check_worker, daemon=True).start()
+            thread = threading.Thread(target=self._delayed_check_worker, daemon=True)
+            thread.start()
+            # 将线程添加到管理列表中
+            self.delayed_threads.append(thread)
     
     def _delayed_check_worker(self):
         """延迟检测工作线程"""
         try:
             start_time = self.hotkey_press_time
-            has_other_keys = False  # 标记是否检测到其他修饰键
+            has_other_keys = False  # 标记是否检测到其他修饰键或字母键
             
             while self.hotkey_press_time == start_time:
                 time.sleep(0.01)  # 10ms 检查间隔
                 current_time = time.time()
                 
-                # 检查是否有其他修饰键被按下（不要求热键必须一直按着）
-                if self._has_other_modifier_keys():
+                # 检查是否有其他修饰键被按下或者有其他按键被按下
+                if self._has_other_modifier_keys() or len(self.other_keys_pressed) > 0:
                     has_other_keys = True
-                    break  # 检测到其他修饰键，立即退出
+                    self.logger.debug(f"检测到其他按键，取消录音触发。修饰键: {self._has_other_modifier_keys()}, 其他按键: {self.other_keys_pressed}")
+                    break  # 检测到其他按键，立即退出
                 
-                # 如果超过延迟阈值且没有检测到其他修饰键，触发录音
-                if current_time - start_time >= self.delay_threshold / 1000.0:
+                # 如果超过延迟阈值且没有检测到其他按键，触发录音
+                if current_time - start_time >= self.delay_threshold:
                     if not has_other_keys:
                         # 通过检查，触发录音
                         if not self.hotkey_pressed and not self.other_keys_pressed and not self.is_recording and self.press_callback:
@@ -208,6 +215,19 @@ class HotkeyManager:
     def _is_only_hotkey_pressed(self):
         """检查是否只有热键被按下，没有其他修饰键（保持兼容性）"""
         return self._check_only_hotkey_pressed()
+    
+    def _is_common_combination_key(self, key):
+        """检查是否是常见组合键的字母部分"""
+        try:
+            # 检查是否是字母键
+            if hasattr(key, 'char') and key.char:
+                # 常见的组合键字母：C(复制), V(粘贴), X(剪切), Z(撤销), Y(重做), A(全选), S(保存), F(查找)等
+                common_combo_chars = {'c', 'v', 'x', 'z', 'y', 'a', 's', 'f', 'n', 'o', 'p', 'w', 't', 'r'}
+                return key.char.lower() in common_combo_chars
+            return False
+        except Exception as e:
+            self.logger.debug(f"检查组合键字母时出错: {e}")
+            return False
 
     def _monitor_fn_key(self):
         """监听 fn 键的状态 - 优化CPU使用率"""
@@ -296,6 +316,13 @@ class HotkeyManager:
                 # 记录其他按键
                 if key_str not in self.other_keys_pressed:
                     self.other_keys_pressed.add(key_str)
+                    self.logger.debug(f"检测到其他按键: {key_str}")
+                    
+                    # 如果检测到常见的组合键字母，立即重置热键按下时间以阻止录音触发
+                    if self._is_common_combination_key(key):
+                        self.logger.info(f"检测到组合键字母 {key_str}，重置热键状态")
+                        self.hotkey_press_time = 0  # 重置时间，阻止延迟检测触发
+                    
                     # 如果正在录音，则停止录音
                     if self.is_recording and self.release_callback:
                         try:
@@ -409,10 +436,15 @@ class HotkeyManager:
             self.stop_listening()
             
             # 等待并清理所有延迟线程
-            for thread in self.delayed_threads:
+            self.logger.info(f"正在清理 {len(self.delayed_threads)} 个延迟线程")
+            for i, thread in enumerate(self.delayed_threads):
                 if thread.is_alive():
+                    self.logger.debug(f"等待线程 {i+1} 结束")
                     thread.join(timeout=0.5)
+                    if thread.is_alive():
+                        self.logger.warning(f"线程 {i+1} 未能在超时时间内结束")
             self.delayed_threads.clear()
+            self.logger.info("延迟线程清理完成")
             
             # 清理回调
             self.press_callback = None

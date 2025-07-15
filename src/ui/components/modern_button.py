@@ -4,6 +4,12 @@ from PyQt6.QtCore import (Qt, QPropertyAnimation, QEasingCurve, QSize,
                          QRectF, pyqtProperty, QTimer, QTime, QEvent)
 from PyQt6.QtGui import QIcon, QPainter, QColor, QPixmapCache
 import random
+import sys
+import os
+
+# 添加父目录到路径以导入resource_utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from resource_utils import get_icon_path
 
 class ModernButton(QPushButton):
     # 缓存资源
@@ -19,9 +25,9 @@ class ModernButton(QPushButton):
     @classmethod
     def _ensure_icons(cls):
         if cls._normal_icon is None:
-            cls._normal_icon = QIcon("resources/mic.png")
+            cls._normal_icon = QIcon(get_icon_path("mic.png"))
         if cls._recording_icon is None:
-            cls._recording_icon = QIcon("resources/mic-recording.svg")
+            cls._recording_icon = QIcon(get_icon_path("mic-recording.svg"))
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -165,4 +171,4 @@ class ModernButton(QPushButton):
         painter.drawEllipse(circle_rect)
         
         # 绘制图标
-        super().paintEvent(event) 
+        super().paintEvent(event)

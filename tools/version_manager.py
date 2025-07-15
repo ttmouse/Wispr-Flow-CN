@@ -9,7 +9,7 @@ def read_version(config_path):
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            match = re.search(r'APP_VERSION = ["\'](.+?)["\']', content)
+            match = re.search(r'BASE_VERSION = ["\'](.+?)["\']', content)
             if match:
                 return match.group(1)
     except Exception as e:
@@ -39,8 +39,8 @@ def update_version(config_path):
         
         # 更新版本号
         new_content = re.sub(
-            r'APP_VERSION = ["\'](.+?)["\']',
-            f'APP_VERSION = "{new_version}"',
+            r'BASE_VERSION = ["\'](.+?)["\']',
+            f'BASE_VERSION = "{new_version}"',
             content
         )
         
@@ -63,4 +63,4 @@ if __name__ == '__main__':
     # 获取项目根目录
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config_path = os.path.join(root_dir, 'src', 'config.py')
-    update_version(config_path) 
+    update_version(config_path)

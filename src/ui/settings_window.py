@@ -172,7 +172,7 @@ class SettingsWindow(QWidget):
                 print("发出设置保存信号...")
                 # 使用 QTimer.singleShot 确保信号在主线程中发射
                 from PyQt6.QtCore import QTimer
-                QTimer.singleShot(0, lambda: self.settings_saved.emit())
+                QTimer.singleShot(0, self._emit_settings_saved_signal)
                 print("✓ 设置已保存")
             except Exception as e:
                 print(f"发出保存信号失败: {e}")
@@ -196,6 +196,13 @@ class SettingsWindow(QWidget):
                 QMessageBox.critical(self, "保存失败", f"保存设置时发生错误:\n\n{str(e)}\n\n请检查控制台输出获取详细信息。")
             except Exception as dialog_error:
                 print(f"显示错误对话框失败: {dialog_error}")
+
+    def _emit_settings_saved_signal(self):
+        """发出设置保存完成信号"""
+        try:
+            self.settings_saved.emit()
+        except Exception as e:
+            print(f"发出设置保存信号失败: {e}")
 
     def closeEvent(self, event):
         """窗口关闭事件"""

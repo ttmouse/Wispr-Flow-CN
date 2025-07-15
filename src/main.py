@@ -520,17 +520,34 @@ class Application(QObject):
             
             # 停止所有线程
             if hasattr(self, 'audio_capture_thread') and self.audio_capture_thread:
-                self.audio_capture_thread.stop()
-                self.audio_capture_thread.wait()
+                try:
+                    if self.audio_capture_thread.isRunning():
+                        self.audio_capture_thread.stop()
+                        # 等待线程结束，但设置超时
+                        if not self.audio_capture_thread.wait(3000):  # 3秒超时
+                            print("⚠️ 音频捕获线程未能在3秒内正常结束，强制终止")
+                            self.audio_capture_thread.terminate()
+                            self.audio_capture_thread.wait(1000)  # 再等1秒
+                    self.audio_capture_thread = None
+                except Exception as e:
+                    print(f"❌ 停止音频捕获线程失败: {e}")
             
             if hasattr(self, 'transcription_thread') and self.transcription_thread:
-                if self.transcription_thread.isRunning():
-                    self.transcription_thread.terminate()
-                    self.transcription_thread.wait()
+                try:
+                    if self.transcription_thread.isRunning():
+                        self.transcription_thread.terminate()
+                        if not self.transcription_thread.wait(2000):  # 2秒超时
+                            print("⚠️ 转写线程未能在2秒内结束")
+                    self.transcription_thread = None
+                except Exception as e:
+                    print(f"❌ 停止转写线程失败: {e}")
             
             # 清理音频资源
-            if hasattr(self, 'audio_capture'):
-                self.audio_capture.cleanup()
+            if hasattr(self, 'audio_capture') and self.audio_capture:
+                try:
+                    self.audio_capture.cleanup()
+                except Exception as e:
+                    print(f"❌ 清理音频捕获失败: {e}")
             
             # 清理FunASR引擎资源
             if hasattr(self, 'funasr_engine') and self.funasr_engine:
@@ -547,7 +564,26 @@ class Application(QObject):
             # 清理多进程资源
             try:
                 import multiprocessing
-                multiprocessing.current_process()._clean()
+                import gc
+                
+                # 强制垃圾回收
+                gc.collect()
+                
+                # 清理当前进程资源
+                current_process = multiprocessing.current_process()
+                if hasattr(current_process, '_clean'):
+                    current_process._clean()
+                
+                # 清理资源跟踪器
+                try:
+                    from multiprocessing import resource_tracker
+                    if hasattr(resource_tracker, '_resource_tracker'):
+                        tracker = resource_tracker._resource_tracker
+                        if tracker and hasattr(tracker, '_stop'):
+                            tracker._stop()
+                except Exception as tracker_e:
+                    print(f"⚠️ 清理资源跟踪器失败: {tracker_e}")
+                    
             except Exception as e:
                 print(f"❌ 清理多进程资源失败: {e}")
             

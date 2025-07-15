@@ -90,14 +90,66 @@ def build_app():
     cmd.extend([
         '--add-data=src:src',  # 添加源代码
         '--add-data=resources:resources',  # 添加资源文件
+    ])
+    
+    # 添加音频文件
+    if os.path.exists('resources/start.wav'):
+        cmd.append('--add-data=resources/start.wav:resources')
+    if os.path.exists('resources/stop.wav'):
+        cmd.append('--add-data=resources/stop.wav:resources')
+    
+    # 添加图标文件
+    if os.path.exists('resources/mic.png'):
+        cmd.append('--add-data=resources/mic.png:resources')
+    if os.path.exists('resources/mic1.png'):
+        cmd.append('--add-data=resources/mic1.png:resources')
+    if os.path.exists('resources/mic-recording.svg'):
+        cmd.append('--add-data=resources/mic-recording.svg:resources')
+    
+    # 继续添加其他参数
+    cmd.extend([
         '--hidden-import=PyQt6',
+        '--hidden-import=PyQt6.QtCore',
+        '--hidden-import=PyQt6.QtWidgets',
+        '--hidden-import=PyQt6.QtGui',
         '--hidden-import=pyaudio',
         '--hidden-import=numpy',
+        '--hidden-import=pynput',
+        '--hidden-import=pyperclip',
+        '--hidden-import=pyautogui',
+        '--hidden-import=requests',
+        '--hidden-import=tqdm',
+        '--hidden-import=watchdog',
         '--collect-all=funasr',  # 收集所有 funasr 相关文件
+        '--collect-all=torch',
+        '--collect-all=torchaudio',
         '--exclude-module=PyQt5',  # 排除 PyQt5
         '--exclude-module=PySide6',  # 排除 PySide6
-        'src/main.py'  # 主程序入口
     ])
+    
+    # macOS特定的隐藏导入
+    if sys.platform == 'darwin':
+        cmd.extend([
+            '--hidden-import=objc',
+            '--hidden-import=Foundation',
+            '--hidden-import=AppKit',
+            '--hidden-import=AVFoundation',
+            '--hidden-import=CoreAudio',
+            '--hidden-import=pyobjc-core',
+            '--hidden-import=pyobjc-framework-Cocoa',
+            '--hidden-import=pyobjc-framework-AVFoundation',
+            '--hidden-import=pyobjc-framework-CoreAudio',
+            '--hidden-import=shutil',
+            '--hidden-import=multiprocessing',
+            '--hidden-import=json',
+            '--hidden-import=datetime',
+            '--hidden-import=logging',
+            '--hidden-import=os',
+            '--hidden-import=sys',
+            '--hidden-import=re',
+        ])
+    
+    cmd.append('src/main.py')  # 主程序入口
     
     # 执行构建
     print("执行命令:", ' '.join(cmd))

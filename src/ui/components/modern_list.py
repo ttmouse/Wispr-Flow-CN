@@ -70,7 +70,7 @@ class TextLabel(QLabel):
             min_height = int(line_height * 1.4) + 4
             return QSize(300, min_height)
         
-        # 获取可用宽度（考虑父容器的内边距）
+        # 获取可用宽度（考虑父容器的内边距和滚动条宽度）
         parent_widget = self.parent()
         if parent_widget and hasattr(parent_widget, 'layout'):
             layout = parent_widget.layout()
@@ -81,6 +81,17 @@ class TextLabel(QLabel):
                 available_width = parent_widget.width() - 20 if parent_widget.width() > 0 else 280
         else:
             available_width = 280  # 默认宽度
+        
+        # 查找最顶层的QListWidget来检查滚动条
+        list_widget = self.parent()
+        while list_widget and not isinstance(list_widget, QListWidget):
+            list_widget = list_widget.parent()
+        
+        # 如果找到了QListWidget，始终为滚动条预留空间
+        if list_widget:
+            # 始终预留滚动条空间，避免文字被截断
+            # 总共预留20px间距
+            available_width -= 20
         
         # 确保最小宽度
         available_width = max(available_width, 200)
@@ -122,7 +133,8 @@ class HistoryItemWidget(QWidget):
         
         layout = QVBoxLayout(self)
         # 减少内边距，实现更紧凑的布局，同时保持高度自适应
-        layout.setContentsMargins(6, 8, 6, 8)  # 左、上、右、下内边距，减少一半的距离
+        # 增加右边距为滚动条预留更多空间
+        layout.setContentsMargins(6, 8, 20, 8)  # 左、上、右、下内边距，右边距设置为20px
         layout.setSpacing(0)  # 移除内部间距
         
         # 创建文本标签
@@ -220,6 +232,29 @@ class ModernListWidget(QListWidget):
             QListWidget::item:selected {
                 background-color: #e3f2fd;  /* 选中时的背景色 */
                 color: black;
+            }
+            /* 滚动条样式 */
+            QScrollBar:vertical {
+                background: transparent;
+                width: 8px;
+                margin: 0px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #C0C0C0;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #A0A0A0;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: transparent;
             }
         """)
         
