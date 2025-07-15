@@ -1,12 +1,12 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QComboBox, QPushButton, QGroupBox,
                             QCheckBox, QSlider, QTabWidget,
-                            QLineEdit, QFileDialog, QTextEdit, QMessageBox)
+                            QLineEdit, QFileDialog, QTextEdit, QMessageBox, QDialog)
 from PyQt6.QtCore import Qt, pyqtSignal
 from pathlib import Path
 import pyaudio
 
-class SettingsWindow(QWidget):
+class SettingsWindow(QDialog):
     # 定义信号
     settings_changed = pyqtSignal(str, object)  # 当任何设置改变时发出信号
     settings_saved = pyqtSignal()  # 当设置保存时发出信号

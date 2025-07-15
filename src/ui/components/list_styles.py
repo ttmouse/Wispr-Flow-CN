@@ -1,7 +1,7 @@
 # 列表样式管理器 - 统一管理列表组件的样式
 # 包含主题、颜色、字体等样式定义
 
-from ..style_config_manager import style_config
+from ..simple_style_config import style_config
 
 class ListStyleManager:
     """列表样式管理器

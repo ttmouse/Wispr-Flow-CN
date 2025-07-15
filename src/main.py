@@ -201,17 +201,16 @@ class Application(QObject):
                 try:
                     if not getattr(sys, 'frozen', False):
                         if self.settings_manager.is_cache_expired('permissions'):
-                            print("正在检查权限...")
+                            # 在打包后的应用中，避免在定时器回调中使用print
                             self._check_development_permissions()
-                            print("✓ 权限检查完成")
                         else:
-                            print("✓ 权限缓存有效，跳过检查")
                             cache = self.settings_manager.get_permissions_cache()
                             if not cache['accessibility'] or not cache['microphone']:
-                                print("⚠️  缓存显示权限可能不完整，建议检查系统设置")
+                                # 权限不完整时通过UI信号通知
+                                self.update_ui_signal.emit("⚠️ 权限可能不完整，建议检查系统设置", "")
                 except Exception as e:
-                    print(f"⚠️  权限检查失败: {e}")
                     # 权限检查失败不应阻止程序继续运行
+                    pass
                 self._init_step = 1
                 self._init_timer.start(50)  # 50ms后执行下一步
                 
@@ -219,7 +218,8 @@ class Application(QObject):
                 # 步骤2：初始化语音识别引擎
                 try:
                     if self.settings_manager.is_cache_expired('models'):
-                        print("正在加载语音识别模型...")
+                        # 通过UI信号通知模型加载状态
+                        self.update_ui_signal.emit("正在加载语音识别模型...", "")
                         try:
                             self.funasr_engine = FunASREngine(self.settings_manager)
                             model_paths = self.funasr_engine.get_model_paths()
@@ -228,29 +228,21 @@ class Application(QObject):
                             punc_available = bool(model_paths.get('punc_model_path'))
                             self.settings_manager.update_models_cache(asr_available, punc_available)
                             if getattr(self.funasr_engine, 'is_ready', False):
-                                print("✓ 语音识别引擎已就绪")
-                            else:
-                                print("⚠️ 语音识别引擎初始化未完成")
+                                self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
                         except Exception as e:
-                            print(f"❌ 模型加载失败: {e}")
                             self.settings_manager.update_models_cache(False, False)
                             self.funasr_engine = None
                     else:
-                        print("✓ 模型缓存有效，跳过加载")
                         cache = self.settings_manager.get_models_cache()
                         if cache['asr_available']:
                             try:
                                 self.funasr_engine = FunASREngine(self.settings_manager)
                                 if getattr(self.funasr_engine, 'is_ready', False):
-                                    print("✓ 基于缓存快速初始化语音识别引擎已就绪")
-                                else:
-                                    print("⚠️ 基于缓存初始化但引擎未就绪")
+                                    self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
                             except Exception as e:
-                                print(f"⚠️  缓存显示模型可用但初始化失败: {e}")
                                 self.funasr_engine = None
                                 self.settings_manager.update_models_cache(False, False)
                         else:
-                            print("⚠️  缓存显示模型不可用，尝试重新加载...")
                             try:
                                 self.funasr_engine = FunASREngine(self.settings_manager)
                                 model_paths = self.funasr_engine.get_model_paths()
@@ -259,15 +251,11 @@ class Application(QObject):
                                 punc_available = bool(model_paths.get('punc_model_path'))
                                 self.settings_manager.update_models_cache(asr_available, punc_available)
                                 if getattr(self.funasr_engine, 'is_ready', False):
-                                    print("✓ 语音识别引擎重新加载成功并已就绪")
-                                else:
-                                    print("⚠️ 语音识别引擎重新加载但未就绪")
+                                    self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
                             except Exception as e:
-                                print(f"❌ 重新加载模型失败: {e}")
                                 self.funasr_engine = None
                                 self.settings_manager.update_models_cache(False, False)
                 except Exception as e:
-                    print(f"⚠️  语音识别引擎初始化失败: {e}")
                     self.funasr_engine = None
                 self._init_step = 2
                 self._init_timer.start(50)  # 50ms后执行下一步
@@ -279,28 +267,22 @@ class Application(QObject):
                     # 安全初始化各个组件
                     try:
                         self.hotkey_manager = HotkeyManager(self.settings_manager)
-                        print("✓ 热键管理器初始化成功")
                     except Exception as e:
-                        print(f"⚠️  热键管理器初始化失败: {e}")
-                        print(f"详细错误信息: {traceback.format_exc()}")
                         self.hotkey_manager = None
                     
                     try:
                         self.clipboard_manager = ClipboardManager()
                     except Exception as e:
-                        print(f"⚠️  剪贴板管理器初始化失败: {e}")
                         self.clipboard_manager = None
                     
                     try:
                         self.context = Context()
                     except Exception as e:
-                        print(f"⚠️  上下文管理器初始化失败: {e}")
                         self.context = None
                     
                     try:
                         self.audio_manager = AudioManager(self)
                     except Exception as e:
-                        print(f"⚠️  音频管理器初始化失败: {e}")
                         self.audio_manager = None
                     
                     # 预初始化 AudioCaptureThread
@@ -309,11 +291,10 @@ class Application(QObject):
                         self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
                         self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
                     except Exception as e:
-                        print(f"⚠️  音频捕获线程初始化失败: {e}")
                         self.audio_capture_thread = None
                         
                 except Exception as e:
-                    print(f"⚠️  组件初始化过程中出现错误: {e}")
+                    pass
                 
                 self._init_step = 3
                 self._init_timer.start(50)  # 50ms后执行下一步
@@ -326,7 +307,7 @@ class Application(QObject):
                     # 启动热键状态监控
                     self.start_hotkey_monitor()
                 except Exception as e:
-                    print(f"⚠️  设置连接和应用设置失败: {e}")
+                    pass
                 self._init_step = 4
                 self._init_timer.start(50)  # 50ms后执行下一步
                 
@@ -340,14 +321,12 @@ class Application(QObject):
                 # 标记主窗口初始化完成，允许拖拽等交互操作
                 if hasattr(self.main_window, '_initialization_complete'):
                     self.main_window._initialization_complete = True
-                    print("✓ 主窗口初始化完成，已启用交互功能")
-                print("✓ 所有组件初始化完成")
+                # 通过UI信号通知初始化完成
+                self.update_ui_signal.emit("✓ 应用初始化完成", "")
                 self._init_step = -1  # 标记完成
                 
         except Exception as e:
-            print(f"❌ 初始化步骤 {self._init_step} 发生严重错误: {e}")
-            import traceback
-            print(traceback.format_exc())
+            # 静默处理异常，避免在定时器回调中抛出异常
             self._init_step = -1  # 标记完成（即使失败）
 
 
@@ -742,12 +721,17 @@ class Application(QObject):
     
     def _auto_stop_recording(self):
         """定时器触发的自动停止录音"""
-        print(f"⏰ 定时器触发！当前录音状态: {self.recording}")
-        if self.recording:
-            print("⏰ 录音时间达到10秒，自动停止录音")
-            self.stop_recording()
-        else:
-            print("⏰ 定时器触发，但当前未在录音状态")
+        try:
+            # 在打包后的应用中，避免在定时器回调中直接使用print
+            # 使用信号来安全地更新UI或记录日志
+            if self.recording:
+                # 发送信号到主线程进行UI更新
+                self.update_ui_signal.emit("⏰ 录音时间达到最大时长，自动停止录音", "")
+                self.stop_recording()
+            # 不在录音状态时不需要特别处理
+        except Exception as e:
+            # 静默处理异常，避免在定时器回调中抛出异常
+            pass
 
     def cleanup(self):
         """清理资源"""

@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings, QEvent
 from PyQt6.QtGui import QIcon, QFont, QAction, QKeySequence, QShortcut
-from .style_editor import StyleEditor
+from .settings_window import SettingsWindow
 from .components.modern_button import ModernButton
 from .components.modern_list_widget import ModernListWidget
 from .components.history_manager import HistoryManager
@@ -175,45 +175,23 @@ class MainWindow(QMainWindow):
         else:
             print("无法打开设置窗口：应用程序实例不可用")
     
-    def open_style_editor(self):
-        """打开样式编辑器"""
+    def open_settings_panel(self):
+        """打开设置面板"""
         try:
-            style_editor = StyleEditor(self)
-            style_editor.style_updated.connect(self._on_style_updated)
-            style_editor.exec()
+            # 从应用程序实例获取必要的参数
+            settings_manager = None
+            audio_capture = None
+            
+            if self.app_instance:
+                settings_manager = getattr(self.app_instance, 'settings_manager', None)
+                audio_capture = getattr(self.app_instance, 'audio_capture', None)
+            
+            settings_window = SettingsWindow(self, settings_manager, audio_capture)
+            settings_window.exec()
         except Exception as e:
-            print(f"打开样式编辑器失败: {e}")
+            print(f"打开设置面板失败: {e}")
     
-    def _on_style_updated(self):
-        """处理样式更新信号"""
-        try:
-            # 重新应用样式到所有组件
-            self._refresh_all_styles()
-            print("✓ 样式已更新")
-        except Exception as e:
-            print(f"更新样式失败: {e}")
-    
-    def _refresh_all_styles(self):
-        """刷新所有组件的样式"""
-        try:
-            # 刷新历史列表样式
-            if hasattr(self, 'history_list'):
-                self.history_list._setup_styles()
-            
-            # 刷新所有历史项的样式和布局
-            for i in range(self.history_list.count()):
-                item = self.history_list.item(i)
-                widget = self.history_list.itemWidget(item)
-                if widget and hasattr(widget, 'refresh_styles'):
-                    widget.refresh_styles()
-            
-            # 重新应用热词高亮到所有历史记录
-            self._reapply_hotword_highlight_to_history()
-            
-            # 强制重绘
-            self.update()
-        except Exception as e:
-            print(f"刷新样式失败: {e}")
+
     
     def setup_title_bar(self):
         """设置标题栏"""
@@ -269,8 +247,8 @@ class MainWindow(QMainWindow):
             }
         """)
         self.style_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.style_button.mousePressEvent = lambda e: self.open_style_editor()
-        self.style_button.setToolTip("样式设置")
+        self.style_button.mousePressEvent = lambda e: self.open_settings_panel()
+        self.style_button.setToolTip("设置")
         layout.addWidget(self.style_button)
         
         # 最小化按钮

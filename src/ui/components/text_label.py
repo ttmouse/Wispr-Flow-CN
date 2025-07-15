@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QFont
 import re
-from ..style_config_manager import style_config
+from ..simple_style_config import style_config
 
 class TextLabel(QLabel):
     """自定义文本标签组件

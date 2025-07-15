@@ -4,7 +4,7 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QListWidgetItem
 from PyQt6.QtCore import Qt, QSize
 from .text_label import TextLabel
-from ..style_config_manager import style_config
+from ..simple_style_config import style_config
 
 class HistoryItemWidget(QWidget):
     """历史记录项的自定义Widget

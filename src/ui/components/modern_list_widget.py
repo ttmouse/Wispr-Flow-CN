@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QListWidget, QListWidgetItem
 from PyQt6.QtCore import Qt, QTimer
 from .history_item import HistoryItemWidget, HistoryItem
 from .list_styles import ListStyleManager
-from ..style_config_manager import style_config
+from ..simple_style_config import style_config
 
 class ModernListWidget(QListWidget):
     """现代化列表组件

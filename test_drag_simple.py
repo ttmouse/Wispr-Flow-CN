@@ -103,20 +103,23 @@ class TestMainWindow(QMainWindow):
         
     def complete_initialization(self):
         """完成初始化"""
-        self._initialization_complete = True
-        self.status_label.setText("✅ 初始化完成 - 现在可以拖拽窗口了")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                color: #4CAF50;
-                margin: 20px;
-                padding: 20px;
-                border: 2px solid #4CAF50;
-                border-radius: 10px;
-            }
-        """)
-        self.init_timer.stop()
-        print("✅ 初始化完成，拖拽功能已启用")
-        print("📝 现在再次尝试拖拽窗口，应该可以正常工作")
+        try:
+            self._initialization_complete = True
+            self.status_label.setText("✅ 初始化完成 - 现在可以拖拽窗口了")
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    color: #4CAF50;
+                    margin: 20px;
+                    padding: 20px;
+                    border: 2px solid #4CAF50;
+                    border-radius: 10px;
+                }
+            """)
+            self.init_timer.stop()
+            # 移除print语句，避免在定时器回调中可能的崩溃
+        except Exception as e:
+            # 静默处理异常，避免在定时器回调中抛出异常
+            pass
         
     def _on_title_bar_mouse_press(self, event):
         """标题栏鼠标按下事件"""
