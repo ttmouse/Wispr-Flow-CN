@@ -1,5 +1,5 @@
 {
-  "hotkey": "ctrl",
+  "hotkey": "fn",
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
@@ -16,14 +16,14 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-16T15:47:17.803652",
-      "accessibility": false,
+      "last_check": "2025-07-22T00:42:25.760229",
+      "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-15T03:32:12.482948",
-      "asr_available": true,
+      "last_check": "2025-07-22T02:07:29.624159",
+      "asr_available": false,
       "punc_available": true,
       "check_interval_hours": 168
     }

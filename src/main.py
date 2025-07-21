@@ -1,10 +1,12 @@
 import sys
 import traceback
 import os
+from functools import wraps
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QDialog
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
 from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
+from ui.clipboard_monitor_window import ClipboardMonitorWindow
 from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from hotkey_manager import HotkeyManager
@@ -74,6 +76,42 @@ def get_app_path():
         # 开发环境路径
         return os.path.dirname(os.path.abspath(__file__))
 
+def handle_common_exceptions(show_error=True):
+    """统一异常处理装饰器
+    
+    Args:
+        show_error: 是否显示错误信息给用户
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except PermissionError as e:
+                error_msg = f"权限错误: {e}"
+                logging.error(error_msg)
+                if show_error and hasattr(self, 'tray_icon') and self.tray_icon:
+                    self.tray_icon.showMessage(
+                        "权限错误",
+                        "请检查麦克风和辅助功能权限设置",
+                        QSystemTrayIcon.MessageIcon.Warning,
+                        3000
+                    )
+            except FileNotFoundError as e:
+                error_msg = f"文件未找到: {e}"
+                logging.error(error_msg)
+                if show_error:
+                    print(f"❌ {error_msg}")
+            except Exception as e:
+                error_msg = f"操作失败: {e}"
+                logging.error(error_msg)
+                if show_error:
+                    print(f"❌ {error_msg}")
+                # 记录详细的错误堆栈
+                logging.debug(traceback.format_exc())
+        return wrapper
+    return decorator
+
 class Application(QObject):
     update_ui_signal = pyqtSignal(str, str)
     show_window_signal = pyqtSignal()
@@ -131,6 +169,10 @@ class Application(QObject):
             settings_action = tray_menu.addAction("快捷键设置...")
             settings_action.triggered.connect(self.show_settings)
             
+            # 添加剪贴板监控窗口菜单项
+            clipboard_monitor_action = tray_menu.addAction("剪贴板监控")
+            clipboard_monitor_action.triggered.connect(self.show_clipboard_monitor)
+            
             # 重启热键功能
             restart_hotkey_action = tray_menu.addAction("重启热键功能")
             restart_hotkey_action.triggered.connect(self.restart_hotkey_manager)
@@ -155,6 +197,9 @@ class Application(QObject):
             self.state_manager = StateManager()
             self.main_window = MainWindow(app_instance=self)
             self.main_window.set_state_manager(self.state_manager)
+            
+            # 初始化剪贴板监控窗口
+            self.clipboard_monitor_window = None
             
             # 初始化基础音频组件
             self.audio_capture = AudioCapture()
@@ -189,155 +234,136 @@ class Application(QObject):
         """启动后台初始化任务"""
         from PyQt6.QtCore import QTimer
         
-        # 使用异步初始化，避免阻塞主线程
-        self._init_step = 0
+        # 使用简化的初始化流程
         self._init_timer = QTimer()
         self._init_timer.setSingleShot(True)
-        self._init_timer.timeout.connect(self._async_initialization_step)
+        self._init_timer.timeout.connect(self.initialize_components)
         self._init_timer.start(100)  # 100ms后开始后台初始化
     
-    def _async_initialization_step(self):
-        """异步初始化步骤，避免阻塞主线程"""
+    @handle_common_exceptions(show_error=False)
+    def initialize_components(self):
+        """按顺序初始化所有组件"""
         try:
-            if self._init_step == 0:
-                # 步骤1：检查权限
-                try:
-                    if not getattr(sys, 'frozen', False):
-                        if self.settings_manager.is_cache_expired('permissions'):
-                            # 在打包后的应用中，避免在定时器回调中使用print
-                            self._check_development_permissions()
-                        else:
-                            cache = self.settings_manager.get_permissions_cache()
-                            if not cache['accessibility'] or not cache['microphone']:
-                                # 权限不完整时通过UI信号通知
-                                self.update_ui_signal.emit("⚠️ 权限可能不完整，建议检查系统设置", "")
-                except Exception as e:
-                    # 权限检查失败不应阻止程序继续运行
-                    pass
-                self._init_step = 1
-                self._init_timer.start(50)  # 50ms后执行下一步
-                
-            elif self._init_step == 1:
-                # 步骤2：初始化语音识别引擎
-                try:
-                    if self.settings_manager.is_cache_expired('models'):
-                        # 通过UI信号通知模型加载状态
-                        self.update_ui_signal.emit("正在加载语音识别模型...", "")
-                        try:
-                            self.funasr_engine = FunASREngine(self.settings_manager)
-                            model_paths = self.funasr_engine.get_model_paths()
-                            self.settings_manager.update_model_paths(model_paths)
-                            asr_available = bool(model_paths.get('asr_model_path'))
-                            punc_available = bool(model_paths.get('punc_model_path'))
-                            self.settings_manager.update_models_cache(asr_available, punc_available)
-                            if getattr(self.funasr_engine, 'is_ready', False):
-                                self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
-                        except Exception as e:
-                            self.settings_manager.update_models_cache(False, False)
-                            self.funasr_engine = None
-                    else:
-                        cache = self.settings_manager.get_models_cache()
-                        if cache['asr_available']:
-                            try:
-                                self.funasr_engine = FunASREngine(self.settings_manager)
-                                if getattr(self.funasr_engine, 'is_ready', False):
-                                    self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
-                            except Exception as e:
-                                self.funasr_engine = None
-                                self.settings_manager.update_models_cache(False, False)
-                        else:
-                            try:
-                                self.funasr_engine = FunASREngine(self.settings_manager)
-                                model_paths = self.funasr_engine.get_model_paths()
-                                self.settings_manager.update_model_paths(model_paths)
-                                asr_available = bool(model_paths.get('asr_model_path'))
-                                punc_available = bool(model_paths.get('punc_model_path'))
-                                self.settings_manager.update_models_cache(asr_available, punc_available)
-                                if getattr(self.funasr_engine, 'is_ready', False):
-                                    self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
-                            except Exception as e:
-                                self.funasr_engine = None
-                                self.settings_manager.update_models_cache(False, False)
-                except Exception as e:
-                    self.funasr_engine = None
-                self._init_step = 2
-                self._init_timer.start(50)  # 50ms后执行下一步
-                
-            elif self._init_step == 2:
-                # 步骤3：初始化其他组件
-                try:
-                    
-                    # 安全初始化各个组件
-                    try:
-                        self.hotkey_manager = HotkeyManager(self.settings_manager)
-                    except Exception as e:
-                        self.hotkey_manager = None
-                    
-                    try:
-                        # 启用调试模式以帮助诊断剪贴板问题
-                        debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
-                        self.clipboard_manager = ClipboardManager(debug_mode=debug_mode)
-                    except Exception as e:
-                        self.clipboard_manager = None
-                    
-                    try:
-                        self.context = Context()
-                    except Exception as e:
-                        self.context = None
-                    
-                    try:
-                        self.audio_manager = AudioManager(self)
-                    except Exception as e:
-                        self.audio_manager = None
-                    
-                    # 预初始化 AudioCaptureThread
-                    try:
-                        self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
-                        self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-                        self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
-                    except Exception as e:
-                        self.audio_capture_thread = None
-                        
-                except Exception as e:
-                    pass
-                
-                self._init_step = 3
-                self._init_timer.start(50)  # 50ms后执行下一步
-                
-            elif self._init_step == 3:
-                # 步骤4：设置连接和应用设置
-                try:
-                    # 将funasr_engine设置给state_manager，以便热词高亮功能正常工作
-                    if hasattr(self, 'funasr_engine') and self.funasr_engine:
-                        self.state_manager.funasr_engine = self.funasr_engine
-                        print("✓ FunASR引擎已关联到状态管理器")
-                    
-                    self.setup_connections()
-                    self.apply_settings()
-                    # 启动热键状态监控
-                    self.start_hotkey_monitor()
-                except Exception as e:
-                    pass
-                self._init_step = 4
-                self._init_timer.start(50)  # 50ms后执行下一步
-                
-            elif self._init_step == 4:
-                # 步骤5：完成初始化
-                self._init_step = 5
-                self._init_timer.start(1000)  # 1秒后清除状态
-                
-            elif self._init_step == 5:
-                # 步骤6：标记主窗口初始化完成
-                # 标记主窗口初始化完成，允许拖拽等交互操作
-                if hasattr(self.main_window, '_initialization_complete'):
-                    self.main_window._initialization_complete = True
-                # 通过UI信号通知初始化完成
-                self.update_ui_signal.emit("✓ 应用初始化完成", "")
-                self._init_step = -1  # 标记完成
-                
+            # 1. 检查权限（非阻塞）
+            self._check_permissions_async()
+            
+            # 2. 初始化语音识别引擎
+            self._initialize_funasr_engine()
+            
+            # 3. 初始化其他核心组件
+            self._initialize_core_components()
+            
+            # 4. 设置连接和应用设置
+            self._finalize_initialization()
+            
+            # 5. 标记初始化完成
+            self._mark_initialization_complete()
+            
         except Exception as e:
-            # 静默处理异常，避免在定时器回调中抛出异常
-            self._init_step = -1  # 标记完成（即使失败）
+            print(f"组件初始化失败: {e}")
+            self.update_ui_signal.emit("⚠️ 部分组件初始化失败", "")
+    
+    def _check_permissions_async(self):
+        """异步检查权限"""
+        try:
+            if not getattr(sys, 'frozen', False) and self.settings_manager.is_cache_expired('permissions'):
+                self._check_development_permissions()
+        except Exception:
+            pass  # 权限检查失败不应阻止程序继续运行
+    
+    def _initialize_funasr_engine(self):
+        """初始化语音识别引擎"""
+        try:
+            self.update_ui_signal.emit("正在加载语音识别模型...", "")
+            self.funasr_engine = FunASREngine(self.settings_manager)
+            
+            if self.is_component_ready('funasr_engine', 'is_ready'):
+                self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
+                # 更新模型缓存
+                model_paths = self.funasr_engine.get_model_paths()
+                self.settings_manager.update_model_paths(model_paths)
+                asr_available = bool(model_paths.get('asr_model_path'))
+                punc_available = bool(model_paths.get('punc_model_path'))
+                self.settings_manager.update_models_cache(asr_available, punc_available)
+            else:
+                self.funasr_engine = None
+                self.settings_manager.update_models_cache(False, False)
+        except Exception as e:
+            print(f"语音识别引擎初始化失败: {e}")
+            self.funasr_engine = None
+    
+    def _initialize_core_components(self):
+        """初始化核心组件"""
+        # 初始化热键管理器
+        try:
+            self.hotkey_manager = HotkeyManager(self.settings_manager)
+        except Exception as e:
+            print(f"热键管理器初始化失败: {e}")
+            self.hotkey_manager = None
+        
+        # 初始化剪贴板管理器
+        try:
+            debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
+            self.clipboard_manager = ClipboardManager(debug_mode=debug_mode)
+        except Exception as e:
+            print(f"剪贴板管理器初始化失败: {e}")
+            self.clipboard_manager = None
+        
+        # 初始化上下文管理器
+        try:
+            self.context = Context()
+        except Exception as e:
+            print(f"上下文管理器初始化失败: {e}")
+            self.context = None
+        
+        # 初始化音频管理器
+        try:
+            self.audio_manager = AudioManager(self)
+        except Exception as e:
+            print(f"音频管理器初始化失败: {e}")
+            self.audio_manager = None
+        
+        # 初始化音频捕获线程
+        try:
+            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
+            self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
+            self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
+        except Exception as e:
+            print(f"音频捕获线程初始化失败: {e}")
+            self.audio_capture_thread = None
+    
+    def _finalize_initialization(self):
+        """完成初始化设置"""
+        try:
+            # 关联FunASR引擎到状态管理器
+            if self.is_component_ready('funasr_engine'):
+                self.state_manager.funasr_engine = self.funasr_engine
+                print("✓ FunASR引擎已关联到状态管理器")
+            
+            # 设置连接
+            self.setup_connections()
+            
+            # 应用设置
+            self.apply_settings()
+            
+            # 启动热键状态监控
+            self.start_hotkey_monitor()
+        except Exception as e:
+            print(f"初始化设置失败: {e}")
+    
+    def _mark_initialization_complete(self):
+        """标记初始化完成"""
+        try:
+            # 标记主窗口初始化完成
+            if hasattr(self.main_window, '_initialization_complete'):
+                self.main_window._initialization_complete = True
+            
+            # 通知初始化完成
+            self.update_ui_signal.emit("✓ 应用初始化完成", "")
+        except Exception as e:
+            print(f"标记初始化完成失败: {e}")
+    
+    # 旧的复杂异步初始化方法已被简化的initialize_components方法替代
 
 
 
@@ -412,61 +438,38 @@ class Application(QObject):
             # 权限检查失败时也更新缓存，避免重复检查
             self.settings_manager.update_permissions_cache(False, False)
 
+    @handle_common_exceptions(show_error=True)
     def restart_hotkey_manager(self):
-        """重启热键管理器"""
-        try:
-            print("开始重启热键管理器...")
-            
-            # 停止现有的热键管理器
-            if self.hotkey_manager:
-                try:
-                    self.hotkey_manager.stop_listening()
-                    self.hotkey_manager.cleanup()
-                except Exception as e:
-                    print(f"停止现有热键管理器时出错: {e}")
-            
-            # 重新创建热键管理器
-            try:
-                self.hotkey_manager = HotkeyManager(self.settings_manager)
-                self.hotkey_manager.set_press_callback(self.on_option_press)
-                self.hotkey_manager.set_release_callback(self.on_option_release)
-                
-                # 应用当前热键设置
-                current_hotkey = self.settings_manager.get_hotkey()
-                self.hotkey_manager.update_hotkey(current_hotkey)
-                
-                # 启动监听
-                self.hotkey_manager.start_listening()
-                
-                print("✓ 热键管理器重启成功")
-                
-                # 显示成功通知
-                if hasattr(self, 'tray_icon') and self.tray_icon:
-                    self.tray_icon.showMessage(
-                        "热键功能",
-                        "热键功能已成功重启",
-                        QSystemTrayIcon.MessageIcon.Information,
-                        3000
-                    )
-                    
-            except Exception as e:
-                print(f"❌ 重新创建热键管理器失败: {e}")
-                import traceback
-                print(f"详细错误信息: {traceback.format_exc()}")
-                
-                # 显示失败通知
-                if hasattr(self, 'tray_icon') and self.tray_icon:
-                    self.tray_icon.showMessage(
-                        "热键功能",
-                        f"热键功能重启失败: {e}",
-                        QSystemTrayIcon.MessageIcon.Critical,
-                        5000
-                    )
-                    
-        except Exception as e:
-            print(f"❌ 重启热键管理器过程中出错: {e}")
-            import traceback
-            print(f"详细错误信息: {traceback.format_exc()}")
+        """重启热键管理器 - 使用统一异常处理"""
+        print("开始重启热键管理器...")
+        
+        # 停止现有的热键管理器
+        if self.hotkey_manager:
+            self.cleanup_component('hotkey_manager', 'stop_listening')
+            self.cleanup_component('hotkey_manager', 'cleanup')
+        
+        # 重新创建热键管理器
+        self.hotkey_manager = HotkeyManager(self.settings_manager)
+        self.hotkey_manager.set_press_callback(self.on_option_press)
+        self.hotkey_manager.set_release_callback(self.on_option_release)
+        
+        # 应用当前热键设置
+        current_hotkey = self.settings_manager.get_hotkey()
+        self.hotkey_manager.update_hotkey(current_hotkey)
+        
+        # 启动监听
+        self.hotkey_manager.start_listening()
+        
+        print("✓ 热键管理器重启成功")
+        
+        # 显示成功通知
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(
+                "热键功能",
+                "热键功能已成功重启",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000
+            )
     
     def start_hotkey_monitor(self):
         """启动热键状态监控"""
@@ -497,56 +500,110 @@ class Application(QObject):
         self._monitor_thread.start()
         print("✓ 热键状态监控已启动")
     
+    def is_component_ready(self, component_name, check_method=None):
+        """统一的组件状态检查方法
+        
+        Args:
+            component_name: 组件属性名
+            check_method: 可选的检查方法名，如'is_ready'、'isRunning'等
+        
+        Returns:
+            bool: 组件是否就绪
+        """
+        try:
+            component = getattr(self, component_name, None)
+            if not component:
+                return False
+            
+            # 如果指定了检查方法，调用该方法
+            if check_method and hasattr(component, check_method):
+                check_attr = getattr(component, check_method)
+                # 如果是方法，调用它；如果是属性，直接返回
+                if callable(check_attr):
+                    return check_attr()
+                else:
+                    return bool(check_attr)
+            
+            # 默认检查：组件存在且不为None
+            return True
+        except Exception as e:
+            print(f"检查组件 {component_name} 状态失败: {e}")
+            return False
+    
+    def is_ready_for_recording(self):
+        """检查是否准备好录音"""
+        return (self.is_component_ready('audio_capture_thread') and 
+                self.is_component_ready('funasr_engine', 'is_ready') and
+                self.is_component_ready('state_manager') and
+                not self.recording)
+    
+    def cleanup_component(self, component_name, cleanup_method='cleanup', timeout=200):
+        """统一的组件清理方法
+        
+        Args:
+            component_name: 组件属性名
+            cleanup_method: 清理方法名，默认为'cleanup'
+            timeout: 超时时间（毫秒），仅对线程有效
+        """
+        try:
+            component = getattr(self, component_name, None)
+            if not component:
+                return True
+                
+            # 处理线程类型的组件
+            if hasattr(component, 'isRunning'):
+                if component.isRunning():
+                    # 尝试优雅停止
+                    if hasattr(component, 'stop'):
+                        component.stop()
+                    
+                    # 等待线程结束
+                    if not component.wait(timeout):
+                        print(f"⚠️ {component_name}未能及时结束，强制终止")
+                        component.terminate()
+                        component.wait(100)  # 再等100ms
+                        
+                setattr(self, component_name, None)
+                print(f"✓ {component_name}已清理")
+                return True
+            
+            # 处理普通组件
+            if hasattr(component, cleanup_method):
+                getattr(component, cleanup_method)()
+                print(f"✓ {component_name}已清理")
+                return True
+            else:
+                print(f"⚠️ {component_name}没有{cleanup_method}方法")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 清理{component_name}失败: {e}")
+            return False
+    
     def cleanup_resources(self):
-        """清理资源"""
+        """清理资源 - 使用统一的清理方法"""
         try:
             # 恢复系统音量（如果有保存的音量）
             if hasattr(self, 'previous_volume') and self.previous_volume is not None:
                 self._set_system_volume(self.previous_volume)
                 print("✓ 系统音量已恢复")
             
-            # 停止所有线程
-            if hasattr(self, 'audio_capture_thread') and self.audio_capture_thread:
-                try:
-                    if self.audio_capture_thread.isRunning():
-                        self.audio_capture_thread.stop()
-                        # 等待线程结束，但设置较短超时避免卡死
-                        if not self.audio_capture_thread.wait(200):  # 200ms超时
-                            print("⚠️ 音频捕获线程未能及时结束，强制终止")
-                            self.audio_capture_thread.terminate()
-                            self.audio_capture_thread.wait(100)  # 再等100ms
-                    self.audio_capture_thread = None
-                except Exception as e:
-                    print(f"❌ 停止音频捕获线程失败: {e}")
+            # 停止监控线程
+            if hasattr(self, '_monitor_should_stop'):
+                self._monitor_should_stop = True
             
-            if hasattr(self, 'transcription_thread') and self.transcription_thread:
-                try:
-                    if self.transcription_thread.isRunning():
-                        self.transcription_thread.terminate()
-                        if not self.transcription_thread.wait(200):  # 200ms超时
-                            print("⚠️ 转写线程未能及时结束")
-                    self.transcription_thread = None
-                except Exception as e:
-                    print(f"❌ 停止转写线程失败: {e}")
+            # 使用统一方法清理所有组件
+            components_to_cleanup = [
+                ('audio_capture_thread', 'stop'),
+                ('transcription_thread', 'terminate'),
+                ('audio_capture', 'cleanup'),
+                ('funasr_engine', 'cleanup'),
+                ('hotkey_manager', 'cleanup'),
+                ('state_manager', 'cleanup')
+            ]
             
-            # 清理音频资源
-            if hasattr(self, 'audio_capture') and self.audio_capture:
-                try:
-                    self.audio_capture.cleanup()
-                except Exception as e:
-                    print(f"❌ 清理音频捕获失败: {e}")
-            
-            # 清理FunASR引擎资源
-            if hasattr(self, 'funasr_engine') and self.funasr_engine:
-                self.funasr_engine.cleanup()
-            
-            # 清理热键管理器资源
-            if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
-                self.hotkey_manager.cleanup()
-            
-            # 清理其他资源
-            if hasattr(self, 'state_manager'):
-                self.state_manager.cleanup()
+            for component_name, method in components_to_cleanup:
+                self.cleanup_component(component_name, method)
             
             # 清理多进程资源
             try:
@@ -737,12 +794,13 @@ class Application(QObject):
         except Exception as e:
             print(f"⚠️ 异步恢复音量失败: {e}")
 
+    @handle_common_exceptions(show_error=True)
     def start_recording(self):
         """开始录音"""
         with self._app_lock:
             try:
-                # 检查必要组件是否已初始化
-                if not self.audio_capture_thread:
+                # 使用统一的状态检查方法
+                if not self.is_ready_for_recording():
                     print("⚠️ 录音功能尚未就绪，请稍后再试")
                     return
                     
@@ -826,8 +884,8 @@ class Application(QObject):
                 audio_data = self.audio_capture.get_audio_data()
                 
                 if len(audio_data) > 0:
-                    # 检查语音识别引擎是否已初始化并就绪
-                    if not self.funasr_engine or not getattr(self.funasr_engine, 'is_ready', False):
+                    # 使用统一的状态检查方法
+                    if not self.is_component_ready('funasr_engine', 'is_ready'):
                         print("⚠️ 语音识别引擎尚未就绪，无法处理录音")
                         self.update_ui_signal.emit("⚠️ 语音识别引擎尚未就绪，无法处理录音", "")
                         return
@@ -1031,13 +1089,18 @@ class Application(QObject):
             print(f"❌ 显示窗口失败: {e}")
     
     def _delayed_paste(self):
-        """延迟执行粘贴操作"""
+        """延迟执行粘贴操作 - 确保完全替换剪贴板内容"""
         if hasattr(self, '_pending_paste_text') and self._pending_paste_text:
+            # 调试模式：显示延迟粘贴信息
+            if hasattr(self.clipboard_manager, 'debug_mode') and self.clipboard_manager.debug_mode:
+                print(f"🔍 [调试] 开始延迟粘贴，文本: '{self._pending_paste_text[:30]}...'")
+            
+            # 执行粘贴操作，safe_copy_and_paste 会确保完全替换剪贴板内容
             self._paste_and_reactivate(self._pending_paste_text)
             self._pending_paste_text = None
     
     def _paste_and_reactivate(self, text):
-        """执行粘贴操作"""
+        """执行粘贴操作 - 确保完全替换剪贴板内容"""
         try:
             # 检查剪贴板管理器是否已初始化
             if not self.clipboard_manager:
@@ -1047,7 +1110,11 @@ class Application(QObject):
             # 清理HTML标签，确保复制纯文本
             clean_text = clean_html_tags(text)
             
-            # 使用安全的复制粘贴方法，减少剪贴板被修改的风险
+            # 调试模式：显示粘贴前信息
+            if hasattr(self.clipboard_manager, 'debug_mode') and self.clipboard_manager.debug_mode:
+                print(f"🔍 [调试] 执行粘贴操作，文本: '{clean_text[:30]}...'")
+            
+            # 使用安全的复制粘贴方法，确保完全替换剪贴板内容
             success = self.clipboard_manager.safe_copy_and_paste(clean_text)
             if not success:
                 print("❌ 安全粘贴操作失败")
@@ -1057,21 +1124,27 @@ class Application(QObject):
             print(traceback.format_exc())
     
     def on_transcription_done(self, text):
-        """转写完成的回调"""
+        """转写完成的回调 - 优化剪贴板替换逻辑"""
         if text and text.strip():
             # 清理HTML标签用于剪贴板复制
             clean_text = clean_html_tags(text)
             
-            # 1. 先复制到剪贴板（如果剪贴板管理器已就绪）
-            if self.clipboard_manager:
-                self.clipboard_manager.copy_to_clipboard(clean_text)
-            # 2. 更新UI并添加到历史记录（无论窗口是否可见）
+            # 调试模式：显示转录完成信息
+            if hasattr(self.clipboard_manager, 'debug_mode') and self.clipboard_manager.debug_mode:
+                print(f"🔍 [调试] 转录完成，文本长度: {len(clean_text)}")
+            
+            # 1. 更新UI并添加到历史记录（无论窗口是否可见）
             self.main_window.display_result(text)  # UI显示保留HTML格式
-            # 3. 减少延迟时间，降低剪贴板被修改的风险
+            
+            # 2. 存储待粘贴文本，但不立即复制到剪贴板
+            # 这样可以避免在延迟期间剪贴板内容被累积
             self._pending_paste_text = clean_text  # 粘贴使用纯文本
-            QTimer.singleShot(50, self._delayed_paste)
+            
+            # 3. 缩短延迟时间，减少剪贴板被修改的风险
+            QTimer.singleShot(30, self._delayed_paste)  # 从50ms减少到30ms
+            
             # 打印日志
-            print(f"✓ {text}")
+            print(f"✓ 转录完成: {clean_text[:50]}{'...' if len(clean_text) > 50 else ''}")
     
     def on_history_item_clicked(self, text):
         """处理历史记录点击事件"""
@@ -1229,6 +1302,28 @@ class Application(QObject):
             self.settings_window.activateWindow()
         except Exception as e:
             print(f"❌ 显示设置窗口失败: {e}")
+            import traceback
+            print(traceback.format_exc())
+    
+    def show_clipboard_monitor(self):
+        """显示剪贴板监控窗口"""
+        try:
+            if not hasattr(self, 'clipboard_monitor_window') or self.clipboard_monitor_window is None:
+                # 确保剪贴板管理器已初始化
+                if self.clipboard_manager is None:
+                    debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
+                    self.clipboard_manager = ClipboardManager(debug_mode=debug_mode)
+                
+                self.clipboard_monitor_window = ClipboardMonitorWindow(
+                    clipboard_manager=self.clipboard_manager
+                )
+            
+            self.clipboard_monitor_window.show()
+            self.clipboard_monitor_window.raise_()
+            self.clipboard_monitor_window.activateWindow()
+            print("✓ 剪贴板监控窗口已打开")
+        except Exception as e:
+            print(f"❌ 显示剪贴板监控窗口失败: {e}")
             import traceback
             print(traceback.format_exc())
 

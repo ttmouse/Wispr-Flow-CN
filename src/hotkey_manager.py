@@ -17,14 +17,13 @@ class HotkeyManager:
         self.should_stop = False        # 控制 fn 监听线程
         self.settings_manager = settings_manager  # 使用传入的设置管理器
         
-        # CPU优化相关变量
+        # 简化的状态检查变量
         self.last_state_check = 0       # 上次状态检查时间
-        self.state_stable_count = 0     # 状态稳定计数
-        self.delayed_threads = []       # 延迟线程池
+        self.delayed_threads = []       # 延迟线程池（减少使用）
         
-        # 时间延迟检测相关变量
+        # 简化的延迟检测相关变量
         self.hotkey_press_time = 0      # 热键按下的时间
-        self.delay_threshold = 0.3      # 延迟阈值（300ms）
+        self.delay_threshold = 0.2      # 减少延迟阈值到200ms
         
         # 配置日志
         self.logger = logging.getLogger('HotkeyManager')
@@ -45,17 +44,15 @@ class HotkeyManager:
         self.release_callback = callback
 
     def _schedule_delayed_check(self, key_str):
-        """优化的延迟检查方法"""
+        """简化的延迟检查方法"""
+        # 直接移除按键，减少线程使用
         def delayed_check():
-            time.sleep(0.1)  # 等待100ms
-            if key_str in self.other_keys_pressed:
+            time.sleep(0.05)  # 减少等待时间到50ms
+            with self._state_lock:
                 self.other_keys_pressed.discard(key_str)
         
-        # 清理已完成的线程
-        self.delayed_threads = [t for t in self.delayed_threads if t.is_alive()]
-        
-        # 限制同时运行的延迟线程数量
-        if len(self.delayed_threads) < 5:
+        # 只在必要时创建线程，限制数量
+        if len([t for t in self.delayed_threads if t.is_alive()]) < 3:
             thread = threading.Thread(target=delayed_check, daemon=True)
             thread.start()
             self.delayed_threads.append(thread)
@@ -68,28 +65,12 @@ class HotkeyManager:
             self.is_recording = False
             self.last_press_time = 0
             self.last_state_check = 0
-            self.state_stable_count = 0
             self.hotkey_press_time = 0  # 重置热键按下时间
             
-            # 清理延迟线程 - 改进清理逻辑
-            active_threads = [t for t in self.delayed_threads if t.is_alive()]
-            if active_threads:
-                self.logger.debug(f"清理 {len(active_threads)} 个活跃的延迟线程")
-                for thread in active_threads:
-                    thread.join(timeout=0.1)
-            # 清理所有线程引用，包括已结束的
+            # 简化线程清理逻辑
             self.delayed_threads.clear()
-            
-            # 额外检查确保系统级修饰键状态正确
-            if self.hotkey_type != 'fn':
-                # 检查当前实际的修饰键状态
-                flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
-                # 如果没有任何修饰键被按下，确保状态完全重置
-                if not (flags & (0x800000 | 0x100000 | 0x200000)):  # fn, cmd, shift flags
-                    self.hotkey_pressed = False
-                    self.other_keys_pressed.clear()
         
-        self.logger.info("热键状态已重置，并验证系统修饰键状态")
+        self.logger.info("热键状态已重置")
 
     def force_reset(self):
         """强制重置所有状态并重新初始化监听器"""
@@ -128,48 +109,34 @@ class HotkeyManager:
                 self.delayed_threads.append(thread)
     
     def _delayed_check_worker(self):
-        """延迟检测工作线程"""
+        """简化的延迟检测工作线程"""
         try:
             with self._state_lock:
                 start_time = self.hotkey_press_time
-            has_other_keys = False  # 标记是否检测到其他修饰键或字母键
             
-            while True:
-                with self._state_lock:
-                    current_hotkey_press_time = self.hotkey_press_time
-                    other_keys_count = len(self.other_keys_pressed)
-                
-                if current_hotkey_press_time != start_time:
-                    break
+            # 简化检查逻辑，减少循环次数
+            time.sleep(self.delay_threshold)  # 直接等待延迟时间
+            
+            with self._state_lock:
+                # 检查状态是否仍然有效
+                if (self.hotkey_press_time == start_time and 
+                    not self.hotkey_pressed and 
+                    not self.other_keys_pressed and 
+                    not self.is_recording and 
+                    self.press_callback):
                     
-                time.sleep(0.01)  # 10ms 检查间隔
-                current_time = time.time()
-                
-                # 检查是否有其他修饰键被按下或者有其他按键被按下
-                if self._has_other_modifier_keys() or other_keys_count > 0:
-                    has_other_keys = True
-                    with self._state_lock:
-                        self.logger.debug(f"检测到其他按键，取消录音触发。修饰键: {self._has_other_modifier_keys()}, 其他按键: {self.other_keys_pressed}")
-                    break  # 检测到其他按键，立即退出
-                
-                # 如果超过延迟阈值且没有检测到其他按键，触发录音
-                if current_time - start_time >= self.delay_threshold:
-                    if not has_other_keys:
-                        # 通过检查，触发录音
-                        with self._state_lock:
-                            should_trigger = (not self.hotkey_pressed and not self.other_keys_pressed and 
-                                            not self.is_recording and self.press_callback)
-                            if should_trigger:
-                                self.hotkey_pressed = True
-                                self.is_recording = True
-                        
-                        if should_trigger:
-                            try:
-                                self.logger.info("开始录音（延迟检测通过）")
-                                self.press_callback()
-                            except Exception as e:
-                                self.logger.error(f"按键回调执行失败: {e}")
-                    break
+                    self.hotkey_pressed = True
+                    self.is_recording = True
+                    should_trigger = True
+                else:
+                    should_trigger = False
+            
+            if should_trigger:
+                try:
+                    self.logger.info("开始录音（延迟检测通过）")
+                    self.press_callback()
+                except Exception as e:
+                    self.logger.error(f"按键回调执行失败: {e}")
                     
         except Exception as e:
             self.logger.error(f"延迟检测线程错误: {e}")
@@ -257,59 +224,45 @@ class HotkeyManager:
             return False
 
     def _monitor_fn_key(self):
-        """监听 fn 键的状态 - 优化CPU使用率"""
+        """简化的fn键监听 - 降低CPU使用率"""
         last_fn_state = False
-        stable_count = 0
         
         while not self.should_stop:
             if self.hotkey_type == 'fn':
-                current_time = time.time()
-                
                 # 获取当前修饰键状态
                 flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
-                # 检查 fn 键状态 (0x800000)
                 is_fn_down = bool(flags & 0x800000)
                 
-                # 状态变化检测
+                # 只在状态变化时处理
                 if is_fn_down != last_fn_state:
-                    stable_count = 0
                     last_fn_state = is_fn_down
                     
-                    if is_fn_down != self.hotkey_pressed:
-                        if is_fn_down:
-                            if not self.hotkey_pressed:  # 防止重复触发
-                                self.hotkey_pressed = True
-                                # 只在没有其他键按下且未在录音时开始录音
-                                if not self.other_keys_pressed and not self.is_recording and self.press_callback:
-                                    try:
-                                        self.is_recording = True
-                                        self.logger.info("开始录音")
-                                        self.press_callback()
-                                    except Exception as e:
-                                        self.logger.error(f"按键回调执行失败: {e}")
-                        else:
-                            if self.hotkey_pressed:  # 防止重复触发
-                                self.hotkey_pressed = False
-                                # 如果正在录音，则停止录音
-                                if self.is_recording and self.release_callback:
-                                    try:
-                                        self.logger.info("停止录音")
-                                        self.release_callback()
-                                        self.is_recording = False
-                                    except Exception as e:
-                                        self.logger.error(f"释放回调执行失败: {e}")
-                else:
-                    stable_count += 1
+                    with self._state_lock:
+                        if is_fn_down and not self.hotkey_pressed:
+                            self.hotkey_pressed = True
+                            # 只在没有其他键按下且未在录音时开始录音
+                            if not self.other_keys_pressed and not self.is_recording and self.press_callback:
+                                try:
+                                    self.is_recording = True
+                                    self.logger.info("开始录音")
+                                    self.press_callback()
+                                except Exception as e:
+                                    self.logger.error(f"按键回调执行失败: {e}")
+                        elif not is_fn_down and self.hotkey_pressed:
+                            self.hotkey_pressed = False
+                            # 如果正在录音，则停止录音
+                            if self.is_recording and self.release_callback:
+                                try:
+                                    self.logger.info("停止录音")
+                                    self.release_callback()
+                                    self.is_recording = False
+                                except Exception as e:
+                                    self.logger.error(f"释放回调执行失败: {e}")
                 
-                # 自适应休眠：状态稳定时增加休眠时间
-                if stable_count < 10:
-                    time.sleep(0.01)  # 状态变化期间保持高响应
-                elif stable_count < 100:
-                    time.sleep(0.02)  # 短期稳定
-                else:
-                    time.sleep(0.05)  # 长期稳定，降低CPU使用
+                # 固定休眠时间，减少CPU使用
+                time.sleep(0.02)  # 50Hz检查频率
             else:
-                # 非fn模式时大幅降低检查频率
+                # 非fn模式时降低检查频率
                 time.sleep(0.1)
 
     def on_press(self, key):
@@ -317,29 +270,22 @@ class HotkeyManager:
         try:
             current_time = time.time()
             
-            # 检查是否需要强制重置状态
+            # 简化状态重置检查
             with self._state_lock:
-                should_reset = ((current_time - self.last_press_time > 5 and (self.hotkey_pressed or self.other_keys_pressed)) or
-                               (isinstance(key, keyboard.Key) and key == keyboard.Key.cmd))
+                should_reset = (current_time - self.last_press_time > 5 and 
+                               (self.hotkey_pressed or self.other_keys_pressed))
                 self.last_press_time = current_time
             
             if should_reset:
-                self.logger.info("检测到可能的状态异常或系统快捷键，执行强制重置")
                 self.reset_state()
             
             # 记录按键
             key_str = str(key)
-            # 减少debug日志输出频率
-            with self._state_lock:
-                if current_time - self.last_state_check > 1.0:  # 每秒最多一次debug日志
-                    self.logger.debug(f"按键按下: {key_str}")
-                    self.last_state_check = current_time
             
             if self.hotkey_type != 'fn' and self._is_hotkey_pressed(key):
-                self.logger.info(f"{self.hotkey_type} 键按下")
                 with self._state_lock:
                     should_start_check = not self.hotkey_pressed
-                if should_start_check:  # 防止重复触发
+                if should_start_check:
                     # 启动延迟检测线程
                     self._start_delayed_hotkey_check()
             else:
@@ -350,40 +296,31 @@ class HotkeyManager:
                         self.other_keys_pressed.add(key_str)
                         should_stop_recording = self.is_recording and self.release_callback
                         
-                if not key_already_pressed:
-                    self.logger.debug(f"检测到其他按键: {key_str}")
-                    
-                    # 如果检测到常见的组合键字母，立即重置热键按下时间以阻止录音触发
-                    if self._is_common_combination_key(key):
-                        self.logger.info(f"检测到组合键字母 {key_str}，重置热键状态")
+                        # 如果检测到常见的组合键字母，重置热键状态
+                        if self._is_common_combination_key(key):
+                            self.hotkey_press_time = 0
+                
+                # 如果正在录音且检测到其他按键，停止录音
+                if not key_already_pressed and should_stop_recording:
+                    try:
+                        self.release_callback()
                         with self._state_lock:
-                            self.hotkey_press_time = 0  # 重置时间，阻止延迟检测触发
-                    
-                    # 如果正在录音，则停止录音
-                    if should_stop_recording:
-                        try:
-                            self.logger.info("由于其他键按下，停止录音")
-                            self.release_callback()
-                            with self._state_lock:
-                                self.is_recording = False
-                        except Exception as e:
-                            self.logger.error(f"释放回调执行失败: {e}")
+                            self.is_recording = False
+                    except Exception as e:
+                        self.logger.error(f"释放回调执行失败: {e}")
         
         except Exception as e:
             self.logger.error(f"处理按键按下事件失败: {str(e)}")
-            self.logger.debug(f"按键信息: {str(key)}, 类型: {type(key)}")
 
     def on_release(self, key):
         """处理按键释放事件"""
         try:
             key_str = str(key)
-            self.logger.debug(f"按键释放: {key_str}")
             
-            # 优化延迟检查，使用线程池管理
+            # 延迟移除按键记录
             self._schedule_delayed_check(key_str)
             
             if self.hotkey_type != 'fn' and self._is_hotkey_pressed(key):
-                self.logger.info(f"{self.hotkey_type} 键释放")
                 # 重置热键按下时间
                 with self._state_lock:
                     self.hotkey_press_time = 0
@@ -392,22 +329,16 @@ class HotkeyManager:
                         self.hotkey_pressed = False
                         is_currently_recording = self.is_recording and self.release_callback
                 
-                if should_stop_recording:  # 防止重复触发
-                    # 如果正在录音，则停止录音
-                    if is_currently_recording:
-                        try:
-                            self.logger.info("停止录音")
-                            self.release_callback()
-                            with self._state_lock:
-                                self.is_recording = False
-                        except Exception as e:
-                            self.logger.error(f"释放回调执行失败: {e}")
-            
-            # 减少debug日志输出
+                if should_stop_recording and is_currently_recording:
+                    try:
+                        self.release_callback()
+                        with self._state_lock:
+                            self.is_recording = False
+                    except Exception as e:
+                        self.logger.error(f"释放回调执行失败: {e}")
         
         except Exception as e:
             self.logger.error(f"处理按键释放事件失败: {str(e)}")
-            self.logger.debug(f"按键信息: {str(key)}, 类型: {type(key)}")
 
     def start_listening(self):
         """启动热键监听"""

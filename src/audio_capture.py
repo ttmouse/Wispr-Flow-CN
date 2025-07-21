@@ -1,10 +1,12 @@
 import pyaudio
 import numpy as np
 import time
+import collections
 
 class AudioCapture:
     def __init__(self):
-        self.frames = []
+        # 使用deque限制缓冲区大小，避免内存累积
+        self.frames = collections.deque(maxlen=1000)  # 限制最大帧数
         self.stream = None
         self.audio = None
         self.device_index = None
@@ -59,7 +61,7 @@ class AudioCapture:
                 if self.audio is None or self.device_index is None:
                     raise Exception("音频系统未正确初始化")
                 
-                self.frames = []
+                self.frames.clear()
                 self.read_count = 0
                 self.valid_frame_count = 0
                 self.silence_frame_count = 0
@@ -145,7 +147,7 @@ class AudioCapture:
                 time.sleep(0.5)
         
         # 清理数据
-        self.frames = []
+        self.frames.clear()  # 使用deque的clear方法
         self.read_count = 0
         self.valid_frame_count = 0
         self.silence_frame_count = 0
@@ -256,11 +258,15 @@ class AudioCapture:
 
     def clear_recording_data(self):
         """清理录音数据"""
-        self.frames = []
+        self.frames.clear()
         self.read_count = 0
         self.valid_frame_count = 0
         self.silence_frame_count = 0
         self.debug_frame_count = 0
+        
+    def clear_buffer(self):
+        """手动清理缓冲区"""
+        self.frames.clear()
 
     def set_volume_threshold(self, threshold):
         """设置音量阈值（0-1000的值会被转换为0-0.02的浮点数）"""

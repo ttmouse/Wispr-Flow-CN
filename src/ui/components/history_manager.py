@@ -70,10 +70,10 @@ class HistoryManager:
     
     def is_duplicate_text(self, new_text: str, existing_texts: List[str]) -> bool:
         """检查文本是否重复"""
-        clean_new_text = self.clean_html_tags(new_text)
+        clean_new_text = self.clean_html_tags(new_text).strip()
         
         for existing_text in existing_texts:
-            clean_existing_text = self.clean_html_tags(existing_text)
+            clean_existing_text = self.clean_html_tags(existing_text).strip()
             if clean_existing_text == clean_new_text:
                 return True
         return False

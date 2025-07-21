@@ -327,94 +327,53 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(bottom_bar)
     
     def eventFilter(self, obj, event):
-        """事件过滤器，用于安全处理标题栏事件"""
+        """事件过滤器，用于处理标题栏事件"""
         try:
             # 检查是否是标题栏的事件
             if obj.property("is_title_bar"):
-                # 如果初始化未完成，直接阻止所有鼠标事件
+                # 如果初始化未完成，阻止鼠标事件
                 if not self._initialization_complete:
                     if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.MouseButtonRelease]:
-                        print("⚠️  界面未完全加载，暂时禁用标题栏交互")
-                        return True  # 阻止事件传播
+                        return True
                 
-                # 处理鼠标按下事件
+                # 处理鼠标事件
                 if event.type() == QEvent.Type.MouseButtonPress:
                     return self._handle_title_bar_mouse_press(event)
-                # 处理鼠标移动事件
                 elif event.type() == QEvent.Type.MouseMove:
                     return self._handle_title_bar_mouse_move(event)
-                # 处理鼠标释放事件
                 elif event.type() == QEvent.Type.MouseButtonRelease:
                     return self._handle_title_bar_mouse_release(event)
             
-            # 对于其他事件，调用父类处理
             return super().eventFilter(obj, event)
-        except Exception as e:
-            print(f"❌ 事件过滤器处理错误: {e}")
-            import traceback
-            print(traceback.format_exc())
+        except Exception:
             return False
     
     def _handle_title_bar_mouse_press(self, event):
         """处理标题栏的鼠标按下事件"""
-        try:
-            if event and hasattr(event, 'button') and event.button() == Qt.MouseButton.LeftButton:
-                self._is_dragging = True
-                self._drag_start_pos = event.pos()
-                return True  # 事件已处理
-        except Exception as e:
-            print(f"❌ 标题栏鼠标按下事件处理错误: {e}")
-            import traceback
-            print(traceback.format_exc())
-            self._is_dragging = False
-            self._drag_start_pos = None
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_dragging = True
+            self._drag_start_pos = event.pos()
+            return True
         return False
     
     def _handle_title_bar_mouse_move(self, event):
         """处理标题栏的鼠标移动事件"""
-        try:
-            if (self._is_dragging and self._drag_start_pos is not None and 
-                event and hasattr(event, 'pos')):
-                current_pos = self.pos()
-                event_pos = event.pos()
-                if current_pos and event_pos and self._drag_start_pos:
-                    self.move(current_pos + event_pos - self._drag_start_pos)
-                return True  # 事件已处理
-        except Exception as e:
-            print(f"❌ 标题栏鼠标移动事件处理错误: {e}")
-            import traceback
-            print(traceback.format_exc())
-            self._is_dragging = False
-            self._drag_start_pos = None
+        if self._is_dragging and self._drag_start_pos is not None:
+            self.move(self.pos() + event.pos() - self._drag_start_pos)
+            return True
         return False
     
     def _handle_title_bar_mouse_release(self, event):
         """处理标题栏的鼠标释放事件"""
-        try:
-            self._is_dragging = False
-            self._drag_start_pos = None
-            return True  # 事件已处理
-        except Exception as e:
-            print(f"❌ 标题栏鼠标释放事件处理错误: {e}")
-            import traceback
-            print(traceback.format_exc())
-            self._is_dragging = False
-            self._drag_start_pos = None
-        return False
+        self._is_dragging = False
+        self._drag_start_pos = None
+        return True
     
     def mouseReleaseEvent(self, event):
         """处理鼠标释放事件"""
-        try:
-            self._is_dragging = False
-            self._drag_start_pos = None
-            super().mouseReleaseEvent(event)
-        except Exception as e:
-            print(f"❌ 鼠标释放事件处理错误: {e}")
-            import traceback
-            print(traceback.format_exc())
-            # 确保状态被重置
-            self._is_dragging = False
-            self._drag_start_pos = None
+        self._is_dragging = False
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
     
     def add_to_history(self, text):
         """添加新的识别结果到历史记录"""
