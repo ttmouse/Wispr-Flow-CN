@@ -87,4 +87,14 @@ class MenuManager:
 
     def on_quit(self, _):
         """退出应用"""
-        rumps.quit_application() 
+        try:
+            # 调用主应用的退出方法，确保资源被正确清理
+            if hasattr(self.app, 'quit_application'):
+                self.app.quit_application()
+            else:
+                # 如果主应用没有quit_application方法，使用rumps默认退出
+                rumps.quit_application()
+        except Exception as e:
+            print(f"❌ 退出应用时出错: {e}")
+            # 强制退出
+            rumps.quit_application()

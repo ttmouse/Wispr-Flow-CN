@@ -3,7 +3,7 @@
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
-    "volume_threshold": 300,
+    "volume_threshold": 150,
     "max_recording_duration": 25
   },
   "asr": {
@@ -16,7 +16,7 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-15T03:32:09.841586",
+      "last_check": "2025-07-18T19:07:31.892248",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24

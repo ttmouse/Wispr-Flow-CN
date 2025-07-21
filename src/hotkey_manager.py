@@ -448,8 +448,12 @@ class HotkeyManager:
             # 停止 fn 键监听线程
             self.should_stop = True
             if self.fn_listener_thread and self.fn_listener_thread.is_alive():
-                self.fn_listener_thread.join(timeout=1.0)
-                print("✓ Fn键监听线程已停止")
+                # 缩短超时时间，避免在程序退出时卡死
+                self.fn_listener_thread.join(timeout=0.1)
+                if self.fn_listener_thread.is_alive():
+                    print("⚠️ Fn键监听线程未能及时停止，但继续退出流程")
+                else:
+                    print("✓ Fn键监听线程已停止")
             
             # 停止键盘监听器
             if self.keyboard_listener:
@@ -483,9 +487,10 @@ class HotkeyManager:
             for i, thread in enumerate(self.delayed_threads):
                 if thread.is_alive():
                     self.logger.debug(f"等待线程 {i+1} 结束")
-                    thread.join(timeout=0.5)
+                    # 缩短超时时间，避免在程序退出时卡死
+                    thread.join(timeout=0.1)
                     if thread.is_alive():
-                        self.logger.warning(f"线程 {i+1} 未能在超时时间内结束")
+                        self.logger.warning(f"线程 {i+1} 未能在超时时间内结束，但继续清理流程")
             self.delayed_threads.clear()
             self.logger.info("延迟线程清理完成")
             
@@ -498,6 +503,42 @@ class HotkeyManager:
             
         except Exception as e:
             self.logger.error(f"清理热键管理器资源失败: {e}")
+    
+    def get_status(self):
+        """获取热键管理器当前状态"""
+        try:
+            # 检查键盘监听器状态
+            listener_running = (self.keyboard_listener is not None and 
+                              hasattr(self.keyboard_listener, 'running') and 
+                              self.keyboard_listener.running)
+            
+            # 检查fn监听线程状态
+            fn_thread_running = (self.fn_listener_thread is not None and 
+                               self.fn_listener_thread.is_alive() and 
+                               not self.should_stop)
+            
+            # 根据热键类型确定整体状态
+            if self.hotkey_type == 'fn':
+                is_active = listener_running and fn_thread_running
+            else:
+                is_active = listener_running
+            
+            return {
+                'active': is_active,
+                'hotkey_type': self.hotkey_type,
+                'listener_running': listener_running,
+                'fn_thread_running': fn_thread_running,
+                'is_recording': self.is_recording
+            }
+        except Exception as e:
+            self.logger.error(f"获取热键状态失败: {e}")
+            return {
+                'active': False,
+                'hotkey_type': self.hotkey_type,
+                'listener_running': False,
+                'fn_thread_running': False,
+                'is_recording': False
+            }
     
     def __del__(self):
         """析构函数，确保资源被释放"""

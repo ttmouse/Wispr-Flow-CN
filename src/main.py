@@ -274,7 +274,9 @@ class Application(QObject):
                         self.hotkey_manager = None
                     
                     try:
-                        self.clipboard_manager = ClipboardManager()
+                        # 启用调试模式以帮助诊断剪贴板问题
+                        debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
+                        self.clipboard_manager = ClipboardManager(debug_mode=debug_mode)
                     except Exception as e:
                         self.clipboard_manager = None
                     
@@ -468,23 +470,31 @@ class Application(QObject):
     
     def start_hotkey_monitor(self):
         """启动热键状态监控"""
+        # 添加监控线程停止标志
+        self._monitor_should_stop = False
+        
         def monitor_hotkey_status():
-            while True:
+            while not self._monitor_should_stop:
                 try:
                     time.sleep(10)  # 每10秒检查一次
+                    if self._monitor_should_stop:  # 再次检查退出标志
+                        break
                     if self.hotkey_manager:
                         # 检查热键监听器是否还在运行
                         if (not hasattr(self.hotkey_manager, 'keyboard_listener') or 
                             not self.hotkey_manager.keyboard_listener or 
                             not self.hotkey_manager.keyboard_listener.running):
-                            print("⚠️  检测到热键监听器已停止，尝试重启...")
-                            self.restart_hotkey_manager()
+                            if not self._monitor_should_stop:  # 确保不在退出过程中
+                                print("⚠️  检测到热键监听器已停止，尝试重启...")
+                                self.restart_hotkey_manager()
                 except Exception as e:
-                    print(f"热键状态监控出错: {e}")
+                    if not self._monitor_should_stop:
+                        print(f"热键状态监控出错: {e}")
+            print("✓ 热键状态监控已停止")
         
         # 启动监控线程
-        monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
-        monitor_thread.start()
+        self._monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
+        self._monitor_thread.start()
         print("✓ 热键状态监控已启动")
     
     def cleanup_resources(self):
@@ -500,11 +510,11 @@ class Application(QObject):
                 try:
                     if self.audio_capture_thread.isRunning():
                         self.audio_capture_thread.stop()
-                        # 等待线程结束，但设置超时
-                        if not self.audio_capture_thread.wait(3000):  # 3秒超时
-                            print("⚠️ 音频捕获线程未能在3秒内正常结束，强制终止")
+                        # 等待线程结束，但设置较短超时避免卡死
+                        if not self.audio_capture_thread.wait(200):  # 200ms超时
+                            print("⚠️ 音频捕获线程未能及时结束，强制终止")
                             self.audio_capture_thread.terminate()
-                            self.audio_capture_thread.wait(1000)  # 再等1秒
+                            self.audio_capture_thread.wait(100)  # 再等100ms
                     self.audio_capture_thread = None
                 except Exception as e:
                     print(f"❌ 停止音频捕获线程失败: {e}")
@@ -513,8 +523,8 @@ class Application(QObject):
                 try:
                     if self.transcription_thread.isRunning():
                         self.transcription_thread.terminate()
-                        if not self.transcription_thread.wait(2000):  # 2秒超时
-                            print("⚠️ 转写线程未能在2秒内结束")
+                        if not self.transcription_thread.wait(200):  # 200ms超时
+                            print("⚠️ 转写线程未能及时结束")
                     self.transcription_thread = None
                 except Exception as e:
                     print(f"❌ 停止转写线程失败: {e}")
@@ -568,17 +578,103 @@ class Application(QObject):
         except Exception as e:
             print(f"❌ 资源清理失败: {e}")
         finally:
-            # 确保关键资源被清理识别到了吗？
+            # 确保关键资源被清理
             try:
                 if hasattr(self, 'app'):
                     self.app.quit()
             except Exception as e:
                 print(f"❌ 应用退出失败: {e}")
+    
+    def _quick_cleanup(self):
+        """快速清理关键资源，避免长时间等待导致卡死"""
+        print("开始快速清理资源...")
+        try:
+            # 0. 首先停止热键状态监控线程，避免在清理过程中重启热键管理器
+            if hasattr(self, '_monitor_should_stop'):
+                self._monitor_should_stop = True
+                print("✓ 热键状态监控已标记停止")
+            
+            # 1. 立即停止录音相关操作
+            self.recording = False
+            
+            # 2. 停止定时器
+            if hasattr(self, 'recording_timer') and self.recording_timer:
+                try:
+                    self.recording_timer.stop()
+                    print("✓ 录音定时器已停止")
+                except Exception as e:
+                    print(f"⚠️ 停止录音定时器失败: {e}")
+            
+            # 3. 快速终止线程，不等待
+            if hasattr(self, 'audio_capture_thread') and self.audio_capture_thread:
+                try:
+                    if self.audio_capture_thread.isRunning():
+                        self.audio_capture_thread.terminate()  # 直接终止，不等待
+                        print("✓ 音频捕获线程已终止")
+                except Exception as e:
+                    print(f"⚠️ 终止音频捕获线程失败: {e}")
+            
+            if hasattr(self, 'transcription_thread') and self.transcription_thread:
+                try:
+                    if self.transcription_thread.isRunning():
+                        self.transcription_thread.terminate()  # 直接终止，不等待
+                        print("✓ 转写线程已终止")
+                except Exception as e:
+                    print(f"⚠️ 终止转写线程失败: {e}")
+            
+            # 4. 快速清理音频资源
+            if hasattr(self, 'audio_capture') and self.audio_capture:
+                try:
+                    # 不调用完整的cleanup，只做关键清理
+                    if hasattr(self.audio_capture, 'stream') and self.audio_capture.stream:
+                        self.audio_capture.stream.stop_stream()
+                        self.audio_capture.stream.close()
+                    print("✓ 音频流已关闭")
+                except Exception as e:
+                    print(f"⚠️ 关闭音频流失败: {e}")
+            
+            # 5. 恢复系统音量
+            if hasattr(self, 'previous_volume') and self.previous_volume is not None:
+                try:
+                    self._set_system_volume(self.previous_volume)
+                    print("✓ 系统音量已恢复")
+                except Exception as e:
+                    print(f"⚠️ 恢复系统音量失败: {e}")
+            
+            # 6. 清理热键管理器（快速版本）
+            if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
+                try:
+                    # 调用停止监听方法，但不等待清理完成
+                    self.hotkey_manager.stop_listening()
+                    print("✓ 热键管理器已停止监听")
+                except Exception as e:
+                    print(f"⚠️ 快速清理热键管理器失败: {e}")
+            
+            # 7. 关闭主窗口
+            if hasattr(self, 'main_window') and self.main_window:
+                try:
+                    self.main_window.close()
+                    print("✓ 主窗口已关闭")
+                except Exception as e:
+                    print(f"⚠️ 关闭主窗口失败: {e}")
+            
+            # 8. 隐藏系统托盘图标
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                try:
+                    self.tray_icon.hide()
+                    print("✓ 系统托盘图标已隐藏")
+                except Exception as e:
+                    print(f"⚠️ 隐藏系统托盘图标失败: {e}")
+            
+            print("✓ 快速清理完成")
+            
+        except Exception as e:
+            print(f"❌ 快速清理失败: {e}")
+            import traceback
+            print(traceback.format_exc())
 
-    def closeEvent(self, event):
-        """处理关闭事件"""
-        self.cleanup_resources()
-        super().closeEvent(event)
+    # closeEvent方法已移除，因为Application类继承自QObject，不是QWidget
+    # 窗口关闭事件应该在MainWindow中处理
 
     def _set_system_volume(self, volume):
         """设置系统音量
@@ -632,6 +728,14 @@ class Application(QObject):
         except Exception as e:
             print(f"❌ 获取系统音量时发生错误: {e}")
             return None
+    
+    def _restore_volume_async(self, volume):
+        """异步恢复音量"""
+        try:
+            self._set_system_volume(volume)
+            print(f"✓ 音量已异步恢复到 {volume}")
+        except Exception as e:
+            print(f"⚠️ 异步恢复音量失败: {e}")
 
     def start_recording(self):
         """开始录音"""
@@ -704,15 +808,16 @@ class Application(QObject):
                 self.audio_capture_thread.stop()
                 self.audio_capture_thread.wait()
             
-            # 临时恢复音量以确保音能正常播放
-            if self.previous_volume is not None:
-                self._set_system_volume(self.previous_volume)
-                # 添加短暂延迟，确保音量恢复完成
-                import time
-                time.sleep(0.1)
-            
-            # 播放停止音效
+            # 播放停止音效（先播放音效，再恢复音量）
             self.state_manager.stop_recording()
+            
+            # 异步恢复音量，避免阻塞主线程
+            if self.previous_volume is not None:
+                # 使用QTimer延迟恢复音量，确保音效播放完成
+                volume_timer = QTimer()
+                volume_timer.setSingleShot(True)
+                volume_timer.timeout.connect(lambda: self._restore_volume_async(self.previous_volume))
+                volume_timer.start(150)  # 150ms后恢复音量
             
             # 重置 previous_volume
             self.previous_volume = None
@@ -841,8 +946,33 @@ class Application(QObject):
 
     def quit_application(self):
         """退出应用程序"""
-        self.cleanup()
-        self.app.quit()
+        print("开始退出应用程序...")
+        try:
+            # 1. 首先停止热键状态监控线程，避免在退出过程中重启热键管理器
+            if hasattr(self, '_monitor_should_stop'):
+                self._monitor_should_stop = True
+                print("✓ 热键状态监控已标记停止")
+            
+            # 2. 停止热键监听，避免在清理过程中触发新的操作
+            if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
+                try:
+                    self.hotkey_manager.stop_listening()
+                    print("✓ 热键监听已停止")
+                except Exception as e:
+                    print(f"⚠️ 停止热键监听失败: {e}")
+            
+            # 3. 快速清理资源，避免长时间等待
+            self._quick_cleanup()
+            
+            # 4. 强制退出应用
+            if hasattr(self, 'app') and self.app:
+                self.app.quit()
+                
+        except Exception as e:
+            print(f"❌ 退出应用程序时出错: {e}")
+            # 强制退出
+            import os
+            os._exit(0)
 
     def _restore_window_level(self):
         """恢复窗口正常级别"""
@@ -917,12 +1047,10 @@ class Application(QObject):
             # 清理HTML标签，确保复制纯文本
             clean_text = clean_html_tags(text)
             
-            # 确保文本已复制到剪贴板
-            self.clipboard_manager.copy_to_clipboard(clean_text)
-            
-            # 执行粘贴操作
-            self.clipboard_manager.paste_to_current_app()
-            print(f"✓ 已粘贴文本: {clean_text[:50]}{'...' if len(clean_text) > 50 else ''}")
+            # 使用安全的复制粘贴方法，减少剪贴板被修改的风险
+            success = self.clipboard_manager.safe_copy_and_paste(clean_text)
+            if not success:
+                print("❌ 安全粘贴操作失败")
             
         except Exception as e:
             print(f"❌ 粘贴操作失败: {e}")
@@ -939,9 +1067,9 @@ class Application(QObject):
                 self.clipboard_manager.copy_to_clipboard(clean_text)
             # 2. 更新UI并添加到历史记录（无论窗口是否可见）
             self.main_window.display_result(text)  # UI显示保留HTML格式
-            # 3. 延迟执行粘贴操作
+            # 3. 减少延迟时间，降低剪贴板被修改的风险
             self._pending_paste_text = clean_text  # 粘贴使用纯文本
-            QTimer.singleShot(100, self._delayed_paste)
+            QTimer.singleShot(50, self._delayed_paste)
             # 打印日志
             print(f"✓ {text}")
     
@@ -955,9 +1083,9 @@ class Application(QObject):
             self.clipboard_manager.copy_to_clipboard(clean_text)
         # 2. 更新UI
         self.update_ui_signal.emit("准备粘贴历史记录", clean_text)
-        # 3. 延迟执行粘贴操作
+        # 3. 减少延迟时间，降低剪贴板被修改的风险
         self._pending_paste_text = clean_text
-        QTimer.singleShot(100, self._delayed_paste)
+        QTimer.singleShot(50, self._delayed_paste)
 
     def update_ui(self, status, result):
         """更新界面显示"""
@@ -1010,7 +1138,8 @@ class Application(QObject):
             print(traceback.format_exc())
             return 1
         finally:
-            self.cleanup()
+            # 使用快速清理避免卡死
+            self._quick_cleanup()
 
     def check_permissions(self):
         """检查应用权限状态"""

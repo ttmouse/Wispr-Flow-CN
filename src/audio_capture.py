@@ -10,11 +10,12 @@ class AudioCapture:
         self.device_index = None
         self.read_count = 0
         # 音量相关参数
-        self.volume_threshold = 0.003  # 默认阈值
-        self.min_valid_frames = 3      # 降低最少有效帧数要求（约0.2秒）
+        self.volume_threshold = 0.001  # 降低默认阈值提高敏感度
+        self.min_valid_frames = 2      # 降低最少有效帧数要求（约0.13秒）
         self.valid_frame_count = 0     # 有效音频帧计数
-        self.max_silence_frames = 40    # 减少最大静音帧数到1.5秒
-        self.silence_frame_count = 0    # 连续静音帧计数
+        self.max_silence_frames = 50   # 增加最大静音帧数到约2秒
+        self.silence_frame_count = 0   # 连续静音帧计数
+        self.debug_frame_count = 0     # 调试帧计数
         
         # 初始化音频系统
         self._initialize_audio()
@@ -62,6 +63,7 @@ class AudioCapture:
                 self.read_count = 0
                 self.valid_frame_count = 0
                 self.silence_frame_count = 0
+                self.debug_frame_count = 0
                 
                 self.stream = self.audio.open(
                     format=pyaudio.paFloat32,
@@ -147,6 +149,7 @@ class AudioCapture:
         self.read_count = 0
         self.valid_frame_count = 0
         self.silence_frame_count = 0
+        self.debug_frame_count = 0
         
         # 强制垃圾回收
         import gc
@@ -203,6 +206,11 @@ class AudioCapture:
         volume = np.sqrt(np.mean(np.square(audio_data)))
         is_valid = volume > self.volume_threshold
         
+        # 添加调试信息（每20帧输出一次，避免日志过多）
+        self.debug_frame_count += 1
+        if self.debug_frame_count % 20 == 0:
+            print(f"🎤 音量检测 - 当前: {volume:.5f}, 阈值: {self.volume_threshold:.5f}, 有效帧: {self.valid_frame_count}, 静音帧: {self.silence_frame_count}")
+        
         # 更新计数
         if is_valid:
             self.silence_frame_count = 0
@@ -252,6 +260,7 @@ class AudioCapture:
         self.read_count = 0
         self.valid_frame_count = 0
         self.silence_frame_count = 0
+        self.debug_frame_count = 0
 
     def set_volume_threshold(self, threshold):
         """设置音量阈值（0-1000的值会被转换为0-0.02的浮点数）"""

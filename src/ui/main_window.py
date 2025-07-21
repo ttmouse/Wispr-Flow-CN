@@ -97,6 +97,11 @@ class MainWindow(QMainWindow):
         # 设置快捷键
         self.setup_shortcuts()
         
+        # 初始化热键状态更新定时器
+        self.hotkey_status_timer = QTimer()
+        self.hotkey_status_timer.timeout.connect(self.update_hotkey_status)
+        self.hotkey_status_timer.start(2000)  # 每2秒检查一次
+        
         # 标记初始化完成
         self._initialization_complete = True
     
@@ -221,6 +226,12 @@ class MainWindow(QMainWindow):
         version_label = QLabel(f"v{self.VERSION}")
         version_label.setStyleSheet("color: #666666; font-size: 12px;")
         title_layout.addWidget(version_label)
+        
+        # 热键状态指示器
+        self.hotkey_status_label = QLabel("●")
+        self.hotkey_status_label.setStyleSheet("color: #999999; font-size: 10px; margin-left: 8px;")
+        self.hotkey_status_label.setToolTip("热键状态：检查中...")
+        title_layout.addWidget(self.hotkey_status_label)
         
         layout.addWidget(title_container)
         
@@ -496,9 +507,34 @@ class MainWindow(QMainWindow):
             self.add_to_history(text)
     
     def closeEvent(self, event):
-        """处理窗口关闭事件"""
-        event.accept()  # 接受关闭事件
-        self.quit_application()  # 退出程序
+        """处理窗口关闭事件 - 完全退出应用程序"""
+        print("主窗口接收到关闭事件，准备退出应用程序")
+        try:
+            # 保存历史记录
+            self.save_history()
+            
+            # 保存窗口位置
+            self.save_window_position()
+            
+            # 调用应用程序退出方法，完全退出程序
+            if self.app_instance and hasattr(self.app_instance, 'quit_application'):
+                print("✓ 调用应用程序退出方法")
+                self.app_instance.quit_application()
+            else:
+                print("✓ 直接退出Qt应用程序")
+                QApplication.instance().quit()
+            
+            event.accept()  # 接受关闭事件
+            print("✓ 应用程序退出流程已启动")
+        except Exception as e:
+            print(f"❌ 处理主窗口关闭事件失败: {e}")
+            # 即使出错也要退出程序
+            try:
+                QApplication.instance().quit()
+            except:
+                import os
+                os._exit(0)
+            event.accept()
     
     def center_on_screen(self):
         """将窗口移动到屏幕中央"""
@@ -585,9 +621,28 @@ class MainWindow(QMainWindow):
             # 使用历史记录管理器保存
             history_data = self.history_manager.get_history_for_save()
             
-            with open(self.history_file, 'w', encoding='utf-8') as f:
-                json.dump(history_data, f, ensure_ascii=False, indent=2)
-            print(f"保存了 {len(history_data)} 条历史记录")
+            # 添加超时保护，避免在程序退出时因文件操作卡死
+            import signal
+            import threading
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("保存历史记录超时")
+            
+            # 设置1秒超时
+            if hasattr(signal, 'SIGALRM'):  # Unix系统
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(1)
+            
+            try:
+                with open(self.history_file, 'w', encoding='utf-8') as f:
+                    json.dump(history_data, f, ensure_ascii=False, indent=2)
+                print(f"保存了 {len(history_data)} 条历史记录")
+            finally:
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)  # 取消超时
+                    
+        except TimeoutError:
+            print("⚠️ 保存历史记录超时，跳过保存操作")
         except Exception as e:
             print(f"保存历史记录失败: {e}")
     
@@ -659,8 +714,57 @@ class MainWindow(QMainWindow):
             print(f"应用热词高亮失败: {e}")
             return text
     
+    def update_hotkey_status(self):
+        """更新热键状态显示"""
+        try:
+            if not hasattr(self, 'hotkey_status_label') or not self.app_instance:
+                return
+            
+            # 从应用程序实例获取热键管理器
+            hotkey_manager = getattr(self.app_instance, 'hotkey_manager', None)
+            if not hotkey_manager:
+                # 热键管理器不存在
+                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
+                self.hotkey_status_label.setToolTip("热键状态：未初始化")
+                return
+            
+            # 获取热键状态
+            status = hotkey_manager.get_status()
+            
+            if status['active']:
+                # 热键正常工作
+                if status['is_recording']:
+                    # 正在录音
+                    self.hotkey_status_label.setStyleSheet("color: #ff6b35; font-size: 10px; margin-left: 8px;")
+                    self.hotkey_status_label.setToolTip(f"热键状态：录音中 ({status['hotkey_type']})")
+                else:
+                    # 正常待机
+                    self.hotkey_status_label.setStyleSheet("color: #00cc66; font-size: 10px; margin-left: 8px;")
+                    self.hotkey_status_label.setToolTip(f"热键状态：正常 ({status['hotkey_type']})")
+            else:
+                # 热键失效
+                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
+                tooltip_details = []
+                if not status['listener_running']:
+                    tooltip_details.append("监听器未运行")
+                if status['hotkey_type'] == 'fn' and not status['fn_thread_running']:
+                    tooltip_details.append("Fn监听线程未运行")
+                
+                detail_text = ", ".join(tooltip_details) if tooltip_details else "未知错误"
+                self.hotkey_status_label.setToolTip(f"热键状态：失效 ({status['hotkey_type']}) - {detail_text}")
+                
+        except Exception as e:
+            # 状态检查出错
+            if hasattr(self, 'hotkey_status_label'):
+                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
+                self.hotkey_status_label.setToolTip(f"热键状态：检查出错 - {str(e)}")
+    
     def quit_application(self):
         """退出应用程序"""
+        # 停止状态更新定时器
+        if hasattr(self, 'hotkey_status_timer'):
+            self.hotkey_status_timer.stop()
+        
         self.save_history()  # 退出前保存历史记录
         if self.app_instance:
             self.app_instance.quit_application()

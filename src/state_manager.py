@@ -66,7 +66,7 @@ class StateManager(QObject):
             print(f"停止录音失败: {e}")
     
     def _play_stop_sound(self):
-        """播放停止音效 - 每次创建新实例"""
+        """播放停止音效 - 异步播放"""
         try:
             # 创建新的音效实例
             sound = QSoundEffect()
@@ -78,20 +78,20 @@ class StateManager(QObject):
             sound.setVolume(0.3)
             sound.setLoopCount(1)
             
-            # 等待音效加载完成
-            import time
-            max_wait = 50  # 最多等待500ms
-            wait_count = 0
-            while sound.status() != QSoundEffect.Status.Ready and wait_count < max_wait:
-                time.sleep(0.01)
-                wait_count += 1
-                QApplication.processEvents()  # 处理Qt事件
-            
+            # 异步播放 - 如果音效已准备好就直接播放，否则等待加载完成后播放
             if sound.status() == QSoundEffect.Status.Ready:
                 sound.play()
                 print("停止音效已播放（新实例）")
             else:
-                print(f"音效加载失败，状态: {sound.status()}")
+                # 连接加载完成信号，异步播放
+                def on_status_changed():
+                    if sound.status() == QSoundEffect.Status.Ready:
+                        sound.play()
+                        print("停止音效已播放（异步加载）")
+                    elif sound.status() == QSoundEffect.Status.Error:
+                        print(f"音效加载失败，状态: {sound.status()}")
+                
+                sound.statusChanged.connect(on_status_changed)
                 
         except Exception as e:
             print(f"播放停止音效失败: {e}")
@@ -111,3 +111,21 @@ class StateManager(QObject):
         if hasattr(self, 'funasr_engine'):
             return getattr(self.funasr_engine, 'hotwords', [])
         return []
+    
+    def cleanup(self):
+        """清理资源"""
+        try:
+            # 停止并清理音效资源
+            if hasattr(self, 'start_sound') and self.start_sound:
+                self.start_sound.stop()
+                self.start_sound.deleteLater()
+                self.start_sound = None
+            
+            if hasattr(self, 'stop_sound') and self.stop_sound:
+                self.stop_sound.stop()
+                self.stop_sound.deleteLater()
+                self.stop_sound = None
+            
+            print("✓ StateManager资源已清理")
+        except Exception as e:
+            print(f"❌ StateManager资源清理失败: {e}")
