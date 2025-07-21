@@ -18,18 +18,18 @@
     "recording_start_delay": 50
   },
   "paste": {
-    "transcription_delay": 10,
-    "history_click_delay": 10
+    "transcription_delay": 0,
+    "history_click_delay": 0
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-22T03:20:48.582816",
+      "last_check": "2025-07-22T04:12:33.939568",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T03:42:56.612943",
+      "last_check": "2025-07-22T04:12:38.153734",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

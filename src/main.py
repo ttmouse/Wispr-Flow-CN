@@ -218,128 +218,106 @@ class Application(QObject):
             # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
             
-            # 显示主窗口
-            self.main_window.show()
-            print("✓ 主界面已启动")
+            # 创建并显示启动加载界面
+            from src.app_loader import LoadingSplash, AppLoader
+            self.splash = LoadingSplash()
+            self.splash.show()
             
-            # 启动后台初始化
-            self._start_background_initialization()
+            # 创建异步加载器
+            self.app_loader = AppLoader(self, self.settings_manager)
+            self.app_loader.progress_updated.connect(self.splash.update_progress)
+            self.app_loader.component_loaded.connect(self.on_component_loaded)
+            self.app_loader.loading_completed.connect(self.on_loading_completed)
+            self.app_loader.loading_failed.connect(self.on_loading_failed)
+            
+            print("✓ 基础界面已启动，开始后台加载...")
+            
+            # 启动异步加载
+            self._start_async_loading()
 
         except Exception as e:
             print(f"❌ 初始化失败: {e}")
             print(traceback.format_exc())
             sys.exit(1)
     
-    def _start_background_initialization(self):
-        """启动后台初始化任务"""
+    def _start_async_loading(self):
+        """启动异步加载任务"""
         from PyQt6.QtCore import QTimer
         
-        # 使用简化的初始化流程
-        self._init_timer = QTimer()
-        self._init_timer.setSingleShot(True)
-        self._init_timer.timeout.connect(self.initialize_components)
-        self._init_timer.start(100)  # 100ms后开始后台初始化
+        # 延迟启动加载，让UI先显示
+        self._load_timer = QTimer()
+        self._load_timer.setSingleShot(True)
+        self._load_timer.timeout.connect(self.app_loader.start_loading)
+        self._load_timer.start(500)  # 500ms后开始加载
     
-    @handle_common_exceptions(show_error=False)
-    def initialize_components(self):
-        """按顺序初始化所有组件"""
+    def on_component_loaded(self, component_name, component):
+        """当组件加载完成时的回调"""
         try:
-            # 1. 检查权限（非阻塞）
-            self._check_permissions_async()
+            # 将组件赋值给应用实例
+            setattr(self, component_name, component)
             
-            # 2. 初始化语音识别引擎
-            self._initialize_funasr_engine()
+            # 特殊处理某些组件
+            if component_name == 'funasr_engine' and component:
+                # 关联到状态管理器
+                self.state_manager.funasr_engine = component
+                print("✓ FunASR引擎已关联到状态管理器")
+                
+            elif component_name == 'hotkey_manager' and component:
+                # 设置热键回调
+                component.set_press_callback(self.on_option_press)
+                component.set_release_callback(self.on_option_release)
+                
+            elif component_name == 'audio_capture_thread' and component:
+                # 连接音频捕获信号
+                component.audio_captured.connect(self.on_audio_captured)
+                component.recording_stopped.connect(self.stop_recording)
+                
+            print(f"✓ {component_name} 加载完成")
             
-            # 3. 初始化其他核心组件
-            self._initialize_core_components()
+        except Exception as e:
+            print(f"组件 {component_name} 加载后处理失败: {e}")
+    
+    def on_loading_completed(self):
+        """当所有组件加载完成时的回调"""
+        try:
+            # 隐藏启动界面
+            if hasattr(self, 'splash'):
+                self.splash.close()
+                
+            # 显示主窗口并置顶
+            self.main_window._show_window_internal()
             
-            # 4. 设置连接和应用设置
+            # 完成最终初始化
             self._finalize_initialization()
             
-            # 5. 标记初始化完成
+            # 标记初始化完成
             self._mark_initialization_complete()
             
-        except Exception as e:
-            print(f"组件初始化失败: {e}")
-            self.update_ui_signal.emit("⚠️ 部分组件初始化失败", "")
-    
-    def _check_permissions_async(self):
-        """异步检查权限"""
-        try:
-            if not getattr(sys, 'frozen', False) and self.settings_manager.is_cache_expired('permissions'):
-                self._check_development_permissions()
-        except Exception:
-            pass  # 权限检查失败不应阻止程序继续运行
-    
-    def _initialize_funasr_engine(self):
-        """初始化语音识别引擎"""
-        try:
-            self.update_ui_signal.emit("正在加载语音识别模型...", "")
-            self.funasr_engine = FunASREngine(self.settings_manager)
+            print("✓ 应用程序启动完成")
             
-            if self.is_component_ready('funasr_engine', 'is_ready'):
-                self.update_ui_signal.emit("✓ 语音识别引擎已就绪", "")
-                # 更新模型缓存
-                model_paths = self.funasr_engine.get_model_paths()
-                self.settings_manager.update_model_paths(model_paths)
-                asr_available = bool(model_paths.get('asr_model_path'))
-                punc_available = bool(model_paths.get('punc_model_path'))
-                self.settings_manager.update_models_cache(asr_available, punc_available)
-            else:
-                self.funasr_engine = None
-                self.settings_manager.update_models_cache(False, False)
         except Exception as e:
-            print(f"语音识别引擎初始化失败: {e}")
-            self.funasr_engine = None
+            print(f"加载完成处理失败: {e}")
     
-    def _initialize_core_components(self):
-        """初始化核心组件"""
-        # 初始化热键管理器
-        try:
-            self.hotkey_manager = HotkeyManager(self.settings_manager)
-        except Exception as e:
-            print(f"热键管理器初始化失败: {e}")
-            self.hotkey_manager = None
+    def on_loading_failed(self, error_message):
+        """当加载失败时的回调"""
+        print(f"❌ 组件加载失败: {error_message}")
         
-        # 初始化剪贴板管理器
-        try:
-            debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
-            self.clipboard_manager = ClipboardManager(debug_mode=debug_mode)
-        except Exception as e:
-            print(f"剪贴板管理器初始化失败: {e}")
-            self.clipboard_manager = None
+        # 隐藏启动界面
+        if hasattr(self, 'splash'):
+            self.splash.close()
+            
+        # 显示主窗口并置顶（即使部分组件失败）
+        self.main_window._show_window_internal()
         
-        # 初始化上下文管理器
-        try:
-            self.context = Context()
-        except Exception as e:
-            print(f"上下文管理器初始化失败: {e}")
-            self.context = None
-        
-        # 初始化音频管理器
-        try:
-            self.audio_manager = AudioManager(self)
-        except Exception as e:
-            print(f"音频管理器初始化失败: {e}")
-            self.audio_manager = None
-        
-        # 初始化音频捕获线程
-        try:
-            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
-            self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
-            self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
-        except Exception as e:
-            print(f"音频捕获线程初始化失败: {e}")
-            self.audio_capture_thread = None
+        # 显示错误信息
+        self.update_ui_signal.emit("⚠️ 部分组件初始化失败", error_message)
+    
+    # 原有的同步初始化方法已被异步加载器替代
+    # 保留权限检查方法供加载器使用
     
     def _finalize_initialization(self):
         """完成初始化设置"""
         try:
-            # 关联FunASR引擎到状态管理器
-            if self.is_component_ready('funasr_engine'):
-                self.state_manager.funasr_engine = self.funasr_engine
-                print("✓ FunASR引擎已关联到状态管理器")
-            
             # 设置连接
             self.setup_connections()
             
@@ -348,6 +326,8 @@ class Application(QObject):
             
             # 启动热键状态监控
             self.start_hotkey_monitor()
+            
+            print("✓ 最终初始化完成")
         except Exception as e:
             print(f"初始化设置失败: {e}")
     
@@ -449,31 +429,40 @@ class Application(QObject):
             self.cleanup_component('hotkey_manager', 'cleanup')
         
         # 重新创建热键管理器
-        self.hotkey_manager = HotkeyManager(self.settings_manager)
-        self.hotkey_manager.set_press_callback(self.on_option_press)
-        self.hotkey_manager.set_release_callback(self.on_option_release)
-        
-        # 应用当前热键设置
-        current_hotkey = self.settings_manager.get_hotkey()
-        self.hotkey_manager.update_hotkey(current_hotkey)
-        self.hotkey_manager.update_delay_settings()  # 更新延迟设置
-        
-        # 启动监听
-        self.hotkey_manager.start_listening()
-        
-        print("✓ 热键管理器重启成功")
-        
-        # 显示成功通知
-        if hasattr(self, 'tray_icon') and self.tray_icon:
-            self.tray_icon.showMessage(
-                "热键功能",
-                "热键功能已成功重启",
-                QSystemTrayIcon.MessageIcon.Information,
-                3000
-            )
+        try:
+            from src.hotkey_manager import HotkeyManager
+            self.hotkey_manager = HotkeyManager(self.settings_manager)
+            self.hotkey_manager.set_press_callback(self.on_option_press)
+            self.hotkey_manager.set_release_callback(self.on_option_release)
+            
+            # 应用当前热键设置
+            current_hotkey = self.settings_manager.get_hotkey()
+            self.hotkey_manager.update_hotkey(current_hotkey)
+            self.hotkey_manager.update_delay_settings()  # 更新延迟设置
+            
+            # 启动监听
+            self.hotkey_manager.start_listening()
+            
+            print("✓ 热键管理器重启成功")
+            
+            # 显示成功通知
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.showMessage(
+                    "热键功能",
+                    "热键功能已成功重启",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000
+                )
+        except Exception as e:
+            print(f"热键管理器重启失败: {e}")
+            self.hotkey_manager = None
     
     def start_hotkey_monitor(self):
         """启动热键状态监控"""
+        if not self.hotkey_manager:
+            print("⚠️ 热键管理器未就绪，无法启动监控")
+            return
+            
         # 添加监控线程停止标志
         self._monitor_should_stop = False
         
@@ -533,9 +522,10 @@ class Application(QObject):
     
     def is_ready_for_recording(self):
         """检查是否准备好录音"""
-        return (self.is_component_ready('audio_capture_thread') and 
-                self.is_component_ready('funasr_engine', 'is_ready') and
-                self.is_component_ready('state_manager') and
+        return (self.audio_capture_thread is not None and 
+                self.funasr_engine is not None and 
+                hasattr(self.funasr_engine, 'is_ready') and self.funasr_engine.is_ready and
+                self.state_manager is not None and
                 not self.recording)
     
     def cleanup_component(self, component_name, cleanup_method='cleanup', timeout=200):
