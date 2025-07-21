@@ -382,7 +382,7 @@ class MainWindow(QMainWindow):
         
         # 使用历史记录管理器添加记录
         if self.history_manager.add_history_item(text):
-            # 如果成功添加（非重复），更新UI
+            # 成功添加，更新UI
             # 直接使用传入的文本（可能已包含热词高亮）
             # 如果文本中没有HTML标签，则应用热词高亮
             if '<' not in text:
@@ -398,7 +398,7 @@ class MainWindow(QMainWindow):
             if not self._loading_history:
                 self.save_history()
         else:
-            print(f"跳过重复文本: {text[:50]}...")
+            print(f"添加历史记录失败（文本为空）: {text[:50]}...")
     
     def update_status(self, status):
         """更新状态显示"""

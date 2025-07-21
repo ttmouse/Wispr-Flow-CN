@@ -167,10 +167,10 @@ class HistoryManager:
                     'highlighted_text': self.apply_hotword_highlight(entry)
                 })
         
-        # 按时间戳排序（最新的在前）
+        # 按时间戳排序（最新的在后）
         if processed_data and processed_data[0].get('timestamp'):
-            processed_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-            print("✓ 已按时间戳排序历史记录")
+            processed_data.sort(key=lambda x: x.get('timestamp', ''), reverse=False)
+            print("✓ 已按时间戳排序历史记录（正序）")
         
         return processed_data
     
@@ -209,22 +209,17 @@ class HistoryManager:
         }
     
     def add_history_item(self, text: str) -> bool:
-        """添加历史记录项，返回是否成功添加（非重复）"""
+        """添加历史记录项，总是成功添加（已移除重复检测）"""
         if not text or not text.strip():
             return False
         
-        # 检查是否重复
-        existing_texts = [item['text'] for item in self.history_items]
-        if self.is_duplicate_text(text, existing_texts):
-            return False
-        
-        # 添加新项目到开头
+        # 直接添加新项目到末尾（已移除重复检测）
         new_item = self.create_history_entry(text)
-        self.history_items.insert(0, new_item)
+        self.history_items.append(new_item)
         
-        # 限制数量
+        # 限制数量（删除最旧的记录）
         if len(self.history_items) > self.max_history:
-            self.history_items = self.history_items[:self.max_history]
+            self.history_items = self.history_items[-self.max_history:]
         
         return True
     

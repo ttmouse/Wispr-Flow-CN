@@ -23,6 +23,13 @@ class SettingsManager:
             'hotword_weight': 80,      # 热词权重 (0-100)
             'enable_pronunciation_correction': True,  # 启用发音相似词纠错
         },
+        'hotkey_settings': {
+            'recording_start_delay': 200,  # 快捷键按下后启动录制的延迟（毫秒），用于避免组合快捷键误触发
+        },
+        'paste': {
+            'transcription_delay': 0,  # 转录完成后粘贴延迟（毫秒）
+            'history_click_delay': 0,  # 点击历史记录后粘贴延迟（毫秒）
+        },
         'cache': {
             'permissions': {
                 'last_check': '',      # 上次权限检查时间

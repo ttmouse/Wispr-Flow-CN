@@ -38,6 +38,7 @@ class SettingsWindow(QDialog):
         tab_widget.addTab(self._create_general_tab(), "常规")
         tab_widget.addTab(self._create_audio_tab(), "音频")
         tab_widget.addTab(self._create_asr_tab(), "语音识别")
+        tab_widget.addTab(self._create_paste_tab(), "粘贴设置")
         tab_widget.addTab(self._create_hotwords_settings_tab(), "热词设置")
         tab_widget.addTab(self._create_hotwords_edit_tab(), "热词编辑")
         
@@ -141,6 +142,31 @@ class SettingsWindow(QDialog):
                 print(f"收集热词设置失败: {e}")
                 import traceback
                 print(f"热词设置错误详情: {traceback.format_exc()}")
+                raise
+            
+            # 收集粘贴延迟设置
+            try:
+                transcription_delay = self.transcription_delay.value()
+                history_delay = self.history_delay.value()
+                
+                print(f"收集转录延迟: {transcription_delay}ms")
+                print(f"收集历史记录延迟: {history_delay}ms")
+                
+                settings_to_save['paste.transcription_delay'] = transcription_delay
+                settings_to_save['paste.history_click_delay'] = history_delay
+            except Exception as e:
+                print(f"收集粘贴延迟设置失败: {e}")
+                raise
+            
+            # 收集快捷键延迟设置
+            try:
+                recording_start_delay = self.recording_start_delay.value()
+                
+                print(f"收集录制启动延迟: {recording_start_delay}ms")
+                
+                settings_to_save['hotkey_settings.recording_start_delay'] = recording_start_delay
+            except Exception as e:
+                print(f"收集快捷键延迟设置失败: {e}")
                 raise
             
             # 批量保存所有设置
@@ -259,7 +285,44 @@ class SettingsWindow(QDialog):
         hotkey_layout.addWidget(help_text)
         hotkey_group.setLayout(hotkey_layout)
         
+        # 快捷键延迟设置组
+        delay_group = QGroupBox("快捷键延迟设置")
+        delay_layout = QVBoxLayout()
+        
+        # 录制启动延迟设置
+        start_delay_layout = QHBoxLayout()
+        start_delay_label = QLabel("录制启动延迟：")
+        self.start_delay_value_label = QLabel("200ms")  # 显示当前值的标签
+        self.start_delay_value_label.setMinimumWidth(50)  # 设置最小宽度确保对齐
+        
+        # 创建滑块
+        self.recording_start_delay = QSlider(Qt.Orientation.Horizontal)
+        self.recording_start_delay.setRange(50, 500)  # 50-500ms
+        self.recording_start_delay.setValue(self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 200))
+        self.recording_start_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.recording_start_delay.setTickInterval(50)  # 每50ms一个刻度
+        
+        # 连接滑块值变化信号
+        self.recording_start_delay.valueChanged.connect(
+            lambda value: self.start_delay_value_label.setText(f"{value}ms")
+        )
+        
+        # 添加控件到布局
+        start_delay_layout.addWidget(start_delay_label)
+        start_delay_layout.addWidget(self.recording_start_delay)
+        start_delay_layout.addWidget(self.start_delay_value_label)
+        
+        # 添加帮助文本
+        delay_help_text = QLabel("按下快捷键后等待多长时间才开始录制，用于避免组合快捷键误触发。\n数值越小启动越快，但可能误触发；数值越大越安全，但启动较慢。建议值：150-300ms")
+        delay_help_text.setStyleSheet("color: gray; font-size: 12px;")
+        delay_help_text.setWordWrap(True)  # 允许文本换行
+        
+        delay_layout.addLayout(start_delay_layout)
+        delay_layout.addWidget(delay_help_text)
+        delay_group.setLayout(delay_layout)
+        
         layout.addWidget(hotkey_group)
+        layout.addWidget(delay_group)
         layout.addStretch()
         tab.setLayout(layout)
         return tab
@@ -418,6 +481,80 @@ class SettingsWindow(QDialog):
         
         layout.addWidget(model_group)
         layout.addWidget(recognition_group)
+        layout.addStretch()
+        tab.setLayout(layout)
+        return tab
+
+    def _create_paste_tab(self):
+        """创建粘贴设置标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # 粘贴延迟设置组
+        paste_group = QGroupBox("粘贴延迟设置")
+        paste_layout = QVBoxLayout()
+        
+        # 转录完成后粘贴延迟
+        transcription_layout = QHBoxLayout()
+        transcription_label = QLabel("转录完成后延迟：")
+        self.transcription_delay_value_label = QLabel("0ms")
+        self.transcription_delay_value_label.setMinimumWidth(50)
+        
+        self.transcription_delay = QSlider(Qt.Orientation.Horizontal)
+        self.transcription_delay.setRange(0, 200)  # 0-200毫秒
+        self.transcription_delay.setValue(self.settings_manager.get_setting('paste.transcription_delay', 0))
+        self.transcription_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.transcription_delay.setTickInterval(20)
+        
+        # 连接滑块值变化信号
+        self.transcription_delay.valueChanged.connect(
+            lambda value: self.transcription_delay_value_label.setText(f"{value}ms")
+        )
+        
+        transcription_layout.addWidget(transcription_label)
+        transcription_layout.addWidget(self.transcription_delay)
+        transcription_layout.addWidget(self.transcription_delay_value_label)
+        
+        # 添加帮助文本
+        transcription_help = QLabel("转录完成后等待多长时间再执行粘贴操作。数值越大，粘贴越稳定，但响应稍慢。建议值：20-50ms")
+        transcription_help.setStyleSheet("color: gray; font-size: 12px;")
+        transcription_help.setWordWrap(True)
+        
+        paste_layout.addLayout(transcription_layout)
+        paste_layout.addWidget(transcription_help)
+        
+        # 历史记录点击后粘贴延迟
+        history_layout = QHBoxLayout()
+        history_label = QLabel("历史记录点击后延迟：")
+        self.history_delay_value_label = QLabel("50ms")
+        self.history_delay_value_label.setMinimumWidth(50)
+        
+        self.history_delay = QSlider(Qt.Orientation.Horizontal)
+        self.history_delay.setRange(10, 200)  # 10-200毫秒
+        self.history_delay.setValue(self.settings_manager.get_setting('paste.history_click_delay', 50))
+        self.history_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.history_delay.setTickInterval(20)
+        
+        # 连接滑块值变化信号
+        self.history_delay.valueChanged.connect(
+            lambda value: self.history_delay_value_label.setText(f"{value}ms")
+        )
+        
+        history_layout.addWidget(history_label)
+        history_layout.addWidget(self.history_delay)
+        history_layout.addWidget(self.history_delay_value_label)
+        
+        # 添加帮助文本
+        history_help = QLabel("点击历史记录项后等待多长时间再执行粘贴操作。数值越大，粘贴越稳定，但响应稍慢。建议值：30-80ms")
+        history_help.setStyleSheet("color: gray; font-size: 12px;")
+        history_help.setWordWrap(True)
+        
+        paste_layout.addLayout(history_layout)
+        paste_layout.addWidget(history_help)
+        
+        paste_group.setLayout(paste_layout)
+        
+        layout.addWidget(paste_group)
         layout.addStretch()
         tab.setLayout(layout)
         return tab
@@ -582,6 +719,14 @@ class SettingsWindow(QDialog):
         self.enable_pronunciation_correction.setChecked(
             self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
         )
+        
+        # 更新粘贴延迟设置
+        transcription_delay = self.settings_manager.get_setting('paste.transcription_delay', 30)
+        history_delay = self.settings_manager.get_setting('paste.history_click_delay', 50)
+        self.transcription_delay.setValue(transcription_delay)
+        self.history_delay.setValue(history_delay)
+        self.transcription_delay_value_label.setText(f"{transcription_delay}ms")
+        self.history_delay_value_label.setText(f"{history_delay}ms")
         
         # 加载热词内容
         self._load_hotwords()

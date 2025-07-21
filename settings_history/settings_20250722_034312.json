@@ -4,29 +4,35 @@
   "audio": {
     "input_device": null,
     "volume_threshold": 150,
-    "max_recording_duration": 25
+    "max_recording_duration": 10
   },
   "asr": {
     "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
     "auto_punctuation": true,
     "real_time_display": true,
-    "hotword_weight": 92,
+    "hotword_weight": 80,
     "enable_pronunciation_correction": true
+  },
+  "hotkey_settings": {
+    "recording_start_delay": 50
+  },
+  "paste": {
+    "transcription_delay": 10,
+    "history_click_delay": 10
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-22T00:42:25.760229",
+      "last_check": "2025-07-22T03:20:48.582816",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T02:54:14.387635",
+      "last_check": "2025-07-22T03:42:56.612943",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168
     }
-  },
-  "clipboard_debug": true
+  }
 }

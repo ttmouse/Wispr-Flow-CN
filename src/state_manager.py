@@ -66,35 +66,41 @@ class StateManager(QObject):
             print(f"停止录音失败: {e}")
     
     def _play_stop_sound(self):
-        """播放停止音效 - 异步播放"""
+        """播放停止音效 - 使用预初始化的音效实例"""
         try:
-            # 创建新的音效实例
-            sound = QSoundEffect()
-            sound.moveToThread(QApplication.instance().thread())
-            
-            # 设置音效文件路径
-            stop_sound_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "stop.wav")
-            sound.setSource(QUrl.fromLocalFile(stop_sound_path))
-            sound.setVolume(0.3)
-            sound.setLoopCount(1)
-            
-            # 异步播放 - 如果音效已准备好就直接播放，否则等待加载完成后播放
-            if sound.status() == QSoundEffect.Status.Ready:
-                sound.play()
-                print("停止音效已播放（新实例）")
+            # 使用预初始化的停止音效实例，避免临时创建导致的垃圾回收问题
+            if self.stop_sound and self.stop_sound.status() == QSoundEffect.Status.Ready:
+                self.stop_sound.play()
+                print("✓ 停止音效已播放")
             else:
-                # 连接加载完成信号，异步播放
-                def on_status_changed():
-                    if sound.status() == QSoundEffect.Status.Ready:
-                        sound.play()
-                        print("停止音效已播放（异步加载）")
-                    elif sound.status() == QSoundEffect.Status.Error:
-                        print(f"音效加载失败，状态: {sound.status()}")
+                # 如果预初始化的音效不可用，创建临时实例并保持引用
+                if not hasattr(self, '_temp_stop_sound'):
+                    self._temp_stop_sound = QSoundEffect()
+                    self._temp_stop_sound.moveToThread(QApplication.instance().thread())
+                    
+                    # 设置音效文件路径
+                    stop_sound_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "stop.wav")
+                    self._temp_stop_sound.setSource(QUrl.fromLocalFile(stop_sound_path))
+                    self._temp_stop_sound.setVolume(0.3)
+                    self._temp_stop_sound.setLoopCount(1)
+                    
+                    # 连接播放完成信号，清理临时实例
+                    def on_playing_changed():
+                        if not self._temp_stop_sound.isPlaying():
+                            self._temp_stop_sound.deleteLater()
+                            self._temp_stop_sound = None
+                    
+                    self._temp_stop_sound.playingChanged.connect(on_playing_changed)
                 
-                sound.statusChanged.connect(on_status_changed)
+                # 播放临时音效
+                if self._temp_stop_sound.status() == QSoundEffect.Status.Ready:
+                    self._temp_stop_sound.play()
+                    print("✓ 停止音效已播放（临时实例）")
+                else:
+                    print("⚠️ 停止音效未就绪，无法播放")
                 
         except Exception as e:
-            print(f"播放停止音效失败: {e}")
+            print(f"❌ 播放停止音效失败: {e}")
     
     def update_status(self, status):
         """更新状态"""
@@ -125,6 +131,12 @@ class StateManager(QObject):
                 self.stop_sound.stop()
                 self.stop_sound.deleteLater()
                 self.stop_sound = None
+            
+            # 清理临时停止音效实例
+            if hasattr(self, '_temp_stop_sound') and self._temp_stop_sound:
+                self._temp_stop_sound.stop()
+                self._temp_stop_sound.deleteLater()
+                self._temp_stop_sound = None
             
             print("✓ StateManager资源已清理")
         except Exception as e:

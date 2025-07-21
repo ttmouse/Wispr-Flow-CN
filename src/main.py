@@ -456,6 +456,7 @@ class Application(QObject):
         # 应用当前热键设置
         current_hotkey = self.settings_manager.get_hotkey()
         self.hotkey_manager.update_hotkey(current_hotkey)
+        self.hotkey_manager.update_delay_settings()  # 更新延迟设置
         
         # 启动监听
         self.hotkey_manager.start_listening()
@@ -872,13 +873,22 @@ class Application(QObject):
             # 异步恢复音量，避免阻塞主线程
             if self.previous_volume is not None:
                 # 使用QTimer延迟恢复音量，确保音效播放完成
-                volume_timer = QTimer()
-                volume_timer.setSingleShot(True)
-                volume_timer.timeout.connect(lambda: self._restore_volume_async(self.previous_volume))
-                volume_timer.start(150)  # 150ms后恢复音量
-            
-            # 重置 previous_volume
-            self.previous_volume = None
+                # 将定时器保存为实例变量，避免被垃圾回收
+                if hasattr(self, 'volume_timer'):
+                    self.volume_timer.stop()
+                    self.volume_timer.deleteLater()
+                
+                # 保存音量值，避免在定时器回调前被重置
+                volume_to_restore = self.previous_volume
+                self.volume_timer = QTimer(self)
+                self.volume_timer.setSingleShot(True)
+                self.volume_timer.timeout.connect(lambda: self._restore_volume_async(volume_to_restore))
+                self.volume_timer.start(150)  # 150ms后恢复音量
+                
+                # 重置 previous_volume
+                self.previous_volume = None
+            else:
+                print("⚠️ 没有保存的音量值，无法恢复音量")
             
             try:
                 audio_data = self.audio_capture.get_audio_data()
@@ -920,6 +930,11 @@ class Application(QObject):
             # 停止录音定时器
             if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
                 self.recording_timer.stop()
+            
+            # 停止音量恢复定时器
+            if hasattr(self, 'volume_timer') and self.volume_timer.isActive():
+                self.volume_timer.stop()
+                self.volume_timer.deleteLater()
             
             # 清理设置窗口
             if hasattr(self, 'settings_window') and self.settings_window:
@@ -1140,8 +1155,9 @@ class Application(QObject):
             # 这样可以避免在延迟期间剪贴板内容被累积
             self._pending_paste_text = clean_text  # 粘贴使用纯文本
             
-            # 3. 缩短延迟时间，减少剪贴板被修改的风险
-            QTimer.singleShot(30, self._delayed_paste)  # 从50ms减少到30ms
+            # 3. 使用可配置的延迟时间
+            delay = self.settings_manager.get_setting('paste.transcription_delay', 30)
+            QTimer.singleShot(delay, self._delayed_paste)
             
             # 打印日志
             print(f"✓ 转录完成: {clean_text[:50]}{'...' if len(clean_text) > 50 else ''}")
@@ -1156,9 +1172,10 @@ class Application(QObject):
             self.clipboard_manager.copy_to_clipboard(clean_text)
         # 2. 更新UI
         self.update_ui_signal.emit("准备粘贴历史记录", clean_text)
-        # 3. 减少延迟时间，降低剪贴板被修改的风险
+        # 3. 使用可配置的延迟时间
         self._pending_paste_text = clean_text
-        QTimer.singleShot(50, self._delayed_paste)
+        delay = self.settings_manager.get_setting('paste.history_click_delay', 50)
+        QTimer.singleShot(delay, self._delayed_paste)
 
     def update_ui(self, status, result):
         """更新界面显示"""
@@ -1286,24 +1303,44 @@ class Application(QObject):
     def show_settings(self):
         """显示设置窗口"""
         try:
-            if not hasattr(self, 'settings_window') or self.settings_window is None:
-                self.settings_window = SettingsWindow(
-                    settings_manager=self.settings_manager,
-                    audio_capture=self.audio_capture
-                )
-                # 使用线程安全的方式连接信号
-                self.settings_window.settings_saved.connect(
-                    self.apply_settings, 
-                    Qt.ConnectionType.QueuedConnection
-                )
+            # 检查现有窗口是否存在且可见
+            if hasattr(self, 'settings_window') and self.settings_window is not None:
+                if self.settings_window.isVisible():
+                    # 如果窗口已经打开，只需要激活它
+                    self.settings_window.raise_()
+                    self.settings_window.activateWindow()
+                    return
+                else:
+                    # 如果窗口存在但不可见（已关闭），清理旧实例
+                    self.settings_window = None
+            
+            # 创建新的设置窗口
+            self.settings_window = SettingsWindow(
+                settings_manager=self.settings_manager,
+                audio_capture=self.audio_capture
+            )
+            
+            # 连接信号
+            self.settings_window.settings_saved.connect(
+                self.apply_settings, 
+                Qt.ConnectionType.QueuedConnection
+            )
+            
+            # 连接窗口关闭信号，确保实例被清理
+            self.settings_window.finished.connect(
+                lambda: setattr(self, 'settings_window', None)
+            )
             
             self.settings_window.show()
             self.settings_window.raise_()
             self.settings_window.activateWindow()
+            
         except Exception as e:
             print(f"❌ 显示设置窗口失败: {e}")
             import traceback
             print(traceback.format_exc())
+            # 如果出错，确保清理窗口实例
+            self.settings_window = None
     
     def show_clipboard_monitor(self):
         """显示剪贴板监控窗口"""
@@ -1339,6 +1376,7 @@ class Application(QObject):
                     print(f"应用热键设置: {current_hotkey}")
                     self.hotkey_manager.stop_listening()  # 先停止监听
                     self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
+                    self.hotkey_manager.update_delay_settings()  # 更新延迟设置
                     self.hotkey_manager.start_listening()  # 重新开始监听
                     print("✓ 热键设置已应用")
                 else:
@@ -1349,6 +1387,7 @@ class Application(QObject):
                         self.hotkey_manager.set_release_callback(self.on_option_release)
                         current_hotkey = self.settings_manager.get_hotkey()
                         self.hotkey_manager.update_hotkey(current_hotkey)
+                        self.hotkey_manager.update_delay_settings()  # 更新延迟设置
                         self.hotkey_manager.start_listening()
                         print("✓ 热键管理器重新创建并应用设置成功")
                     except Exception as e2:

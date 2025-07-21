@@ -23,7 +23,9 @@ class HotkeyManager:
         
         # 简化的延迟检测相关变量
         self.hotkey_press_time = 0      # 热键按下的时间
-        self.delay_threshold = 0.2      # 减少延迟阈值到200ms
+        # 从设置中读取延迟时间，默认200ms
+        delay_ms = self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 200) if self.settings_manager else 200
+        self.delay_threshold = delay_ms / 1000.0  # 转换为秒
         
         # 配置日志
         self.logger = logging.getLogger('HotkeyManager')
@@ -83,6 +85,15 @@ class HotkeyManager:
         """更新快捷键设置"""
         self.hotkey_type = hotkey_type
         self.logger.info(f"已更新快捷键设置: {hotkey_type}")
+    
+    def update_delay_settings(self):
+        """更新延迟设置"""
+        if self.settings_manager:
+            delay_ms = self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 200)
+            self.delay_threshold = delay_ms / 1000.0
+            self.logger.info(f"已更新录制启动延迟: {delay_ms}ms")
+        else:
+            self.logger.warning("设置管理器不可用，无法更新延迟设置")
 
     def _is_hotkey_pressed(self, key):
         """检查是否是当前设置的热键"""
