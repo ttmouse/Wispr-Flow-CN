@@ -1,7 +1,5 @@
 {
-  "hotkey": {
-    "recording_start_delay": 50
-  },
+  "hotkey": "fn",
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
@@ -16,9 +14,12 @@
     "hotword_weight": 80,
     "enable_pronunciation_correction": true
   },
+  "hotkey_settings": {
+    "recording_start_delay": 50
+  },
   "paste": {
     "transcription_delay": 10,
-    "history_click_delay": 33
+    "history_click_delay": 10
   },
   "cache": {
     "permissions": {
@@ -28,7 +29,7 @@
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T03:36:31.593993",
+      "last_check": "2025-07-22T03:45:21.808292",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

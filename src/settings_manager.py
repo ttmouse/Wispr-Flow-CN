@@ -24,7 +24,7 @@ class SettingsManager:
             'enable_pronunciation_correction': True,  # 启用发音相似词纠错
         },
         'hotkey_settings': {
-            'recording_start_delay': 200,  # 快捷键按下后启动录制的延迟（毫秒），用于避免组合快捷键误触发
+            'recording_start_delay': 50,  # 快捷键按下后启动录制的延迟（毫秒），用于避免组合快捷键误触发
         },
         'paste': {
             'transcription_delay': 0,  # 转录完成后粘贴延迟（毫秒）

@@ -14,9 +14,12 @@
     "hotword_weight": 80,
     "enable_pronunciation_correction": true
   },
+  "hotkey_settings": {
+    "recording_start_delay": 50
+  },
   "paste": {
     "transcription_delay": 10,
-    "history_click_delay": 50
+    "history_click_delay": 10
   },
   "cache": {
     "permissions": {
@@ -26,7 +29,7 @@
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T03:34:36.386498",
+      "last_check": "2025-07-22T03:45:21.808292",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

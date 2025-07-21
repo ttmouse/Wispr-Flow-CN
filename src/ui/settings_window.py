@@ -292,13 +292,13 @@ class SettingsWindow(QDialog):
         # 录制启动延迟设置
         start_delay_layout = QHBoxLayout()
         start_delay_label = QLabel("录制启动延迟：")
-        self.start_delay_value_label = QLabel("200ms")  # 显示当前值的标签
+        self.start_delay_value_label = QLabel("50ms")  # 显示当前值的标签
         self.start_delay_value_label.setMinimumWidth(50)  # 设置最小宽度确保对齐
         
         # 创建滑块
         self.recording_start_delay = QSlider(Qt.Orientation.Horizontal)
         self.recording_start_delay.setRange(50, 500)  # 50-500ms
-        self.recording_start_delay.setValue(self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 200))
+        self.recording_start_delay.setValue(self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 50))
         self.recording_start_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.recording_start_delay.setTickInterval(50)  # 每50ms一个刻度
         
@@ -313,7 +313,7 @@ class SettingsWindow(QDialog):
         start_delay_layout.addWidget(self.start_delay_value_label)
         
         # 添加帮助文本
-        delay_help_text = QLabel("按下快捷键后等待多长时间才开始录制，用于避免组合快捷键误触发。\n数值越小启动越快，但可能误触发；数值越大越安全，但启动较慢。建议值：150-300ms")
+        delay_help_text = QLabel("按下快捷键后等待多长时间才开始录制，用于避免组合快捷键误触发。\n数值越小启动越快，但可能误触发；数值越大越安全，但启动较慢。建议值：50-150ms")
         delay_help_text.setStyleSheet("color: gray; font-size: 12px;")
         delay_help_text.setWordWrap(True)  # 允许文本换行
         
@@ -526,12 +526,12 @@ class SettingsWindow(QDialog):
         # 历史记录点击后粘贴延迟
         history_layout = QHBoxLayout()
         history_label = QLabel("历史记录点击后延迟：")
-        self.history_delay_value_label = QLabel("50ms")
+        self.history_delay_value_label = QLabel("0ms")
         self.history_delay_value_label.setMinimumWidth(50)
         
         self.history_delay = QSlider(Qt.Orientation.Horizontal)
-        self.history_delay.setRange(10, 200)  # 10-200毫秒
-        self.history_delay.setValue(self.settings_manager.get_setting('paste.history_click_delay', 50))
+        self.history_delay.setRange(0, 200)  # 0-200毫秒
+        self.history_delay.setValue(self.settings_manager.get_setting('paste.history_click_delay', 0))
         self.history_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.history_delay.setTickInterval(20)
         
