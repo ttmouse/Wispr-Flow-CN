@@ -23,13 +23,13 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-22T04:12:33.939568",
+      "last_check": "2025-07-22T04:21:46.436749",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T04:11:51.420798",
+      "last_check": "2025-07-22T04:15:01.672859",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

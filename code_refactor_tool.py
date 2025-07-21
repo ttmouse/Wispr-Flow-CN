@@ -1,68 +1,48 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-代码重构工具 - 识别和清理项目中的冗余代码
-保持系统功能不变的情况下，使代码更简洁和优雅
+代码重构工具 - 分析和清理项目中的冗余代码
 """
 
 import os
 import re
 import ast
-import shutil
+import json
 from pathlib import Path
-from typing import List, Dict, Set, Tuple
+from typing import Dict, List, Set, Tuple, Any
+from collections import defaultdict, Counter
 from datetime import datetime
+import argparse
 
 class CodeRefactorTool:
-    """代码重构工具类"""
+    """代码重构分析工具"""
     
     def __init__(self, project_root: str):
         self.project_root = Path(project_root)
         self.src_dir = self.project_root / "src"
-        self.backup_dir = self.project_root / "backup_before_refactor"
-        self.analysis_report = []
+        self.analysis_report = ""
         
-    def analyze_redundant_code(self):
+    def analyze_project(self) -> Dict[str, Any]:
         """分析项目中的冗余代码"""
-        print("🔍 开始分析项目中的冗余代码...")
-        print("=" * 60)
+        print("🔍 开始分析项目冗余代码...")
         
-        # 1. 分析重复的函数定义
-        duplicate_functions = self._find_duplicate_functions()
+        analysis_data = {
+            'duplicate_functions': self._find_duplicate_functions(),
+            'cleanup_methods': self._analyze_cleanup_methods(),
+            'permission_checks': self._find_permission_checks(),
+            'import_redundancy': self._analyze_import_redundancy(),
+            'exception_patterns': self._find_exception_patterns(),
+            'hardcoded_values': self._find_hardcoded_values()
+        }
         
-        # 2. 分析相似的cleanup方法
-        cleanup_methods = self._analyze_cleanup_methods()
-        
-        # 3. 分析重复的权限检查逻辑
-        permission_checks = self._analyze_permission_checks()
-        
-        # 4. 分析重复的导入语句
-        import_redundancy = self._analyze_import_redundancy()
-        
-        # 5. 分析异常处理模式
-        exception_patterns = self._analyze_exception_patterns()
-        
-        # 6. 分析硬编码值
-        hardcoded_values = self._find_hardcoded_values()
-        
-        # 生成分析报告
-        self._generate_analysis_report({
-            'duplicate_functions': duplicate_functions,
-            'cleanup_methods': cleanup_methods,
-            'permission_checks': permission_checks,
-            'import_redundancy': import_redundancy,
-            'exception_patterns': exception_patterns,
-            'hardcoded_values': hardcoded_values
-        })
-        
-        return self.analysis_report
+        self._generate_analysis_report(analysis_data)
+        return analysis_data
     
     def _find_duplicate_functions(self) -> Dict[str, List[str]]:
         """查找重复的函数定义"""
-        print("\n📋 分析重复的函数定义...")
+        print("\n🔄 查找重复函数定义...")
         
-        function_signatures = {}
-        duplicate_functions = {}
+        function_definitions = defaultdict(list)
         
         for py_file in self.src_dir.rglob("*.py"):
             try:
@@ -73,31 +53,26 @@ class CodeRefactorTool:
                 tree = ast.parse(content)
                 for node in ast.walk(tree):
                     if isinstance(node, ast.FunctionDef):
-                        func_name = node.name
-                        # 获取函数签名（简化版）
-                        args = [arg.arg for arg in node.args.args]
-                        signature = f"{func_name}({', '.join(args)})"
-                        
-                        if signature not in function_signatures:
-                            function_signatures[signature] = []
-                        function_signatures[signature].append(str(py_file))
+                        function_definitions[node.name].append(str(py_file))
                         
             except Exception as e:
                 print(f"⚠️ 解析文件失败 {py_file}: {e}")
         
         # 找出重复的函数
-        for signature, files in function_signatures.items():
-            if len(files) > 1:
-                duplicate_functions[signature] = files
-                print(f"  🔄 重复函数: {signature}")
-                for file in files:
-                    print(f"    📁 {file}")
+        duplicates = {func: files for func, files in function_definitions.items() if len(files) > 1}
         
-        return duplicate_functions
+        if duplicates:
+            print(f"  🎯 发现 {len(duplicates)} 个重复函数:")
+            for func, files in duplicates.items():
+                print(f"    - {func}: {len(files)} 个文件")
+        else:
+            print("  ✅ 未发现重复函数")
+            
+        return duplicates
     
-    def _analyze_cleanup_methods(self) -> Dict[str, Dict]:
+    def _analyze_cleanup_methods(self) -> Dict[str, Dict[str, Any]]:
         """分析cleanup方法的实现"""
-        print("\n🧹 分析cleanup方法实现...")
+        print("\n🧹 分析cleanup方法...")
         
         cleanup_methods = {}
         
@@ -107,159 +82,154 @@ class CodeRefactorTool:
                     content = f.read()
                 
                 # 查找cleanup方法
-                cleanup_pattern = r'def cleanup\(self\):(.*?)(?=def |class |$)'
-                matches = re.finditer(cleanup_pattern, content, re.DOTALL)
+                cleanup_pattern = r'def\s+(cleanup|_cleanup|cleanup_resources|_quick_cleanup)\s*\([^)]*\):'
+                matches = re.finditer(cleanup_pattern, content)
                 
                 for match in matches:
-                    method_body = match.group(1).strip()
+                    method_name = match.group(1)
+                    # 计算方法行数
+                    lines_before = content[:match.start()].count('\n') + 1
+                    method_content = self._extract_method_content(content, match.start())
+                    lines_count = method_content.count('\n') + 1
+                    
                     cleanup_methods[str(py_file)] = {
-                        'body': method_body,
-                        'lines': len(method_body.split('\n')),
-                        'has_try_except': 'try:' in method_body,
-                        'has_print': 'print(' in method_body,
-                        'has_logging': 'logging.' in method_body or 'logger.' in method_body
+                        'method_name': method_name,
+                        'start_line': lines_before,
+                        'lines': lines_count,
+                        'content_preview': method_content[:200] + '...' if len(method_content) > 200 else method_content
                     }
                     
             except Exception as e:
                 print(f"⚠️ 分析cleanup方法失败 {py_file}: {e}")
         
-        # 分析相似性
-        print(f"  📊 找到 {len(cleanup_methods)} 个cleanup方法")
-        for file, info in cleanup_methods.items():
-            print(f"    📁 {file}: {info['lines']}行, try/except: {info['has_try_except']}")
-        
+        print(f"  🎯 发现 {len(cleanup_methods)} 个cleanup方法")
         return cleanup_methods
     
-    def _analyze_permission_checks(self) -> Dict[str, List[str]]:
-        """分析权限检查逻辑"""
-        print("\n🔐 分析权限检查逻辑...")
+    def _extract_method_content(self, content: str, start_pos: int) -> str:
+        """提取方法内容"""
+        lines = content[start_pos:].split('\n')
+        method_lines = [lines[0]]  # 方法定义行
+        
+        if len(lines) > 1:
+            # 找到方法的缩进级别
+            base_indent = len(lines[1]) - len(lines[1].lstrip()) if lines[1].strip() else 4
+            
+            for line in lines[1:]:
+                if line.strip() == "":
+                    method_lines.append(line)
+                    continue
+                    
+                current_indent = len(line) - len(line.lstrip())
+                if current_indent <= base_indent and line.strip():
+                    break
+                    
+                method_lines.append(line)
+                
+        return '\n'.join(method_lines)
+    
+    def _find_permission_checks(self) -> Dict[str, List[str]]:
+        """查找权限检查相关代码"""
+        print("\n🔐 查找权限检查逻辑...")
         
         permission_patterns = {
-            'check_permissions': [],
-            'microphone_permission': [],
-            'accessibility_permission': [],
-            'osascript_permission': []
+            'check_permissions': r'def\s+.*check.*permission',
+            'accessibility_check': r'accessibility|辅助功能',
+            'microphone_check': r'microphone|麦克风|录音权限',
+            'system_events': r'system.*event|系统事件'
         }
+        
+        permission_checks = {pattern: [] for pattern in permission_patterns}
         
         for py_file in self.src_dir.rglob("*.py"):
             try:
                 with open(py_file, 'r', encoding='utf-8') as f:
                     content = f.read()
                 
-                # 查找各种权限检查模式
-                if 'check_permissions' in content:
-                    permission_patterns['check_permissions'].append(str(py_file))
-                
-                if 'microphone' in content.lower() and 'permission' in content.lower():
-                    permission_patterns['microphone_permission'].append(str(py_file))
-                
-                if 'accessibility' in content.lower() and 'permission' in content.lower():
-                    permission_patterns['accessibility_permission'].append(str(py_file))
-                
-                if 'osascript' in content and 'permission' in content.lower():
-                    permission_patterns['osascript_permission'].append(str(py_file))
-                    
+                for pattern_name, pattern in permission_patterns.items():
+                    if re.search(pattern, content, re.IGNORECASE):
+                        permission_checks[pattern_name].append(str(py_file))
+                        
             except Exception as e:
-                print(f"⚠️ 分析权限检查失败 {py_file}: {e}")
+                print(f"⚠️ 查找权限检查失败 {py_file}: {e}")
         
-        for pattern, files in permission_patterns.items():
+        for pattern, files in permission_checks.items():
             if files:
-                print(f"  🔑 {pattern}: {len(files)} 个文件")
-                for file in files:
-                    print(f"    📁 {file}")
+                print(f"  🎯 {pattern}: {len(files)} 个文件")
         
-        return permission_patterns
+        return permission_checks
     
     def _analyze_import_redundancy(self) -> Dict[str, List[str]]:
-        """分析重复的导入语句"""
+        """分析导入语句冗余"""
         print("\n📦 分析导入语句冗余...")
         
-        import_usage = {}
+        import_statements = defaultdict(list)
         
         for py_file in self.src_dir.rglob("*.py"):
             try:
                 with open(py_file, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
+                    content = f.read()
                 
-                imports = []
-                for line in lines[:50]:  # 只检查前50行
-                    line = line.strip()
-                    if line.startswith('import ') or line.startswith('from '):
-                        imports.append(line)
+                # 查找import语句
+                import_patterns = [
+                    r'^import\s+([\w\.]+)',
+                    r'^from\s+([\w\.]+)\s+import'
+                ]
                 
-                if imports:
-                    import_usage[str(py_file)] = imports
-                    
+                for pattern in import_patterns:
+                    matches = re.finditer(pattern, content, re.MULTILINE)
+                    for match in matches:
+                        module = match.group(1)
+                        import_statements[module].append(str(py_file))
+                        
             except Exception as e:
                 print(f"⚠️ 分析导入语句失败 {py_file}: {e}")
         
-        # 统计最常用的导入
-        import_count = {}
-        for file, imports in import_usage.items():
-            for imp in imports:
-                if imp not in import_count:
-                    import_count[imp] = []
-                import_count[imp].append(file)
+        # 找出高频导入
+        common_imports = {imp: files for imp, files in import_statements.items() if len(files) >= 3}
         
-        # 找出使用频率高的导入
-        common_imports = {imp: files for imp, files in import_count.items() if len(files) >= 3}
-        
-        print(f"  📊 常用导入语句 (使用≥3次):")
-        for imp, files in sorted(common_imports.items(), key=lambda x: len(x[1]), reverse=True):
-            print(f"    📦 {imp}: {len(files)} 次")
-        
+        print(f"  🎯 发现 {len(common_imports)} 个高频导入模块")
         return common_imports
     
-    def _analyze_exception_patterns(self) -> Dict[str, List[str]]:
-        """分析异常处理模式"""
-        print("\n⚠️ 分析异常处理模式...")
+    def _find_exception_patterns(self) -> Dict[str, List[str]]:
+        """查找异常处理模式"""
+        print("\n⚠️ 查找异常处理模式...")
         
         exception_patterns = {
-            'generic_except': [],
-            'print_error': [],
-            'logging_error': [],
-            'traceback_print': []
+            'generic_except': r'except\s*:',
+            'broad_exception': r'except\s+Exception\s*:',
+            'try_except_pass': r'except[^:]*:\s*pass',
+            'exception_logging': r'except[^:]*:.*(?:print|log|logger)'
         }
+        
+        exception_usage = {pattern: [] for pattern in exception_patterns}
         
         for py_file in self.src_dir.rglob("*.py"):
             try:
                 with open(py_file, 'r', encoding='utf-8') as f:
                     content = f.read()
                 
-                # 查找各种异常处理模式
-                if 'except Exception as e:' in content:
-                    exception_patterns['generic_except'].append(str(py_file))
-                
-                if 'print(f"❌' in content or 'print(f"⚠️' in content:
-                    exception_patterns['print_error'].append(str(py_file))
-                
-                if 'logging.error' in content or 'logger.error' in content:
-                    exception_patterns['logging_error'].append(str(py_file))
-                
-                if 'traceback.print_exc()' in content or 'traceback.format_exc()' in content:
-                    exception_patterns['traceback_print'].append(str(py_file))
-                    
+                for pattern_name, pattern in exception_patterns.items():
+                    if re.search(pattern, content, re.MULTILINE | re.DOTALL):
+                        exception_usage[pattern_name].append(str(py_file))
+                        
             except Exception as e:
-                print(f"⚠️ 分析异常处理失败 {py_file}: {e}")
+                print(f"⚠️ 查找异常处理失败 {py_file}: {e}")
         
-        for pattern, files in exception_patterns.items():
+        for pattern, files in exception_usage.items():
             if files:
-                print(f"  ⚡ {pattern}: {len(files)} 个文件")
+                print(f"  🎯 {pattern}: {len(files)} 个文件")
         
-        return exception_patterns
+        return exception_usage
     
     def _find_hardcoded_values(self) -> Dict[str, List[Tuple[str, str]]]:
         """查找硬编码值"""
         print("\n🔢 查找硬编码值...")
         
         hardcoded_patterns = {
-            'magic_numbers': r'\b(?:0\.3|3000|5000|8000|16000|30|50|100|200|300|500|1000)\b',
-            'file_paths': r'["\'][^"\'
-]*\.(wav|log|json|txt|py)["\']',
+            'magic_numbers': r'\\b(?:0\\.3|3000|5000|8000|16000|30|50|100|200|300|500|1000)\\b',
+            'file_paths': r'["\'][^"\'\n]*\\.(wav|log|json|txt|py)["\']',
             'app_names': r'["\'](?:Dou-flow|ASR-FunASR|Music|Spotify|Chrome|Safari)["\']',
-            'error_messages': r'["\'][^"\'
-]*(?:失败|错误|Error|Failed)[^"\'
-]*["\']'
+            'error_messages': r'["\'][^"\'\n]*(?:失败|错误|Error|Failed)[^"\'\n]*["\']'
         }
         
         hardcoded_values = {pattern: [] for pattern in hardcoded_patterns}
@@ -384,169 +354,45 @@ class CodeRefactorTool:
             suggestions += "- 实现权限状态缓存机制\n"
             suggestions += "- 统一权限错误处理\n\n"
         
-        # 4. 导入优化
-        if analysis_data['import_redundancy']:
-            suggestions += "### 4. 导入语句优化\n\n"
-            suggestions += "**优先级：低**\n"
-            suggestions += "- 创建 `src/common_imports.py` 管理常用导入\n"
-            suggestions += "- 使用相对导入减少路径依赖\n"
-            suggestions += "- 移除未使用的导入语句\n\n"
-        
-        # 5. 异常处理优化
-        if analysis_data['exception_patterns']['generic_except']:
-            suggestions += "### 5. 异常处理优化\n\n"
-            suggestions += "**优先级：高**\n"
-            suggestions += "- 创建 `src/utils/error_handler.py` 统一异常处理\n"
-            suggestions += "- 使用具体的异常类型替代通用Exception\n"
-            suggestions += "- 统一错误日志格式\n\n"
-        
-        # 6. 配置管理优化
-        if analysis_data['hardcoded_values']['magic_numbers']:
-            suggestions += "### 6. 配置管理优化\n\n"
-            suggestions += "**优先级：中**\n"
-            suggestions += "- 将硬编码值提取到 `src/constants.py`\n"
-            suggestions += "- 创建配置文件管理系统\n"
-            suggestions += "- 实现运行时配置更新\n\n"
-        
         return suggestions
     
-    def create_refactor_plan(self) -> str:
-        """创建重构计划"""
-        plan_content = f"""
-# 代码重构执行计划
-生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-## 📋 重构步骤
-
-### 阶段1: 高优先级重构 (立即执行)
-
-#### 1.1 创建工具模块
-```bash
-# 创建工具目录
-mkdir -p src/utils
-
-# 创建文本处理工具
-touch src/utils/text_utils.py
-touch src/utils/error_handler.py
-touch src/utils/permission_utils.py
-```
-
-#### 1.2 重构clean_html_tags函数
-- [ ] 将函数移动到 `src/utils/text_utils.py`
-- [ ] 更新 `src/main.py` 中的导入
-- [ ] 更新 `src/ui/components/history_manager.py` 中的导入
-- [ ] 测试功能完整性
-
-#### 1.3 统一异常处理
-- [ ] 创建 `src/utils/error_handler.py`
-- [ ] 实现统一的异常处理装饰器
-- [ ] 逐步替换现有的异常处理代码
-
-### 阶段2: 中优先级重构 (1-2周内)
-
-#### 2.1 优化cleanup方法
-- [ ] 创建 `CleanupMixin` 基类
-- [ ] 重构各个类的cleanup方法
-- [ ] 添加清理状态跟踪
-
-#### 2.2 统一权限检查
-- [ ] 创建 `src/utils/permission_utils.py`
-- [ ] 合并重复的权限检查逻辑
-- [ ] 实现权限状态缓存
-
-#### 2.3 配置管理优化
-- [ ] 扩展 `src/constants.py`
-- [ ] 提取硬编码值
-- [ ] 创建配置验证机制
-
-### 阶段3: 低优先级重构 (长期维护)
-
-#### 3.1 导入优化
-- [ ] 清理未使用的导入
-- [ ] 优化导入顺序
-- [ ] 使用相对导入
-
-#### 3.2 代码风格统一
-- [ ] 统一命名约定
-- [ ] 添加类型注解
-- [ ] 完善文档字符串
-
-## ⚠️ 注意事项
-
-1. **备份重要**: 每次重构前创建备份
-2. **逐步进行**: 不要一次性修改太多文件
-3. **测试验证**: 每个阶段完成后进行功能测试
-4. **保持功能**: 确保重构不影响现有功能
-
-## 🧪 测试策略
-
-1. **单元测试**: 为重构的函数编写测试
-2. **集成测试**: 验证模块间的交互
-3. **功能测试**: 确保用户功能正常
-4. **性能测试**: 验证重构不影响性能
-"""
-        
-        plan_file = self.project_root / "code_refactor_plan.md"
-        with open(plan_file, 'w', encoding='utf-8') as f:
-            f.write(plan_content)
-        
-        print(f"📋 重构计划已保存到: {plan_file}")
-        return plan_content
-    
-    def execute_high_priority_refactor(self):
+    def execute_high_priority_refactoring(self):
         """执行高优先级重构"""
         print("\n🚀 开始执行高优先级重构...")
         
-        # 创建备份
-        self._create_backup()
-        
         # 1. 创建工具目录
-        self._create_utils_directory()
-        
-        # 2. 重构clean_html_tags函数
-        self._refactor_clean_html_tags()
-        
-        # 3. 创建异常处理工具
-        self._create_error_handler()
-        
-        print("✅ 高优先级重构完成！")
-    
-    def _create_backup(self):
-        """创建备份"""
-        print("📦 创建备份...")
-        
-        if self.backup_dir.exists():
-            shutil.rmtree(self.backup_dir)
-        
-        shutil.copytree(self.src_dir, self.backup_dir)
-        print(f"✅ 备份已创建: {self.backup_dir}")
-    
-    def _create_utils_directory(self):
-        """创建工具目录"""
-        print("📁 创建工具目录...")
-        
         utils_dir = self.src_dir / "utils"
         utils_dir.mkdir(exist_ok=True)
         
         # 创建__init__.py
         init_file = utils_dir / "__init__.py"
-        init_file.write_text('"""工具模块"""\n', encoding='utf-8')
+        if not init_file.exists():
+            init_file.write_text('"""工具模块"""\n', encoding='utf-8')
         
-        print(f"✅ 工具目录已创建: {utils_dir}")
+        # 2. 创建text_utils.py
+        self._create_text_utils()
+        
+        # 3. 创建error_handler.py
+        self._create_error_handler()
+        
+        print("✅ 高优先级重构完成")
     
-    def _refactor_clean_html_tags(self):
-        """重构clean_html_tags函数"""
-        print("🔧 重构clean_html_tags函数...")
-        
-        # 创建text_utils.py
+    def _create_text_utils(self):
+        """创建文本处理工具模块"""
         text_utils_content = '''
-"""文本处理工具模块"""
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+文本处理工具模块
+统一管理所有文本处理相关的函数
+"""
 
 import re
-from typing import Optional
+import html
 
-def clean_html_tags(text: Optional[str]) -> str:
-    """清理HTML标签，返回纯文本
+def clean_html_tags(text: str) -> str:
+    """
+    清理HTML标签和解码HTML实体
     
     Args:
         text: 包含HTML标签的文本
@@ -555,4 +401,204 @@ def clean_html_tags(text: Optional[str]) -> str:
         清理后的纯文本
     """
     if not text:
-        return text or 
+        return ""
+    
+    # 移除HTML标签
+    clean_text = re.sub(r'<[^>]+>', '', text)
+    
+    # 解码HTML实体
+    clean_text = html.unescape(clean_text)
+    
+    # 清理多余的空白字符
+    clean_text = re.sub(r'\\s+', ' ', clean_text).strip()
+    
+    return clean_text
+
+def normalize_text(text: str) -> str:
+    """
+    标准化文本格式
+    
+    Args:
+        text: 原始文本
+        
+    Returns:
+        标准化后的文本
+    """
+    if not text:
+        return ""
+    
+    # 统一换行符
+    text = text.replace('\\r\\n', '\\n').replace('\\r', '\\n')
+    
+    # 移除多余空行
+    text = re.sub(r'\\n\\s*\\n', '\\n\\n', text)
+    
+    # 清理首尾空白
+    text = text.strip()
+    
+    return text
+
+def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """
+    截断文本到指定长度
+    
+    Args:
+        text: 原始文本
+        max_length: 最大长度
+        suffix: 截断后缀
+        
+    Returns:
+        截断后的文本
+    """
+    if not text or len(text) <= max_length:
+        return text
+    
+    return text[:max_length - len(suffix)] + suffix
+'''
+        
+        text_utils_file = self.src_dir / "utils" / "text_utils.py"
+        with open(text_utils_file, 'w', encoding='utf-8') as f:
+            f.write(text_utils_content)
+        
+        print(f"✅ 创建文本工具模块: {text_utils_file}")
+    
+    def _create_error_handler(self):
+        """创建错误处理工具模块"""
+        error_handler_content = '''
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+错误处理工具模块
+统一管理异常处理逻辑
+"""
+
+import functools
+import logging
+import traceback
+from typing import Callable, Any, Optional
+
+logger = logging.getLogger(__name__)
+
+def handle_exceptions(default_return: Any = None, 
+                     log_error: bool = True,
+                     reraise: bool = False):
+    """
+    统一异常处理装饰器
+    
+    Args:
+        default_return: 异常时的默认返回值
+        log_error: 是否记录错误日志
+        reraise: 是否重新抛出异常
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if log_error:
+                    logger.error(
+                        f"函数 {func.__name__} 执行失败: {str(e)}\\n"
+                        f"参数: args={args}, kwargs={kwargs}\\n"
+                        f"堆栈: {traceback.format_exc()}"
+                    )
+                
+                if reraise:
+                    raise
+                    
+                return default_return
+        return wrapper
+    return decorator
+
+def safe_execute(func: Callable, 
+                *args, 
+                default_return: Any = None,
+                log_error: bool = True,
+                **kwargs) -> Any:
+    """
+    安全执行函数
+    
+    Args:
+        func: 要执行的函数
+        *args: 函数参数
+        default_return: 异常时的默认返回值
+        log_error: 是否记录错误日志
+        **kwargs: 函数关键字参数
+        
+    Returns:
+        函数执行结果或默认返回值
+    """
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        if log_error:
+            logger.error(
+                f"安全执行函数 {func.__name__} 失败: {str(e)}\\n"
+                f"参数: args={args}, kwargs={kwargs}\\n"
+                f"堆栈: {traceback.format_exc()}"
+            )
+        return default_return
+
+class ErrorContext:
+    """
+    错误上下文管理器
+    """
+    
+    def __init__(self, 
+                 operation_name: str,
+                 default_return: Any = None,
+                 log_error: bool = True,
+                 reraise: bool = False):
+        self.operation_name = operation_name
+        self.default_return = default_return
+        self.log_error = log_error
+        self.reraise = reraise
+        self.result = None
+        
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            if self.log_error:
+                logger.error(
+                    f"操作 '{self.operation_name}' 失败: {str(exc_val)}\\n"
+                    f"异常类型: {exc_type.__name__}\\n"
+                    f"堆栈: {traceback.format_exc()}"
+                )
+            
+            if not self.reraise:
+                self.result = self.default_return
+                return True  # 抑制异常
+                
+        return False  # 不抑制异常
+'''
+        
+        error_handler_file = self.src_dir / "utils" / "error_handler.py"
+        with open(error_handler_file, 'w', encoding='utf-8') as f:
+            f.write(error_handler_content)
+        
+        print(f"✅ 创建错误处理模块: {error_handler_file}")
+
+def main():
+    """主函数"""
+    parser = argparse.ArgumentParser(description='代码重构工具')
+    parser.add_argument('project_path', help='项目根目录路径')
+    parser.add_argument('--execute', action='store_true', help='执行高优先级重构')
+    
+    args = parser.parse_args()
+    
+    tool = CodeRefactorTool(args.project_path)
+    
+    # 分析项目
+    analysis_data = tool.analyze_project()
+    
+    # 执行重构（如果指定）
+    if args.execute:
+        tool.execute_high_priority_refactoring()
+    
+    print("\n🎉 分析完成！")
+    print(f"📄 查看详细报告: {tool.project_root}/code_redundancy_analysis.md")
+
+if __name__ == "__main__":
+    main()

@@ -6,6 +6,7 @@ import os
 import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from utils.text_utils import clean_html_tags
 
 class HistoryManager:
     """历史记录管理器
@@ -27,11 +28,7 @@ class HistoryManager:
         """设置状态管理器，用于获取热词"""
         self.state_manager = state_manager
     
-    def clean_html_tags(self, text: str) -> str:
-        """清理HTML标签，返回纯文本"""
-        if not text:
-            return ""
-        return re.sub(r'<[^>]+>', '', text)
+
     
     def apply_hotword_highlight(self, text: str) -> str:
         """应用热词高亮"""
@@ -70,10 +67,10 @@ class HistoryManager:
     
     def is_duplicate_text(self, new_text: str, existing_texts: List[str]) -> bool:
         """检查文本是否重复"""
-        clean_new_text = self.clean_html_tags(new_text).strip()
+        clean_new_text = clean_html_tags(new_text).strip()
         
         for existing_text in existing_texts:
-            clean_existing_text = self.clean_html_tags(existing_text).strip()
+            clean_existing_text = clean_html_tags(existing_text).strip()
             if clean_existing_text == clean_new_text:
                 return True
         return False
@@ -96,14 +93,14 @@ class HistoryManager:
             for item in limited_items:
                 if isinstance(item, dict):
                     # 清理HTML标签，保存纯文本
-                    clean_text = self.clean_html_tags(item.get('text', ''))
+                    clean_text = clean_html_tags(item.get('text', ''))
                     save_data.append({
                         'text': clean_text,
                         'timestamp': item.get('timestamp', datetime.now().isoformat())
                     })
                 elif isinstance(item, str):
                     # 兼容字符串格式
-                    clean_text = self.clean_html_tags(item)
+                    clean_text = clean_html_tags(item)
                     save_data.append({
                         'text': clean_text,
                         'timestamp': datetime.now().isoformat()
@@ -182,7 +179,7 @@ class HistoryManager:
             highlighted_items = []
             for i, text in enumerate(history_items):
                 # 获取原始文本（去除HTML标签）
-                original_text = self.clean_html_tags(text)
+                original_text = clean_html_tags(text)
                 # 重新应用热词高亮
                 highlighted_text = self.apply_hotword_highlight(original_text)
                 highlighted_items.append(highlighted_text)

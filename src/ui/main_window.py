@@ -11,16 +11,7 @@ import json
 import re
 from datetime import datetime
 from config import APP_VERSION  # 使用绝对导入
-
-def clean_html_tags(text):
-    """清理HTML标签，返回纯文本"""
-    if not text:
-        return text
-    # 移除HTML标签
-    clean_text = re.sub(r'<[^>]+>', '', text)
-    # 解码HTML实体
-    clean_text = clean_text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
-    return clean_text
+from utils.text_utils import clean_html_tags
 
 class MainWindow(QMainWindow):
     # 常量定义
