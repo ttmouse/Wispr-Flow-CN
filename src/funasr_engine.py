@@ -264,8 +264,8 @@ class FunASREngine:
             # 4. 发音相似词纠错
             corrected_text = self._correct_similar_pronunciation(processed_text)
             
-            # 5. 添加热词高亮
-            final_text = self._highlight_hotwords(corrected_text)
+            # 5. 不再在引擎层添加HTML标签，保持纯文本
+            final_text = corrected_text
             
             return [{"text": final_text}]
             
@@ -373,22 +373,9 @@ class FunASREngine:
         return corrected_text
     
     def _highlight_hotwords(self, text):
-        """在文本中高亮显示热词（使用简单的加粗效果）"""
-        if not self.hotwords or not text:
-            return text
-        
-        highlighted_text = text
-        
-        # 按长度降序排列热词，避免短词覆盖长词
-        sorted_hotwords = sorted(self.hotwords, key=len, reverse=True)
-        
-        for hotword in sorted_hotwords:
-            if hotword in highlighted_text:
-                # 使用简单的加粗标签高亮热词
-                highlighted_hotword = f'<b>{hotword}</b>'
-                highlighted_text = highlighted_text.replace(hotword, highlighted_hotword)
-        
-        return highlighted_text
+        """不再在引擎层添加HTML标签，直接返回原文本"""
+        # 引擎层不再处理HTML标签，保持纯文本
+        return text
     
     def _post_process_text(self, text):
         """文本后处理"""

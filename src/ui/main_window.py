@@ -371,19 +371,19 @@ class MainWindow(QMainWindow):
         if not text or not text.strip():
             return
         
-        # 使用历史记录管理器添加记录
-        if self.history_manager.add_history_item(text):
+        # 清理HTML标签，确保历史记录中只保存纯文本
+        from utils.text_utils import clean_html_tags
+        clean_text = clean_html_tags(text)
+        
+        # 使用历史记录管理器添加记录（保存纯文本）
+        if self.history_manager.add_history_item(clean_text):
             # 成功添加，更新UI
-            # 直接使用传入的文本（可能已包含热词高亮）
-            # 如果文本中没有HTML标签，则应用热词高亮
-            if '<' not in text:
-                highlighted_text = self._apply_hotword_highlight(text)
-            else:
-                highlighted_text = text
+            # 基于清理后的纯文本重新应用热词高亮用于显示
+            highlighted_text = self._apply_hotword_highlight(clean_text)
             
             # 传递高亮后的文本给ModernListWidget
             self.history_list.addItem(highlighted_text)
-            print(f"添加到历史记录: {text[:50]}...")
+            print(f"添加到历史记录: {clean_text[:50]}...")
             
             # 只有在不是加载历史记录时才保存
             if not self._loading_history:

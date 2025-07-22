@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 
 # 基础版本号
-BASE_VERSION = "1.1.47"
+BASE_VERSION = "1.1.48"
 
 # 检测运行模式
 def get_app_version():
