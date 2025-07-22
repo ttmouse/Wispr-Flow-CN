@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, Q
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
 from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
-from ui.clipboard_monitor_window import ClipboardMonitorWindow
+
 from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from hotkey_manager import HotkeyManager
@@ -144,7 +144,8 @@ class Application(QObject):
             # 在 macOS 上设置 Dock 图标点击事件
             if sys.platform == 'darwin':
                 self.app.setProperty("DOCK_CLICK_HANDLER", True)
-                self.app.event = self.handle_mac_events
+                # 创建自定义QApplication子类来处理事件
+                self._setup_mac_event_handling()
             
             # 创建系统托盘图标
             self.tray_icon = QSystemTrayIcon(app_icon, self.app)  # 使用相同的图标
@@ -161,13 +162,11 @@ class Application(QObject):
             settings_action = tray_menu.addAction("快捷键设置...")
             settings_action.triggered.connect(self.show_settings)
             
-            # 添加剪贴板监控窗口菜单项
-            clipboard_monitor_action = tray_menu.addAction("剪贴板监控")
-            clipboard_monitor_action.triggered.connect(self.show_clipboard_monitor)
+
             
             # 重启热键功能
             restart_hotkey_action = tray_menu.addAction("重启热键功能")
-            restart_hotkey_action.triggered.connect(lambda: self.restart_hotkey_manager())
+            restart_hotkey_action.triggered.connect(self._safe_restart_hotkey_manager)
             
             # 检查权限
             check_permissions_action = tray_menu.addAction("检查权限")
@@ -185,13 +184,18 @@ class Application(QObject):
             # 移除托盘图标的点击事件连接
             self.tray_icon.show()
             
+            # 确认系统托盘图标设置成功
+            if self.tray_icon.isVisible():
+                print("✓ 系统托盘图标已设置")
+            else:
+                print("⚠️ 系统托盘图标设置失败")
+            
             # 初始化基础组件
             self.state_manager = StateManager()
             self.main_window = MainWindow(app_instance=self)
             self.main_window.set_state_manager(self.state_manager)
             
-            # 初始化剪贴板监控窗口
-            self.clipboard_monitor_window = None
+
             
             # 初始化基础音频组件
             self.audio_capture = AudioCapture()
@@ -231,6 +235,59 @@ class Application(QObject):
             print(f"❌ 初始化失败: {e}")
             print(traceback.format_exc())
             sys.exit(1)
+    
+    def _setup_mac_event_handling(self):
+        """设置macOS事件处理"""
+        try:
+            # 安装事件过滤器来处理dock图标点击
+            self.app.installEventFilter(self)
+            
+            # 创建dock菜单
+            self._setup_dock_menu()
+            
+            print("✓ macOS事件处理器已安装")
+        except Exception as e:
+            print(f"❌ 设置macOS事件处理失败: {e}")
+    
+    def _setup_dock_menu(self):
+        """设置macOS Dock图标菜单（通过系统托盘实现）"""
+        try:
+            # 在macOS上，dock菜单实际上是通过系统托盘图标的右键菜单实现的
+            # 由于PyQt6没有直接的setDockMenu方法，我们使用系统托盘图标来提供类似功能
+            # 系统托盘菜单已经在初始化时创建，这里只是确认功能可用
+            if hasattr(self, 'tray_icon') and self.tray_icon.isVisible():
+                print("✓ Dock菜单功能通过系统托盘图标提供")
+            else:
+                print("⚠️ 系统托盘图标未正确设置")
+            
+        except Exception as e:
+            print(f"❌ 设置Dock菜单失败: {e}")
+    
+    def eventFilter(self, obj, event):
+        """事件过滤器，处理应用程序级别的事件"""
+        try:
+            # 只处理应用程序对象的事件
+            if obj == self.app:
+                # 处理 Dock 图标点击事件
+                if event.type() == 121:  # QEvent.Type.ApplicationActivate
+                    print("🔍 检测到 Dock 图标点击事件，准备显示窗口")
+                    # 确保在主线程中执行窗口显示
+                    if QThread.currentThread() == QApplication.instance().thread():
+                        self._show_window_internal()
+                    else:
+                        self.show_window_signal.emit()
+                    print("✓ 窗口已显示")
+                    return False  # 继续传递事件
+                
+                # 处理其他可能的激活事件
+                elif event.type() in [24, 99, 214]:  # WindowActivate, ActivationChange, ApplicationStateChange
+                    print(f"🔍 检测到其他激活事件: {event.type()}")
+            
+            # 对于其他事件，继续正常处理
+            return False
+        except Exception as e:
+            print(f"❌ 事件过滤器处理失败: {e}")
+            return False
     
     def _start_async_loading(self):
         """启动异步加载任务"""
@@ -401,6 +458,32 @@ class Application(QObject):
             # 权限检查失败时也更新缓存，避免重复检查
             self.settings_manager.update_permissions_cache(False, False)
 
+    @pyqtSlot()
+    def _safe_restart_hotkey_manager(self):
+        """安全的热键管理器重启方法 - 防止SIGTRAP崩溃"""
+        try:
+            # 确保在主线程中执行
+            if QThread.currentThread() != QApplication.instance().thread():
+                QMetaObject.invokeMethod(
+                    self, "restart_hotkey_manager",
+                    Qt.ConnectionType.QueuedConnection
+                )
+                return
+            
+            # 调用实际的重启方法
+            self.restart_hotkey_manager()
+            
+        except Exception as e:
+            print(f"❌ 安全重启热键管理器失败: {e}")
+            # 显示错误通知
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.showMessage(
+                    "热键功能",
+                    "热键功能重启失败，请检查权限设置",
+                    QSystemTrayIcon.MessageIcon.Warning,
+                    3000
+                )
+    
     @handle_common_exceptions(show_error=True)
     def restart_hotkey_manager(self):
         """重启热键管理器 - 使用统一异常处理"""
@@ -443,35 +526,64 @@ class Application(QObject):
     def start_hotkey_monitor(self):
         """启动热键状态监控"""
         if not self.hotkey_manager:
-            pass  # 热键管理器未就绪
+            print("⚠️ 热键管理器未就绪，无法启动状态监控")
             return
             
         # 添加监控线程停止标志
         self._monitor_should_stop = False
         
         def monitor_hotkey_status():
+            consecutive_failures = 0
+            max_failures = 3  # 连续失败3次后降低检查频率
+            
             while not self._monitor_should_stop:
                 try:
-                    time.sleep(10)  # 每10秒检查一次
+                    # 根据失败次数调整检查间隔
+                    check_interval = 5 if consecutive_failures < max_failures else 15
+                    time.sleep(check_interval)
+                    
                     if self._monitor_should_stop:  # 再次检查退出标志
                         break
+                        
                     if self.hotkey_manager:
-                        # 检查热键监听器是否还在运行
-                        if (not hasattr(self.hotkey_manager, 'keyboard_listener') or 
-                            not self.hotkey_manager.keyboard_listener or 
-                            not self.hotkey_manager.keyboard_listener.running):
+                        # 使用热键管理器的get_status方法进行全面检查
+                        status = self.hotkey_manager.get_status()
+                        
+                        if not status['active']:
+                            consecutive_failures += 1
                             if not self._monitor_should_stop:  # 确保不在退出过程中
-                                print("⚠️  检测到热键监听器已停止，尝试重启...")
+                                print(f"⚠️  检测到热键失效 (第{consecutive_failures}次): {status}")
+                                print("尝试重启热键管理器...")
                                 self.restart_hotkey_manager()
+                                
+                                # 重启后短暂等待，然后重新检查
+                                time.sleep(2)
+                                new_status = self.hotkey_manager.get_status() if self.hotkey_manager else {'active': False}
+                                if new_status['active']:
+                                    print("✓ 热键管理器重启成功")
+                                    consecutive_failures = 0  # 重置失败计数
+                                else:
+                                    print("❌ 热键管理器重启失败")
+                        else:
+                            # 热键正常，重置失败计数
+                            if consecutive_failures > 0:
+                                print("✓ 热键状态已恢复正常")
+                                consecutive_failures = 0
+                    else:
+                        consecutive_failures += 1
+                        print(f"⚠️  热键管理器不存在 (第{consecutive_failures}次)")
+                        
                 except Exception as e:
+                    consecutive_failures += 1
                     if not self._monitor_should_stop:
-                        print(f"热键状态监控出错: {e}")
+                        print(f"热键状态监控出错 (第{consecutive_failures}次): {e}")
+                        
             print("✓ 热键状态监控已停止")
         
         # 启动监控线程
         self._monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
         self._monitor_thread.start()
-        pass  # 热键状态监控已启动
+        print("✓ 热键状态监控已启动")
     
     def is_component_ready(self, component_name, check_method=None):
         """统一的组件状态检查方法
@@ -995,14 +1107,7 @@ class Application(QObject):
     def _restore_window_level(self):
         """恢复窗口正常级别"""
         try:
-            if sys.platform == 'darwin':
-                from AppKit import NSApplication, NSWindow
-                app = NSApplication.sharedApplication()
-                window = self.main_window.windowHandle().nativeHandle()
-                if window:
-                    window.setLevel_(NSWindow.NormalWindowLevel)
-            
-            # 确保窗口在前台
+            # 简化实现，只使用Qt方法确保窗口在前台
             self.main_window.raise_()
             self.main_window.activateWindow()
         except Exception as e:
@@ -1015,21 +1120,38 @@ class Application(QObject):
             if sys.platform == 'darwin':
                 try:
                     from AppKit import NSApplication, NSWindow
-                    # 获取应用和窗口
+                    from PyQt6.QtGui import QWindow
+                    
+                    # 获取应用
                     app = NSApplication.sharedApplication()
-                    window = self.main_window.windowHandle().nativeHandle()
                     
                     # 显示窗口
                     if not self.main_window.isVisible():
                         self.main_window.show()
                     
-                    # 设置窗口级别为浮动窗口并激活
-                    window.setLevel_(NSWindow.FloatingWindowLevel)
-                    window.makeKeyAndOrderFront_(None)
-                    app.activateIgnoringOtherApps_(True)
-                    
-                    # 恢复正常窗口级别
-                    QTimer.singleShot(100, self._restore_window_level)
+                    # 获取窗口句柄
+                    window_handle = self.main_window.windowHandle()
+                    if window_handle:
+                        # 在PyQt6中使用winId()获取原生窗口ID
+                        window_id = self.main_window.winId()
+                        if window_id:
+                            # 激活应用程序
+                            app.activateIgnoringOtherApps_(True)
+                            
+                            # 使用Qt方法激活窗口
+                            self.main_window.raise_()
+                            self.main_window.activateWindow()
+                            self.main_window.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+                        else:
+                            # 如果无法获取窗口ID，使用基本方法
+                            app.activateIgnoringOtherApps_(True)
+                            self.main_window.raise_()
+                            self.main_window.activateWindow()
+                    else:
+                        # 如果无法获取窗口句柄，使用基本方法
+                        app.activateIgnoringOtherApps_(True)
+                        self.main_window.raise_()
+                        self.main_window.activateWindow()
                     
                 except Exception as e:
                     print(f"激活窗口时出错: {e}")
@@ -1140,6 +1262,9 @@ class Application(QObject):
                 try:
                     self.hotkey_manager.start_listening()
                     print("✓ 热键监听已启动")
+                    # 启动热键状态监控
+                    self.start_hotkey_monitor()
+                    print("✓ 热键状态监控已启动")
                 except Exception as e:
                     print(f"❌ 启动热键监听失败: {e}")
                     print(f"详细错误信息: {traceback.format_exc()}")
@@ -1150,6 +1275,8 @@ class Application(QObject):
                         self.hotkey_manager.set_press_callback(self.on_option_press)
                         self.hotkey_manager.set_release_callback(self.on_option_release)
                         self.hotkey_manager.start_listening()
+                        # 启动热键状态监控
+                        self.start_hotkey_monitor()
                         print("✓ 热键管理器重新初始化成功")
                     except Exception as e2:
                         print(f"❌ 重新初始化热键管理器失败: {e2}")
@@ -1161,6 +1288,8 @@ class Application(QObject):
                     self.hotkey_manager.set_press_callback(self.on_option_press)
                     self.hotkey_manager.set_release_callback(self.on_option_release)
                     self.hotkey_manager.start_listening()
+                    # 启动热键状态监控
+                    self.start_hotkey_monitor()
                     print("✓ 热键管理器重新创建成功")
                 except Exception as e:
                     print(f"❌ 重新创建热键管理器失败: {e}")
@@ -1229,21 +1358,7 @@ class Application(QObject):
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
 
-    def handle_mac_events(self, event):
-        """处理 macOS 特定事件"""
-        try:
-            # 处理 Dock 图标点击事件
-            if event.type() == 214:  # Qt.Type.ApplicationStateChange
-                # 使用与状态栏菜单相同的方法
-                if QThread.currentThread() == QApplication.instance().thread():
-                    self._show_window_internal()
-                else:
-                    self.show_window_signal.emit()
-                return True
-            return QApplication.event(self.app, event)
-        except Exception as e:
-            print(f"❌ 处理 macOS 事件失败: {e}")
-            return False
+    # handle_mac_events方法已被eventFilter替代
 
     def show_settings(self):
         """显示设置窗口"""
@@ -1287,27 +1402,7 @@ class Application(QObject):
             # 如果出错，确保清理窗口实例
             self.settings_window = None
     
-    def show_clipboard_monitor(self):
-        """显示剪贴板监控窗口"""
-        try:
-            if not hasattr(self, 'clipboard_monitor_window') or self.clipboard_monitor_window is None:
-                # 确保剪贴板管理器已初始化
-                if self.clipboard_manager is None:
-                    debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
-                    self.clipboard_manager = ClipboardManager(debug_mode=debug_mode)
-                
-                self.clipboard_monitor_window = ClipboardMonitorWindow(
-                    clipboard_manager=self.clipboard_manager
-                )
-            
-            self.clipboard_monitor_window.show()
-            self.clipboard_monitor_window.raise_()
-            self.clipboard_monitor_window.activateWindow()
-            print("✓ 剪贴板监控窗口已打开")
-        except Exception as e:
-            print(f"❌ 显示剪贴板监控窗口失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+
 
     def apply_settings(self):
         """应用设置"""
@@ -1320,9 +1415,14 @@ class Application(QObject):
                     current_hotkey = self.settings_manager.get_hotkey()
                     print(f"应用热键设置: {current_hotkey}")
                     self.hotkey_manager.stop_listening()  # 先停止监听
+                    # 停止现有的状态监控
+                    if hasattr(self, '_monitor_should_stop'):
+                        self._monitor_should_stop = True
                     self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
                     self.hotkey_manager.update_delay_settings()  # 更新延迟设置
                     self.hotkey_manager.start_listening()  # 重新开始监听
+                    # 重新启动状态监控
+                    self.start_hotkey_monitor()
                     print("✓ 热键设置已应用")
                 else:
                     print("⚠️  热键管理器不存在，尝试重新创建...")
@@ -1334,6 +1434,8 @@ class Application(QObject):
                         self.hotkey_manager.update_hotkey(current_hotkey)
                         self.hotkey_manager.update_delay_settings()  # 更新延迟设置
                         self.hotkey_manager.start_listening()
+                        # 启动热键状态监控
+                        self.start_hotkey_monitor()
                         print("✓ 热键管理器重新创建并应用设置成功")
                     except Exception as e2:
                         print(f"❌ 重新创建热键管理器失败: {e2}")

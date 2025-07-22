@@ -29,7 +29,7 @@
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T20:55:53.611349",
+      "last_check": "2025-07-22T20:41:13.186154",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

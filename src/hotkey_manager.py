@@ -246,44 +246,76 @@ class HotkeyManager:
     def _monitor_fn_key(self):
         """简化的fn键监听 - 降低CPU使用率"""
         last_fn_state = False
+        error_count = 0
+        max_errors = 10  # 最大连续错误次数
         
-        while not self.should_stop:
-            if self.hotkey_type == 'fn':
-                # 获取当前修饰键状态
-                flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
-                is_fn_down = bool(flags & 0x800000)
-                
-                # 只在状态变化时处理
-                if is_fn_down != last_fn_state:
-                    last_fn_state = is_fn_down
+        self.logger.info("Fn键监听线程已启动")
+        
+        try:
+            while not self.should_stop:
+                try:
+                    if self.hotkey_type == 'fn':
+                        # 获取当前修饰键状态
+                        flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
+                        is_fn_down = bool(flags & 0x800000)
+                        
+                        # 只在状态变化时处理
+                        if is_fn_down != last_fn_state:
+                            last_fn_state = is_fn_down
+                            
+                            with self._state_lock:
+                                if is_fn_down and not self.hotkey_pressed:
+                                    self.hotkey_pressed = True
+                                    # 只在没有其他键按下且未在录音时开始录音
+                                    if not self.other_keys_pressed and not self.is_recording and self.press_callback:
+                                        try:
+                                            self.is_recording = True
+                                            pass  # 开始录音
+                                            self.press_callback()
+                                        except Exception as e:
+                                            self.logger.error(f"按键回调执行失败: {e}")
+                                elif not is_fn_down and self.hotkey_pressed:
+                                    self.hotkey_pressed = False
+                                    # 如果正在录音，则停止录音
+                                    if self.is_recording and self.release_callback:
+                                        try:
+                                            pass  # 停止录音
+                                            self.release_callback()
+                                            self.is_recording = False
+                                        except Exception as e:
+                                            self.logger.error(f"释放回调执行失败: {e}")
+                        
+                        # 重置错误计数
+                        error_count = 0
+                        
+                        # 固定休眠时间，减少CPU使用
+                        time.sleep(0.02)  # 50Hz检查频率
+                    else:
+                        # 非fn模式时降低检查频率
+                        time.sleep(0.1)
+                        
+                except Exception as e:
+                    error_count += 1
+                    self.logger.error(f"Fn键监听循环出错 (第{error_count}次): {e}")
                     
-                    with self._state_lock:
-                        if is_fn_down and not self.hotkey_pressed:
-                            self.hotkey_pressed = True
-                            # 只在没有其他键按下且未在录音时开始录音
-                            if not self.other_keys_pressed and not self.is_recording and self.press_callback:
-                                try:
-                                    self.is_recording = True
-                                    pass  # 开始录音
-                                    self.press_callback()
-                                except Exception as e:
-                                    self.logger.error(f"按键回调执行失败: {e}")
-                        elif not is_fn_down and self.hotkey_pressed:
-                            self.hotkey_pressed = False
-                            # 如果正在录音，则停止录音
-                            if self.is_recording and self.release_callback:
-                                try:
-                                    pass  # 停止录音
-                                    self.release_callback()
-                                    self.is_recording = False
-                                except Exception as e:
-                                    self.logger.error(f"释放回调执行失败: {e}")
-                
-                # 固定休眠时间，减少CPU使用
-                time.sleep(0.02)  # 50Hz检查频率
-            else:
-                # 非fn模式时降低检查频率
-                time.sleep(0.1)
+                    if error_count >= max_errors:
+                        self.logger.error(f"Fn键监听线程连续出错{max_errors}次，线程退出")
+                        break
+                    
+                    # 出错后短暂休眠
+                    time.sleep(0.1)
+                    
+        except Exception as e:
+            self.logger.error(f"Fn键监听线程发生严重错误: {e}")
+            import traceback
+            self.logger.error(f"详细错误信息: {traceback.format_exc()}")
+        finally:
+            self.logger.info("Fn键监听线程已退出")
+            # 确保状态被重置
+            with self._state_lock:
+                self.hotkey_pressed = False
+                if self.is_recording:
+                    self.is_recording = False
 
     def on_press(self, key):
         """处理按键按下事件"""
@@ -452,16 +484,39 @@ class HotkeyManager:
                               hasattr(self.keyboard_listener, 'running') and 
                               self.keyboard_listener.running)
             
-            # 检查fn监听线程状态
-            fn_thread_running = (self.fn_listener_thread is not None and 
-                               self.fn_listener_thread.is_alive() and 
-                               not self.should_stop)
+            # 更严格地检查fn监听线程状态
+            fn_thread_running = False
+            if self.fn_listener_thread is not None:
+                # 检查线程是否真正在运行且没有被标记停止
+                fn_thread_running = (self.fn_listener_thread.is_alive() and 
+                                   not self.should_stop)
+                
+                # 额外检查：如果线程已死但should_stop为False，说明线程意外退出
+                if not self.fn_listener_thread.is_alive() and not self.should_stop:
+                    self.logger.warning("检测到Fn监听线程意外退出")
+                    fn_thread_running = False
             
             # 根据热键类型确定整体状态
             if self.hotkey_type == 'fn':
                 is_active = listener_running and fn_thread_running
             else:
                 is_active = listener_running
+            
+            # 如果检测到状态异常，记录详细信息
+            if not is_active:
+                status_details = []
+                if not listener_running:
+                    status_details.append("键盘监听器未运行")
+                if self.hotkey_type == 'fn' and not fn_thread_running:
+                    if self.fn_listener_thread is None:
+                        status_details.append("Fn监听线程未创建")
+                    elif not self.fn_listener_thread.is_alive():
+                        status_details.append("Fn监听线程已停止")
+                    elif self.should_stop:
+                        status_details.append("Fn监听线程被标记停止")
+                
+                if status_details:
+                    self.logger.info(f"热键状态检查: {', '.join(status_details)}")
             
             return {
                 'active': is_active,

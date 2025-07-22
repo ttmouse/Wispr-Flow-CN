@@ -65,16 +65,6 @@ class HistoryManager:
             return self.state_manager.get_hotwords()
         return []
     
-    def is_duplicate_text(self, new_text: str, existing_texts: List[str]) -> bool:
-        """检查文本是否重复"""
-        clean_new_text = clean_html_tags(new_text).strip()
-        
-        for existing_text in existing_texts:
-            clean_existing_text = clean_html_tags(existing_text).strip()
-            if clean_existing_text == clean_new_text:
-                return True
-        return False
-    
     def prepare_text_for_display(self, text: str) -> str:
         """准备用于显示的文本（应用热词高亮）"""
         # 如果文本中没有HTML标签，则应用热词高亮
@@ -206,11 +196,11 @@ class HistoryManager:
         }
     
     def add_history_item(self, text: str) -> bool:
-        """添加历史记录项，总是成功添加（已移除重复检测）"""
+        """添加历史记录项"""
         if not text or not text.strip():
             return False
         
-        # 直接添加新项目到末尾（已移除重复检测）
+        # 直接添加新项目到末尾
         new_item = self.create_history_entry(text)
         self.history_items.append(new_item)
         

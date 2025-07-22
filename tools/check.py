@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from hotkey_manager import HotkeyManager
-from clipboard_manager import ClipboardManager
+
 import numpy as np
 
 def check_audio_capture():
@@ -36,21 +36,13 @@ def check_hotkey_manager():
     # 这里只能检查初始化，无法完全测试全局热键功能
     return hotkey_manager is not None
 
-def check_clipboard_manager():
-    print("检查剪贴板管理器...")
-    clipboard_manager = ClipboardManager()
-    test_text = "测试文本"
-    clipboard_manager.copy_to_clipboard(test_text)
-    result = clipboard_manager.get_clipboard_content()
-    print(f"剪贴板内容: {result}")
-    return result == test_text
+
 
 def run_checks():
     checks = [
         ("音频捕获", check_audio_capture),
         ("FunASR引擎", check_funasr_engine),
-        ("热键管理器", check_hotkey_manager),
-        ("剪贴板管理器", check_clipboard_manager)
+        ("热键管理器", check_hotkey_manager)
     ]
 
     all_passed = True
