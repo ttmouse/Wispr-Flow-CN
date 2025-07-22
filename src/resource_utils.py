@@ -34,7 +34,6 @@ def get_resource_path(relative_path):
             if os.path.exists(alt_path):
                 return alt_path
         
-        print(f"⚠️ 资源文件未找到: {relative_path}")
         return relative_path  # 返回原始路径作为后备
         
     except Exception as e:

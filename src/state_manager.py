@@ -71,7 +71,6 @@ class StateManager(QObject):
             # 使用预初始化的停止音效实例，避免临时创建导致的垃圾回收问题
             if self.stop_sound and self.stop_sound.status() == QSoundEffect.Status.Ready:
                 self.stop_sound.play()
-                print("✓ 停止音效已播放")
             else:
                 # 如果预初始化的音效不可用，创建临时实例并保持引用
                 if not hasattr(self, '_temp_stop_sound'):
@@ -95,9 +94,8 @@ class StateManager(QObject):
                 # 播放临时音效
                 if self._temp_stop_sound.status() == QSoundEffect.Status.Ready:
                     self._temp_stop_sound.play()
-                    print("✓ 停止音效已播放（临时实例）")
                 else:
-                    print("⚠️ 停止音效未就绪，无法播放")
+                    pass  # 停止音效未就绪，无法播放
                 
         except Exception as e:
             print(f"❌ 播放停止音效失败: {e}")
@@ -138,6 +136,6 @@ class StateManager(QObject):
                 self._temp_stop_sound.deleteLater()
                 self._temp_stop_sound = None
             
-            print("✓ StateManager资源已清理")
+            pass  # StateManager资源已清理
         except Exception as e:
             print(f"❌ StateManager资源清理失败: {e}")

@@ -167,7 +167,7 @@ class Application(QObject):
             
             # 重启热键功能
             restart_hotkey_action = tray_menu.addAction("重启热键功能")
-            restart_hotkey_action.triggered.connect(self.restart_hotkey_manager)
+            restart_hotkey_action.triggered.connect(lambda: self.restart_hotkey_manager())
             
             # 检查权限
             check_permissions_action = tray_menu.addAction("检查权限")
@@ -222,7 +222,7 @@ class Application(QObject):
             self.app_loader.loading_completed.connect(self.on_loading_completed)
             self.app_loader.loading_failed.connect(self.on_loading_failed)
             
-            print("✓ 基础界面已启动，开始后台加载...")
+            pass  # 基础界面已启动
             
             # 启动异步加载
             self._start_async_loading()
@@ -252,7 +252,7 @@ class Application(QObject):
             if component_name == 'funasr_engine' and component:
                 # 关联到状态管理器
                 self.state_manager.funasr_engine = component
-                print("✓ FunASR引擎已关联到状态管理器")
+                pass  # FunASR引擎已关联到状态管理器
                 
             elif component_name == 'hotkey_manager' and component:
                 # 设置热键回调
@@ -264,7 +264,7 @@ class Application(QObject):
                 component.audio_captured.connect(self.on_audio_captured)
                 component.recording_stopped.connect(self.stop_recording)
                 
-            print(f"✓ {component_name} 加载完成")
+            pass  # 组件加载完成
             
         except Exception as e:
             print(f"组件 {component_name} 加载后处理失败: {e}")
@@ -285,7 +285,7 @@ class Application(QObject):
             # 标记初始化完成
             self._mark_initialization_complete()
             
-            print("✓ 应用程序启动完成")
+            pass  # 应用程序启动完成
             
         except Exception as e:
             print(f"加载完成处理失败: {e}")
@@ -319,7 +319,7 @@ class Application(QObject):
             # 启动热键状态监控
             self.start_hotkey_monitor()
             
-            print("✓ 最终初始化完成")
+            pass  # 最终初始化完成
         except Exception as e:
             print(f"初始化设置失败: {e}")
     
@@ -342,7 +342,7 @@ class Application(QObject):
     def _check_development_permissions(self):
         """检查开发环境权限"""
         try:
-            print("检查开发环境权限...")
+            pass  # 检查开发环境权限
             
             # 检查辅助功能权限
             accessibility_check = subprocess.run([
@@ -371,35 +371,26 @@ class Application(QObject):
                 missing_permissions.append("辅助功能")
             
             if missing_permissions:
-                print(f"⚠️  缺少权限: {', '.join(missing_permissions)}")
-                print("\n快捷键录音功能需要以下权限：")
-                print("\n【辅助功能权限】- 用于监听快捷键和自动粘贴")
-                print("1. 打开 系统设置 > 隐私与安全性 > 辅助功能")
-                print("2. 点击 '+' 按钮添加您的终端应用：")
-                print("   - Terminal.app (系统终端)")
-                print("   - iTerm.app (如果使用 iTerm)")
-                print("   - PyCharm (如果使用 PyCharm)")
-                print("   - VS Code (如果使用 VS Code)")
-                print("3. 确保对应应用已勾选")
-                print("\n【麦克风权限】- 用于录制音频")
-                print("1. 打开 系统设置 > 隐私与安全性 > 麦克风")
-                print("2. 确保您的终端应用已勾选")
-                print("\n完成权限设置后，请重新运行程序")
+                pass  # 缺少权限
+                pass
+                pass
+                pass
+                pass  # 权限设置说明
                 
                 # 尝试打开系统设置
                 try:
                     subprocess.run(['open', 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'], check=False)
-                    print("\n✓ 已尝试打开系统设置页面")
+                    pass  # 已尝试打开系统设置页面
                 except:
                     pass
                 
-                print("\n提示：打包后的应用 (bash tools/build_app.sh) 会自动请求权限")
+                pass  # 提示信息
                 
                 # 给用户一些时间查看信息
                 import time
                 time.sleep(3)
             else:
-                print("✓ 权限检查通过")
+                pass  # 权限检查通过
             
             # 更新权限缓存
             self.settings_manager.update_permissions_cache(has_accessibility, has_mic_access)
@@ -413,7 +404,7 @@ class Application(QObject):
     @handle_common_exceptions(show_error=True)
     def restart_hotkey_manager(self):
         """重启热键管理器 - 使用统一异常处理"""
-        print("开始重启热键管理器...")
+        pass  # 开始重启热键管理器
         
         # 停止现有的热键管理器
         if self.hotkey_manager:
@@ -435,7 +426,7 @@ class Application(QObject):
             # 启动监听
             self.hotkey_manager.start_listening()
             
-            print("✓ 热键管理器重启成功")
+            pass  # 热键管理器重启成功
             
             # 显示成功通知
             if hasattr(self, 'tray_icon') and self.tray_icon:
@@ -452,7 +443,7 @@ class Application(QObject):
     def start_hotkey_monitor(self):
         """启动热键状态监控"""
         if not self.hotkey_manager:
-            print("⚠️ 热键管理器未就绪，无法启动监控")
+            pass  # 热键管理器未就绪
             return
             
         # 添加监控线程停止标志
@@ -480,7 +471,7 @@ class Application(QObject):
         # 启动监控线程
         self._monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
         self._monitor_thread.start()
-        print("✓ 热键状态监控已启动")
+        pass  # 热键状态监控已启动
     
     def is_component_ready(self, component_name, check_method=None):
         """统一的组件状态检查方法
@@ -632,7 +623,6 @@ class Application(QObject):
             # 0. 首先停止热键状态监控线程，避免在清理过程中重启热键管理器
             if hasattr(self, '_monitor_should_stop'):
                 self._monitor_should_stop = True
-                print("✓ 热键状态监控已标记停止")
             
             # 1. 立即停止录音相关操作
             self.recording = False
@@ -641,7 +631,6 @@ class Application(QObject):
             if hasattr(self, 'recording_timer') and self.recording_timer:
                 try:
                     self.recording_timer.stop()
-                    print("✓ 录音定时器已停止")
                 except Exception as e:
                     print(f"⚠️ 停止录音定时器失败: {e}")
             
@@ -650,7 +639,6 @@ class Application(QObject):
                 try:
                     if self.audio_capture_thread.isRunning():
                         self.audio_capture_thread.terminate()  # 直接终止，不等待
-                        print("✓ 音频捕获线程已终止")
                 except Exception as e:
                     print(f"⚠️ 终止音频捕获线程失败: {e}")
             
@@ -658,7 +646,6 @@ class Application(QObject):
                 try:
                     if self.transcription_thread.isRunning():
                         self.transcription_thread.terminate()  # 直接终止，不等待
-                        print("✓ 转写线程已终止")
                 except Exception as e:
                     print(f"⚠️ 终止转写线程失败: {e}")
             
@@ -669,7 +656,6 @@ class Application(QObject):
                     if hasattr(self.audio_capture, 'stream') and self.audio_capture.stream:
                         self.audio_capture.stream.stop_stream()
                         self.audio_capture.stream.close()
-                    print("✓ 音频流已关闭")
                 except Exception as e:
                     print(f"⚠️ 关闭音频流失败: {e}")
             
@@ -677,7 +663,6 @@ class Application(QObject):
             if hasattr(self, 'previous_volume') and self.previous_volume is not None:
                 try:
                     self._set_system_volume(self.previous_volume)
-                    print("✓ 系统音量已恢复")
                 except Exception as e:
                     print(f"⚠️ 恢复系统音量失败: {e}")
             
@@ -686,7 +671,6 @@ class Application(QObject):
                 try:
                     # 调用停止监听方法，但不等待清理完成
                     self.hotkey_manager.stop_listening()
-                    print("✓ 热键管理器已停止监听")
                 except Exception as e:
                     print(f"⚠️ 快速清理热键管理器失败: {e}")
             
@@ -694,7 +678,6 @@ class Application(QObject):
             if hasattr(self, 'main_window') and self.main_window:
                 try:
                     self.main_window.close()
-                    print("✓ 主窗口已关闭")
                 except Exception as e:
                     print(f"⚠️ 关闭主窗口失败: {e}")
             
@@ -702,11 +685,8 @@ class Application(QObject):
             if hasattr(self, 'tray_icon') and self.tray_icon:
                 try:
                     self.tray_icon.hide()
-                    print("✓ 系统托盘图标已隐藏")
                 except Exception as e:
                     print(f"⚠️ 隐藏系统托盘图标失败: {e}")
-            
-            print("✓ 快速清理完成")
             
         except Exception as e:
             print(f"❌ 快速清理失败: {e}")
@@ -726,7 +706,7 @@ class Application(QObject):
                     'osascript',
                     '-e', 'set volume output muted true'
                 ], check=True)
-                print("系统已静音")
+                pass
             else:
                 # 设置音量并取消静音
                 volume = max(0, min(100, volume))  # 确保音量在 0-100 范围内
@@ -735,7 +715,6 @@ class Application(QObject):
                     '-e', f'set volume output volume {volume}',
                     '-e', 'set volume output muted false'
                 ], check=True)
-                print(f"系统音量已设置为: {volume}")
         except subprocess.CalledProcessError as e:
             print(f"❌ 设置系统音量失败: {e}")
         except Exception as e:
@@ -756,11 +735,9 @@ class Application(QObject):
             muted = "output muted:true" in settings
             
             if muted:
-                print("系统当前处于静音状态")
                 return 0
             
             volume = int(volume_str)
-            print(f"当前系统音量: {volume}")
             return volume
         except subprocess.CalledProcessError as e:
             print(f"❌ 获取系统音量失败: {e}")
@@ -773,7 +750,6 @@ class Application(QObject):
         """异步恢复音量"""
         try:
             self._set_system_volume(volume)
-            print(f"✓ 音量已异步恢复到 {volume}")
         except Exception as e:
             print(f"⚠️ 异步恢复音量失败: {e}")
 
@@ -784,7 +760,6 @@ class Application(QObject):
             try:
                 # 使用统一的状态检查方法
                 if not self.is_ready_for_recording():
-                    print("⚠️ 录音功能尚未就绪，请稍后再试")
                     return
                     
                 if not self.recording:
@@ -819,8 +794,7 @@ class Application(QObject):
                         self.recording_timer.setSingleShot(True)
                         self.recording_timer.timeout.connect(self._auto_stop_recording)
                         self.recording_timer.start(max_duration * 1000)  # 转换为毫秒
-                        print(f"✓ 录音开始，将在{max_duration}秒后自动停止 (定时器ID: {id(self.recording_timer)})")
-                        print(f"✓ 定时器状态: active={self.recording_timer.isActive()}, interval={self.recording_timer.interval()}ms")
+                        # 录音已开始
                         
                     except Exception as e:
                         error_msg = f"开始录音时出错: {str(e)}"
@@ -869,8 +843,6 @@ class Application(QObject):
                 
                 # 重置 previous_volume
                 self.previous_volume = None
-            else:
-                print("⚠️ 没有保存的音量值，无法恢复音量")
             
             try:
                 audio_data = self.audio_capture.get_audio_data()
@@ -878,7 +850,6 @@ class Application(QObject):
                 if len(audio_data) > 0:
                     # 使用统一的状态检查方法
                     if not self.is_component_ready('funasr_engine', 'is_ready'):
-                        print("⚠️ 语音识别引擎尚未就绪，无法处理录音")
                         self.update_ui_signal.emit("⚠️ 语音识别引擎尚未就绪，无法处理录音", "")
                         return
                         
@@ -926,7 +897,6 @@ class Application(QObject):
                     # 关闭窗口
                     self.settings_window.close()
                     self.settings_window = None
-                    print("✓ 设置窗口已清理")
                 except Exception as e:
                     print(f"⚠️ 清理设置窗口失败: {e}")
             
@@ -957,7 +927,7 @@ class Application(QObject):
         if self.hotkey_manager:
             self.hotkey_manager.set_press_callback(self.on_option_press)
             self.hotkey_manager.set_release_callback(self.on_option_release)
-            print("✓ 热键回调函数已设置")
+            # 热键回调函数已设置
             
         self.update_ui_signal.connect(self.update_ui)
         self.main_window.record_button_clicked.connect(self.toggle_recording)
@@ -979,20 +949,14 @@ class Application(QObject):
     def on_option_press(self):
         """处理Control键按下事件"""
         if not self.recording:
-            print("✓ Control 键按下，开始录音")
             # 使用信号确保在主线程中执行
             self.start_recording_signal.emit()
-        else:
-            print("⚠️ Control 键按下，但已经在录音中")
 
     def on_option_release(self):
         """处理Control键释放事件"""
         if self.recording:
-            print("✓ Control 键释放，停止录音")
             # 使用信号确保在主线程中执行
             self.stop_recording_signal.emit()
-        else:
-            print("⚠️ Control 键释放，但未在录音中")
 
     def on_audio_captured(self, data):
         """音频数据捕获回调"""
@@ -1012,7 +976,6 @@ class Application(QObject):
             if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
                 try:
                     self.hotkey_manager.stop_listening()
-                    print("✓ 热键监听已停止")
                 except Exception as e:
                     print(f"⚠️ 停止热键监听失败: {e}")
             

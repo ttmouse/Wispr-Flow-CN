@@ -36,8 +36,8 @@ class HotkeyManager:
         # 资源清理标志
         self._cleanup_done = False
         
-        # 线程安全保护
-        self._state_lock = threading.Lock()  # 添加状态锁保护共享变量
+        # 线程安全保护 - 使用可重入锁避免死锁
+        self._state_lock = threading.RLock()  # 使用可重入锁避免死锁问题
 
     def set_press_callback(self, callback):
         self.press_callback = callback
@@ -72,26 +72,26 @@ class HotkeyManager:
             # 简化线程清理逻辑
             self.delayed_threads.clear()
         
-        self.logger.info("热键状态已重置")
+        pass  # 热键状态已重置
 
     def force_reset(self):
         """强制重置所有状态并重新初始化监听器"""
         self.stop_listening()
         self.reset_state()
         self.start_listening()
-        self.logger.info("热键管理器已强制重置")
+        pass  # 热键管理器已强制重置
 
     def update_hotkey(self, hotkey_type='fn'):
         """更新快捷键设置"""
         self.hotkey_type = hotkey_type
-        self.logger.info(f"已更新快捷键设置: {hotkey_type}")
+        pass  # 快捷键设置已更新
     
     def update_delay_settings(self):
         """更新延迟设置"""
         if self.settings_manager:
             delay_ms = self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 200)
             self.delay_threshold = delay_ms / 1000.0
-            self.logger.info(f"已更新录制启动延迟: {delay_ms}ms")
+            pass  # 录制启动延迟已更新
         else:
             self.logger.warning("设置管理器不可用，无法更新延迟设置")
 
@@ -120,13 +120,18 @@ class HotkeyManager:
                 self.delayed_threads.append(thread)
     
     def _delayed_check_worker(self):
-        """简化的延迟检测工作线程"""
+        """简化的延迟检测工作线程 - 优化锁持有时间"""
         try:
+            # 快速获取开始时间，减少锁持有时间
             with self._state_lock:
                 start_time = self.hotkey_press_time
             
-            # 简化检查逻辑，减少循环次数
-            time.sleep(self.delay_threshold)  # 直接等待延迟时间
+            # 在锁外等待，避免长时间持有锁
+            time.sleep(self.delay_threshold)
+            
+            # 快速检查状态并设置标志
+            should_trigger = False
+            callback_to_call = None
             
             with self._state_lock:
                 # 检查状态是否仍然有效
@@ -139,15 +144,19 @@ class HotkeyManager:
                     self.hotkey_pressed = True
                     self.is_recording = True
                     should_trigger = True
-                else:
-                    should_trigger = False
+                    callback_to_call = self.press_callback
             
-            if should_trigger:
+            # 在锁外执行回调，避免回调中的操作导致死锁
+            if should_trigger and callback_to_call:
                 try:
-                    self.logger.info("开始录音（延迟检测通过）")
-                    self.press_callback()
+                    pass  # 开始录音（延迟检测通过）
+                    callback_to_call()
                 except Exception as e:
                     self.logger.error(f"按键回调执行失败: {e}")
+                    # 回调失败时重置状态
+                    with self._state_lock:
+                        self.hotkey_pressed = False
+                        self.is_recording = False
                     
         except Exception as e:
             self.logger.error(f"延迟检测线程错误: {e}")
@@ -255,7 +264,7 @@ class HotkeyManager:
                             if not self.other_keys_pressed and not self.is_recording and self.press_callback:
                                 try:
                                     self.is_recording = True
-                                    self.logger.info("开始录音")
+                                    pass  # 开始录音
                                     self.press_callback()
                                 except Exception as e:
                                     self.logger.error(f"按键回调执行失败: {e}")
@@ -264,7 +273,7 @@ class HotkeyManager:
                             # 如果正在录音，则停止录音
                             if self.is_recording and self.release_callback:
                                 try:
-                                    self.logger.info("停止录音")
+                                    pass  # 停止录音
                                     self.release_callback()
                                     self.is_recording = False
                                 except Exception as e:
@@ -365,22 +374,18 @@ class HotkeyManager:
                 )
                 self.keyboard_listener.daemon = True
                 self.keyboard_listener.start()
-                print("✓ 键盘监听器已启动")
                 
                 # 启动 fn 键监听线程
                 self.should_stop = False
                 self.fn_listener_thread = threading.Thread(target=self._monitor_fn_key)
                 self.fn_listener_thread.daemon = True
                 self.fn_listener_thread.start()
-                print("✓ Fn键监听线程已启动")
                 
                 self.logger.info("热键监听器已启动")
-                print(f"✓ 热键监听已启动，当前热键: {self.hotkey_type}")
         except Exception as e:
             self.logger.error(f"启动热键监听器失败: {e}")
-            print(f"❌ 启动热键监听失败: {e}")
             import traceback
-            print(f"详细错误信息: {traceback.format_exc()}")
+            self.logger.error(f"详细错误信息: {traceback.format_exc()}")
             self.stop_listening()
             raise
 
@@ -390,26 +395,23 @@ class HotkeyManager:
             # 停止 fn 键监听线程
             self.should_stop = True
             if self.fn_listener_thread and self.fn_listener_thread.is_alive():
-                # 缩短超时时间，避免在程序退出时卡死
-                self.fn_listener_thread.join(timeout=0.1)
+                # 使用更合理的超时时间，避免死锁
+                self.fn_listener_thread.join(timeout=1.0)  # 增加到1秒超时
                 if self.fn_listener_thread.is_alive():
-                    print("⚠️ Fn键监听线程未能及时停止，但继续退出流程")
+                    self.logger.warning("Fn键监听线程超时未停止")
                 else:
-                    print("✓ Fn键监听线程已停止")
+                    pass  # Fn键监听线程已停止
             
             # 停止键盘监听器
             if self.keyboard_listener:
                 self.keyboard_listener.stop()
                 self.keyboard_listener = None
-                print("✓ 键盘监听器已停止")
             
             self.logger.info("热键监听器已停止")
-            print("✓ 热键监听已停止")
         except Exception as e:
             self.logger.error(f"停止热键监听器失败: {e}")
-            print(f"❌ 停止热键监听时出错: {e}")
             import traceback
-            print(f"详细错误信息: {traceback.format_exc()}")
+            self.logger.error(f"详细错误信息: {traceback.format_exc()}")
         finally:
             self.reset_state()  # 确保状态被重置
     
@@ -419,29 +421,25 @@ class HotkeyManager:
             return
             
         try:
-            self.logger.info("开始清理热键管理器资源")
-            
             # 停止监听
             self.stop_listening()
             
             # 等待并清理所有延迟线程
-            self.logger.info(f"正在清理 {len(self.delayed_threads)} 个延迟线程")
-            for i, thread in enumerate(self.delayed_threads):
+            active_threads = [t for t in self.delayed_threads if t.is_alive()]
+            
+            for i, thread in enumerate(active_threads):
+                # 使用合理的超时时间，避免死锁
+                thread.join(timeout=0.5)  # 500ms超时
                 if thread.is_alive():
-                    self.logger.debug(f"等待线程 {i+1} 结束")
-                    # 缩短超时时间，避免在程序退出时卡死
-                    thread.join(timeout=0.1)
-                    if thread.is_alive():
-                        self.logger.warning(f"线程 {i+1} 未能在超时时间内结束，但继续清理流程")
+                    self.logger.warning(f"延迟线程 {i+1} 超时未结束，但继续清理流程")
+                    
             self.delayed_threads.clear()
-            self.logger.info("延迟线程清理完成")
             
             # 清理回调
             self.press_callback = None
             self.release_callback = None
             
             self._cleanup_done = True
-            self.logger.info("热键管理器资源清理完成")
             
         except Exception as e:
             self.logger.error(f"清理热键管理器资源失败: {e}")

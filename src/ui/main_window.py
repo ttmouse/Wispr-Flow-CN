@@ -412,7 +412,7 @@ class MainWindow(QMainWindow):
             if not hasattr(self, 'state_manager') or not self.state_manager:
                 return
             
-            print(f"开始重新应用热词高亮，历史记录项数量: {self.history_list.count()}")
+            # print(f"开始重新应用热词高亮，历史记录项数量: {self.history_list.count()}")
             
             # 遍历所有历史记录项
             for i in range(self.history_list.count()):
@@ -433,7 +433,7 @@ class MainWindow(QMainWindow):
                         widget.setText(highlighted_text)
                         # print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
             
-            print("✓ 热词高亮重新应用完成")
+            pass
         except Exception as e:
             print(f"❌ 重新应用热词高亮失败: {e}")
             import traceback
@@ -458,7 +458,7 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """处理窗口关闭事件 - 完全退出应用程序"""
-        print("主窗口接收到关闭事件，准备退出应用程序")
+        # print("主窗口接收到关闭事件，准备退出应用程序")
         try:
             # 保存历史记录
             self.save_history()
@@ -468,14 +468,13 @@ class MainWindow(QMainWindow):
             
             # 调用应用程序退出方法，完全退出程序
             if self.app_instance and hasattr(self.app_instance, 'quit_application'):
-                print("✓ 调用应用程序退出方法")
                 self.app_instance.quit_application()
             else:
-                print("✓ 直接退出Qt应用程序")
+                pass
                 QApplication.instance().quit()
             
             event.accept()  # 接受关闭事件
-            print("✓ 应用程序退出流程已启动")
+            pass
         except Exception as e:
             print(f"❌ 处理主窗口关闭事件失败: {e}")
             # 即使出错也要退出程序
@@ -553,7 +552,7 @@ class MainWindow(QMainWindow):
             else:
                 self._fallback_show_window()
             
-            print("✓ 窗口已显示")
+            pass
         except Exception as e:
             print(f"❌ 显示窗口失败: {e}")
     
@@ -586,7 +585,7 @@ class MainWindow(QMainWindow):
             try:
                 with open(self.history_file, 'w', encoding='utf-8') as f:
                     json.dump(history_data, f, ensure_ascii=False, indent=2)
-                print(f"保存了 {len(history_data)} 条历史记录")
+                pass
             finally:
                 if hasattr(signal, 'SIGALRM'):
                     signal.alarm(0)  # 取消超时
@@ -599,17 +598,17 @@ class MainWindow(QMainWindow):
     def load_history(self):
         """从文件加载历史记录"""
         try:
-            print(f"开始加载历史记录，文件路径: {self.history_file}")
+            # print(f"开始加载历史记录，文件路径: {self.history_file}")
             if os.path.exists(self.history_file):
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     history_data = json.load(f)
                 
-                print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
+                # print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
                 
                 # 清空现有历史记录
                 self.history_list.clear()
                 self.history_manager.clear_history()
-                print("✓ 已清空现有历史记录列表")
+                # print("✓ 已清空现有历史记录列表")
                 
                 # 使用历史记录管理器加载数据
                 if history_data:
@@ -622,12 +621,12 @@ class MainWindow(QMainWindow):
                         self.history_list.addItem(text_with_highlight)
                     
                     self._loading_history = False
-                    print(f"✓ 历史记录加载完成，共加载 {loaded_count} 条记录")
-                    print(f"✓ 当前列表项数量: {self.history_list.count()}")
+                    # print(f"✓ 历史记录加载完成，共加载 {loaded_count} 条记录")
+                    # print(f"✓ 当前列表项数量: {self.history_list.count()}")
                 else:
-                    print("⚠️ 历史记录文件为空")
+                    pass
             else:
-                print(f"⚠️ 历史记录文件不存在: {self.history_file}")
+                pass
         except Exception as e:
             print(f"❌ 加载历史记录失败: {e}")
             import traceback

@@ -10,12 +10,10 @@ class ClipboardManager:
         self.is_macos = platform.system() == 'Darwin'
         self.platform = platform.system().lower()
         self.debug_mode = debug_mode
-        print(f"✓ 剪贴板管理器已初始化 (平台: {self.platform}, 调试模式: {debug_mode})")
-        
         # 测试剪贴板功能
         try:
             test_content = pyperclip.paste()
-            print(f"✓ 剪贴板功能测试成功")
+            pass  # 剪贴板功能测试成功
         except Exception as e:
             print(f"⚠️ 剪贴板功能测试失败: {e}")
         
@@ -53,14 +51,12 @@ class ClipboardManager:
                         return True
                     else:
                         if attempt < max_copy_attempts - 1:
-                            print(f"⚠️ 第{attempt+1}次复制不匹配，重试中...")
                             # 重新清空再试
                             self._thorough_clear_clipboard()
                         else:
                             print(f"❌ 多次尝试后仍不匹配: 期望 '{clean_text[:30]}...', 实际 '{copied_text[:30]}...'")
                             return False
                 except Exception as verify_error:
-                    print(f"⚠️ 第{attempt+1}次验证出错: {verify_error}")
                     if attempt == max_copy_attempts - 1:
                         return False
             
@@ -78,15 +74,11 @@ class ClipboardManager:
                 with self.keyboard.pressed(Key.cmd):
                     self.keyboard.press('v')
                     self.keyboard.release('v')
-                    
-                print("✓ 粘贴命令已发送 (Cmd+V)")
             else:
                 # Windows/Linux 使用 Ctrl+V
                 with self.keyboard.pressed(Key.ctrl):
                     self.keyboard.press('v')
                     self.keyboard.release('v')
-                    
-                print("✓ 粘贴命令已发送 (Ctrl+V)")
                 
         except Exception as e:
             print(f"❌ 粘贴失败: {e}")
@@ -124,7 +116,6 @@ class ClipboardManager:
                         print(f"🔍 [调试] 剪贴板已在第{i+1}次尝试后彻底清空")
                     return True
                 elif i == clear_attempts - 1:  # 最后一次尝试
-                    print(f"⚠️ 剪贴板清空失败，残留内容: '{current_content[:30]}...'")
                     # 最后尝试：强制设置为特殊标记再清空
                     pyperclip.copy("__CLEAR_MARKER__")
                     time.sleep(0.01)
@@ -134,7 +125,6 @@ class ClipboardManager:
             return False
                     
         except Exception as e:
-            print(f"⚠️ 彻底清空剪贴板失败: {e}")
             return False
     
     def safe_copy_and_paste(self, text):
@@ -143,7 +133,6 @@ class ClipboardManager:
             # 清理文本
             clean_text = text.strip() if text else ""
             if not clean_text:
-                print("⚠️ 文本为空，跳过粘贴操作")
                 return False
             
             # 调试模式：记录操作前的剪贴板状态
@@ -155,7 +144,6 @@ class ClipboardManager:
             # 使用增强的复制方法，确保完全替换
             copy_success = self.copy_to_clipboard(clean_text)
             if not copy_success:
-                print("❌ 复制操作失败，无法执行粘贴")
                 return False
             
             # 额外的安全验证：确保剪贴板内容正确
@@ -169,7 +157,6 @@ class ClipboardManager:
                         break
                     else:
                         if verify_attempt < max_verify_attempts - 1:
-                            print(f"⚠️ 第{verify_attempt+1}次验证失败，重新复制...")
                             # 重新执行完整的复制流程
                             self._thorough_clear_clipboard()
                             pyperclip.copy(clean_text)
@@ -179,7 +166,6 @@ class ClipboardManager:
                             return False
                             
                 except Exception as verify_error:
-                    print(f"⚠️ 第{verify_attempt+1}次验证出错: {verify_error}")
                     if verify_attempt == max_verify_attempts - 1:
                         return False
             
@@ -197,7 +183,6 @@ class ClipboardManager:
                 final_content = self.get_clipboard_content()
                 print(f"🔍 [调试] 粘贴完成，剪贴板保留内容: '{final_content[:30]}...'")
             
-            print(f"✓ 安全粘贴成功: {clean_text[:50]}{'...' if len(clean_text) > 50 else ''}")
             return True
             
         except Exception as e:

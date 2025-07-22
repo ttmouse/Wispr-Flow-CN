@@ -111,7 +111,7 @@ class HistoryManager:
             with open(self.history_file, 'w', encoding='utf-8') as f:
                 json.dump(save_data, f, ensure_ascii=False, indent=2)
             
-            print(f"✓ 历史记录已保存，共 {len(save_data)} 条")
+            pass
             return True
             
         except Exception as e:
@@ -122,16 +122,16 @@ class HistoryManager:
         """从文件加载历史记录"""
         try:
             if not os.path.exists(self.history_file):
-                print(f"⚠️ 历史记录文件不存在: {self.history_file}")
+                pass
                 return []
             
             with open(self.history_file, 'r', encoding='utf-8') as f:
                 history_data = json.load(f)
             
-            print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
+            # print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
             
             if not history_data:
-                print("⚠️ 历史记录文件为空")
+                pass
                 return []
             
             # 处理和排序历史记录
@@ -167,14 +167,14 @@ class HistoryManager:
         # 按时间戳排序（最新的在后）
         if processed_data and processed_data[0].get('timestamp'):
             processed_data.sort(key=lambda x: x.get('timestamp', ''), reverse=False)
-            print("✓ 已按时间戳排序历史记录（正序）")
+            # print("✓ 已按时间戳排序历史记录（正序）")
         
         return processed_data
     
     def reapply_hotword_highlight(self, history_items: List[str]) -> List[str]:
         """重新应用热词高亮到历史记录项"""
         try:
-            print(f"开始重新应用热词高亮，历史记录项数量: {len(history_items)}")
+            # print(f"开始重新应用热词高亮，历史记录项数量: {len(history_items)}")
             
             highlighted_items = []
             for i, text in enumerate(history_items):
@@ -185,7 +185,7 @@ class HistoryManager:
                 highlighted_items.append(highlighted_text)
                 # print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
             
-            print("✓ 热词高亮重新应用完成")
+            pass
             return highlighted_items
             
         except Exception as e:
@@ -227,7 +227,7 @@ class HistoryManager:
     def get_history_for_save(self) -> List[Dict[str, str]]:
         """获取用于保存的历史记录数据"""
         return [{
-            'text': self.clean_html_tags(item['text']),
+            'text': clean_html_tags(item['text']),
             'timestamp': item['timestamp']
         } for item in self.history_items]
     

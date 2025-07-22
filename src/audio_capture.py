@@ -38,7 +38,7 @@ class AudioCapture:
         """获取默认麦克风索引"""
         try:
             default_device = self.audio.get_default_input_device_info()
-            print(f"使用默认麦克风: {default_device['name']}")
+            pass  # 使用默认麦克风
             return default_device['index']
         except Exception as e:
             print(f"获取默认麦克风失败: {e}")
@@ -76,7 +76,7 @@ class AudioCapture:
                     frames_per_buffer=512,  # 减小缓冲区大小以降低延迟
                     stream_callback=None
                 )
-                print("✓ 开始录音")
+                pass  # 开始录音
                 return
             except Exception as e:
                 retry_count += 1
@@ -104,14 +104,45 @@ class AudioCapture:
         finally:
             self.stream = None
             
-        audio_data = b"".join(self.frames)
-        data = np.frombuffer(audio_data, dtype=np.float32)
-        
-        # 检查是否有足够的有效音频
-        if self.valid_frame_count < self.min_valid_frames:
-            return np.array([], dtype=np.float32)
+        try:
+            audio_data = b"".join(self.frames)
             
-        return data
+            # 确保音频数据不为空
+            if len(audio_data) == 0:
+                return np.array([], dtype=np.float32)
+                
+            data = np.frombuffer(audio_data, dtype=np.float32)
+            
+            # 检查是否有足够的有效音频
+            # 确保使用标量值进行比较，避免NumPy数组比较错误
+            try:
+                # 强制转换为Python标量类型，避免NumPy数组比较
+                if hasattr(self.valid_frame_count, 'item'):
+                    valid_count = int(self.valid_frame_count.item())
+                elif hasattr(self.valid_frame_count, '__len__'):
+                    valid_count = int(self.valid_frame_count)
+                else:
+                    valid_count = int(self.valid_frame_count)
+                    
+                if hasattr(self.min_valid_frames, 'item'):
+                    min_valid = int(self.min_valid_frames.item())
+                elif hasattr(self.min_valid_frames, '__len__'):
+                    min_valid = int(self.min_valid_frames)
+                else:
+                    min_valid = int(self.min_valid_frames)
+                    
+                # 使用Python标量进行比较
+                if valid_count < min_valid:
+                    return np.array([], dtype=np.float32)
+            except Exception as e:
+                # 如果比较失败，返回原始数据
+                pass
+                
+            return data
+            
+        except Exception as e:
+            print(f"❌ stop_recording处理音频数据时出错: {e}")
+            return np.array([], dtype=np.float32)
 
     def _cleanup(self):
         """清理音频资源"""
@@ -146,7 +177,7 @@ class AudioCapture:
                 # 给系统更多时间释放音频资源
                 time.sleep(0.5)
         
-        # 清理数据
+        # 清理数据，确保计数器为标量值
         self.frames.clear()  # 使用deque的clear方法
         self.read_count = 0
         self.valid_frame_count = 0
@@ -161,7 +192,6 @@ class AudioCapture:
         """公共清理方法，供外部调用"""
         try:
             self._cleanup()
-            print("✓ 音频捕获资源已清理")
         except Exception as e:
             print(f"❌ 清理音频捕获资源失败: {e}")
     
@@ -191,10 +221,9 @@ class AudioCapture:
                 if (device_info['maxInputChannels'] > 0 and 
                     device_info['name'] == device_name):
                     self.device_index = i
-                    print(f"✓ 已切换到设备: {device_name}")
                     return True
                     
-            print(f"❌ 未找到设备: {device_name}")
+            pass  # 未找到设备
             return False
             
         except Exception as e:
@@ -205,20 +234,19 @@ class AudioCapture:
         """检查音频数据是否有效（音量是否足够）"""
         audio_data = np.frombuffer(data, dtype=np.float32)
         # 直接使用RMS值判断，不使用移动平均
-        volume = np.sqrt(np.mean(np.square(audio_data)))
-        is_valid = volume > self.volume_threshold
+        volume = float(np.sqrt(np.mean(np.square(audio_data))))
+        # 使用Python标量进行比较，避免NumPy数组比较错误
+        is_valid = bool(volume > self.volume_threshold)
         
-        # 添加调试信息（每20帧输出一次，避免日志过多）
+        # 更新调试计数器
         self.debug_frame_count += 1
-        if self.debug_frame_count % 20 == 0:
-            print(f"🎤 音量检测 - 当前: {volume:.5f}, 阈值: {self.volume_threshold:.5f}, 有效帧: {self.valid_frame_count}, 静音帧: {self.silence_frame_count}")
         
-        # 更新计数
+        # 更新计数，确保计数器始终为标量值
         if is_valid:
             self.silence_frame_count = 0
-            self.valid_frame_count += 1
+            self.valid_frame_count = int(self.valid_frame_count) + 1
         else:
-            self.silence_frame_count += 1
+            self.silence_frame_count = int(self.silence_frame_count) + 1
             
         return is_valid
 
@@ -233,8 +261,30 @@ class AudioCapture:
                 self.read_count += 1
                 
                 # 如果静音时间太长，自动停止录音
-                if self.silence_frame_count >= self.max_silence_frames:
-                    return None  # 返回None表示需要停止录音
+                # 确保使用标量值进行比较，避免NumPy数组比较错误
+                try:
+                    # 强制转换为Python标量类型，避免NumPy数组比较
+                    if hasattr(self.silence_frame_count, 'item'):
+                        silence_count = self.silence_frame_count.item()
+                    elif hasattr(self.silence_frame_count, '__len__'):
+                        silence_count = int(self.silence_frame_count)
+                    else:
+                        silence_count = int(self.silence_frame_count)
+                        
+                    if hasattr(self.max_silence_frames, 'item'):
+                        max_silence = self.max_silence_frames.item()
+                    elif hasattr(self.max_silence_frames, '__len__'):
+                        max_silence = int(self.max_silence_frames)
+                    else:
+                        max_silence = int(self.max_silence_frames)
+                        
+                    # 使用Python标量进行比较
+                    if silence_count >= max_silence:
+                        return None  # 返回None表示需要停止录音
+                except Exception as e:
+                    print(f"静音检测比较时出错: {e}")
+                    # 如果比较失败，继续录音
+                    pass
                     
                 return data
             except Exception as e:
@@ -251,8 +301,30 @@ class AudioCapture:
         data = np.frombuffer(audio_data, dtype=np.float32)
         
         # 检查是否有足够的有效音频
-        if self.valid_frame_count < self.min_valid_frames:
-            return np.array([], dtype=np.float32)
+        # 确保使用标量值进行比较，避免NumPy数组比较错误
+        try:
+            # 强制转换为Python标量类型，避免NumPy数组比较
+            if hasattr(self.valid_frame_count, 'item'):
+                valid_count = self.valid_frame_count.item()
+            elif hasattr(self.valid_frame_count, '__len__'):
+                valid_count = int(self.valid_frame_count)
+            else:
+                valid_count = int(self.valid_frame_count)
+                
+            if hasattr(self.min_valid_frames, 'item'):
+                min_valid = self.min_valid_frames.item()
+            elif hasattr(self.min_valid_frames, '__len__'):
+                min_valid = int(self.min_valid_frames)
+            else:
+                min_valid = int(self.min_valid_frames)
+                
+            # 使用Python标量进行比较
+            if valid_count < min_valid:
+                return np.array([], dtype=np.float32)
+        except Exception as e:
+            print(f"音频数据检查时出错: {e}")
+            # 如果比较失败，返回原始数据
+            pass
             
         return data
 
@@ -271,4 +343,4 @@ class AudioCapture:
     def set_volume_threshold(self, threshold):
         """设置音量阈值（0-1000的值会被转换为0-0.02的浮点数）"""
         self.volume_threshold = (threshold / 1000.0) * 0.02
-        print(f"音量阈值已更新为: {self.volume_threshold:.5f}")
+        pass  # 音量阈值已更新

@@ -26,12 +26,9 @@ class FunASREngine:
             else:
                 application_path = os.path.dirname(os.path.abspath(__file__))
             
-            print(f"应用程序路径: {application_path}")
-            
             # 设置 MODELSCOPE_CACHE 环境变量
             cache_dir = os.path.join(application_path, 'modelscope', 'hub')
             os.environ['MODELSCOPE_CACHE'] = cache_dir
-            print(f"模型缓存路径: {cache_dir}")
             
             # 初始化热词列表
             self.hotwords = []
@@ -40,14 +37,13 @@ class FunASREngine:
                 with open(hotwords_file, 'r', encoding='utf-8') as f:
                     self.hotwords = [line.strip() for line in f 
                                    if line.strip() and not line.strip().startswith('#')]
-                print(f"✓ 加载了 {len(self.hotwords)} 个热词")
+                pass
             
             # 检查模型文件是否存在
             asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
             punc_model_dir = os.path.join(cache_dir, 'damo', 'punc_ct-transformer_zh-cn-common-vocab272727-pytorch')
             
-            print(f"ASR模型路径: {asr_model_dir}")
-            print(f"标点模型路径: {punc_model_dir}")
+            # 检查模型路径
             
             # ASR模型是必需的
             if not os.path.exists(asr_model_dir):
@@ -61,31 +57,26 @@ class FunASREngine:
             # 使用 redirect_stdout 来捕获输出
             f = io.StringIO()
             with redirect_stdout(f), redirect_stderr(f):
-                print("开始加载ASR模型...")
                 # 初始化语音识别模型
                 self.model = AutoModel(
                     model=asr_model_dir,
                     model_revision="v2.0.4",
                     disable_update=True
                 )
-                print("ASR模型加载完成")
                 
                 # 只在标点模型存在时才加载
                 if self.has_punc_model:
-                    print("开始加载标点模型...")
                     self.punc_model = AutoModel(
                         model=punc_model_dir,
                         model_revision="v2.0.4",
                         disable_update=True
                     )
-                    print("标点模型加载完成")
                 else:
                     self.punc_model = None
-                    print("跳过标点模型加载")
                 
             # 设置引擎就绪状态
             self.is_ready = True
-            print("✓ FunASR引擎初始化完成，已就绪")
+            pass  # FunASR引擎初始化完成
                 
         except Exception as e:
             self.is_ready = False
@@ -111,14 +102,27 @@ class FunASREngine:
                 return audio_data
 
             # 2. 音频归一化
-            audio_max = np.max(np.abs(audio_data))
-            if audio_max > 0:
-                audio_data = audio_data / audio_max
+            try:
+                audio_max = float(np.max(np.abs(audio_data)))
+                # 使用Python标量进行比较，避免NumPy数组比较错误
+                if float(audio_max) > 0.0:
+                    audio_data = audio_data / audio_max
+            except Exception as e:
+                print(f"音频归一化处理时出错: {e}")
+                # 如果处理失败，跳过归一化步骤
+                pass
 
             # 3. 条件性预加重 - 只在高频信号较弱时进行
-            if np.mean(np.abs(np.diff(audio_data))) < 0.04:
-                preemphasis_coef = 0.97
-                audio_data = np.append(audio_data[0], audio_data[1:] - preemphasis_coef * audio_data[:-1])
+            try:
+                diff_mean = float(np.mean(np.abs(np.diff(audio_data))))
+                # 使用Python标量进行比较，避免NumPy数组比较错误
+                if float(diff_mean) < 0.04:
+                    preemphasis_coef = 0.97
+                    audio_data = np.append(audio_data[0], audio_data[1:] - preemphasis_coef * audio_data[:-1])
+            except Exception as e:
+                print(f"预加重处理时出错: {e}")
+                # 如果处理失败，跳过预加重步骤
+                pass
 
             # 4. 静音检测和去除
             chunk_size = 3200  # 200ms at 16kHz
@@ -128,22 +132,30 @@ class FunASREngine:
             energies = np.array([np.mean(np.abs(chunk)) for chunk in chunks])
             
             # 自适应阈值
-            threshold = np.mean(energies) * 0.1
-            non_silent_mask = energies >= threshold
-            
-            # 如果静音比例过高才进行去除
-            if np.mean(non_silent_mask) < 0.8:
-                non_silent_chunks = [chunk for i, chunk in enumerate(chunks) if non_silent_mask[i]]
-                if non_silent_chunks:
-                    audio_data = np.concatenate(non_silent_chunks)
+            threshold = float(np.mean(energies)) * 0.1
+            # 确保使用标量值进行比较，避免NumPy数组比较错误
+            try:
+                # 使用np.greater_equal避免直接数组比较
+                non_silent_mask = np.greater_equal(energies, threshold)
+                
+                # 如果静音比例过高才进行去除
+                # 使用.mean()和float()确保标量比较
+                silent_ratio = float(np.mean(non_silent_mask.astype(np.float32)))
+                # 使用Python标量进行比较，避免NumPy数组比较错误
+                if silent_ratio < 0.8:
+                    # 确保布尔数组索引转换为Python布尔值
+                    non_silent_indices = np.where(non_silent_mask)[0]
+                    non_silent_chunks = [chunks[i] for i in non_silent_indices]
+                    if len(non_silent_chunks) > 0:  # 使用len()而不是直接判断列表
+                        audio_data = np.concatenate(non_silent_chunks)
+            except Exception as e:
+                print(f"静音检测处理时出错: {e}")
+                # 如果处理失败，保持原始音频数据
+                pass
 
             # 记录处理结果
             process_time = (time.time() - start_time) * 1000
             compression_ratio = len(audio_data) / original_length * 100
-            
-            print(f"音频预处理完成:")
-            print(f"处理耗时: {process_time:.2f}ms")
-            print(f"压缩比例: {compression_ratio:.1f}%")
             
             return audio_data
             
@@ -221,8 +233,12 @@ class FunASREngine:
     def transcribe(self, audio_data):
         """转写音频数据"""
         try:
-            if audio_data.dtype != np.float32:
+            # 安全地检查数据类型，避免NumPy数组比较错误
+            if hasattr(audio_data, 'dtype') and audio_data.dtype != np.float32:
                 audio_data = audio_data.astype(np.float32)
+            elif not hasattr(audio_data, 'dtype'):
+                # 如果不是NumPy数组，转换为NumPy数组
+                audio_data = np.array(audio_data, dtype=np.float32)
             
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 # 1. 语音识别
@@ -311,7 +327,7 @@ class FunASREngine:
             if os.path.exists(hotwords_file):
                 with open(hotwords_file, "r", encoding="utf-8") as f:
                     self.hotwords = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-                print(f"重新加载热词成功，共 {len(self.hotwords)} 个")
+                pass
             else:
                 self.hotwords = []
         except Exception as e:
@@ -353,7 +369,6 @@ class FunASREngine:
         for similar_word, correct_word in pronunciation_map.items():
             if similar_word in corrected_text and correct_word in self.hotwords:
                 corrected_text = corrected_text.replace(similar_word, correct_word)
-                print(f"🔧 发音纠错: '{similar_word}' -> '{correct_word}'")
         
         return corrected_text
     
@@ -431,7 +446,7 @@ class FunASREngine:
             if hasattr(self, 'hotwords'):
                 self.hotwords.clear()
                 
-            print("✓ FunASR引擎资源已清理")
+            pass
             
         except Exception as e:
             print(f"❌ 清理FunASR引擎资源失败: {e}")

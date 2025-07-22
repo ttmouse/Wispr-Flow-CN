@@ -24,7 +24,6 @@ class GlobalHotkeyManager(QObject):
                     
                     # 检查组合键
                     if 'cmd' in self.pressed_keys and '.' in self.pressed_keys:
-                        print("检测到快捷键: Command + .")
                         # 发出热键触发信号
                         self.hotkey_triggered.emit()
                 except Exception as e:
@@ -46,7 +45,7 @@ class GlobalHotkeyManager(QObject):
             self.keyboard_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             self.keyboard_listener.daemon = True  # 设置为守护线程
             self.keyboard_listener.start()
-            print("✓ 全局快捷键已注册: Command + .")
+            pass  # 全局快捷键已注册
         except Exception as e:
             print(f"❌ 设置全局快捷键失败: {e}")
             print(traceback.format_exc())
@@ -55,4 +54,4 @@ class GlobalHotkeyManager(QObject):
         """清理资源"""
         if self.keyboard_listener:
             self.keyboard_listener.stop()
-            self.keyboard_listener = None 
+            self.keyboard_listener = None
