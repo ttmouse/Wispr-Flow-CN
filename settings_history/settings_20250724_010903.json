@@ -1,5 +1,6 @@
 {
   "hotkey": "fn",
+  "hotkey_scheme": "hammerspoon",
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
@@ -7,9 +8,9 @@
     "max_recording_duration": 20
   },
   "asr": {
-    "model_path": "/test/asr/model/path",
-    "punc_model_path": "/test/punc/model/path",
-    "auto_punctuation": true,
+    "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
+    "auto_punctuation": false,
     "real_time_display": true,
     "hotword_weight": 80,
     "enable_pronunciation_correction": true
@@ -23,13 +24,13 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-23T18:13:47.442099",
+      "last_check": "2025-07-24T01:08:58.776537",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-23T18:13:55.837018",
+      "last_check": "2025-07-24T01:02:30.297564",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

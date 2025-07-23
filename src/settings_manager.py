@@ -9,6 +9,7 @@ class SettingsManager:
     # 默认设置
     DEFAULT_SETTINGS = {
         'hotkey': 'fn',              # 快捷键设置：fn, ctrl, alt
+        'hotkey_scheme': 'hammerspoon',  # 热键方案：hammerspoon, python
         'high_frequency_words': [],   # 高频词列表
         'audio': {
             'input_device': None,     # 输入设备名称，None表示系统默认
@@ -243,6 +244,17 @@ class SettingsManager:
     def set_hotkey(self, hotkey: str) -> bool:
         """设置快捷键"""
         return self.set_setting('hotkey', hotkey)
+    
+    def get_hotkey_scheme(self) -> str:
+        """获取当前热键方案设置"""
+        return self.get_setting('hotkey_scheme', 'hammerspoon')
+    
+    def set_hotkey_scheme(self, scheme: str) -> bool:
+        """设置热键方案"""
+        if scheme not in ['hammerspoon', 'python']:
+            self.logger.error(f"无效的热键方案: {scheme}")
+            return False
+        return self.set_setting('hotkey_scheme', scheme)
     
     def set_multiple_settings(self, settings_dict: Dict[str, Any]) -> bool:
         """批量设置多个配置项

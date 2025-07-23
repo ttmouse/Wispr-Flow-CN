@@ -9,7 +9,6 @@ from ui.main_window import MainWindow
 
 from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
-from hotkey_manager import HotkeyManager
 from clipboard_manager import ClipboardManager
 from state_manager import StateManager
 from context_manager import Context
@@ -361,7 +360,7 @@ class Application(QObject):
     # 保留权限检查方法供加载器使用
     
     def _finalize_initialization(self):
-        """完成初始化设置"""
+        """完成初始化设置 - 简化版本"""
         try:
             # 设置连接
             self.setup_connections()
@@ -369,10 +368,10 @@ class Application(QObject):
             # 应用设置
             self.apply_settings()
             
-            # 启动热键状态监控
-            self.start_hotkey_monitor()
+            # 移除自动监控启动 - 简化架构
+            # self.start_hotkey_monitor()  # 已移除
             
-            pass  # 最终初始化完成
+            logging.info("最终初始化完成")
         except Exception as e:
             logging.error(f"初始化设置失败: {e}")
     
@@ -455,7 +454,7 @@ class Application(QObject):
 
     @pyqtSlot()
     def _safe_restart_hotkey_manager(self):
-        """安全的热键管理器重启方法 - 防止SIGTRAP崩溃"""
+        """安全的热键管理器重启方法 - 简化版本"""
         try:
             # 确保在主线程中执行
             if QThread.currentThread() != QApplication.instance().thread():
@@ -481,96 +480,62 @@ class Application(QObject):
     
     @handle_common_exceptions(show_error=True)
     def restart_hotkey_manager(self):
-        """重启热键管理器 - 使用统一异常处理"""
-        pass  # 开始重启热键管理器
+        """重启热键管理器 - 简化版本，仅用于手动重启和方案切换"""
+        logging.info("开始重启热键管理器")
         
         # 停止现有的热键管理器
         if self.hotkey_manager:
-            self.cleanup_component('hotkey_manager', 'stop_listening')
-            self.cleanup_component('hotkey_manager', 'cleanup')
+            try:
+                self.hotkey_manager.stop_listening()
+                if hasattr(self.hotkey_manager, 'cleanup'):
+                    self.hotkey_manager.cleanup()
+            except Exception as e:
+                logging.error(f"停止现有热键管理器失败: {e}")
         
         # 重新创建热键管理器
         try:
-            from src.hotkey_manager import HotkeyManager
-            self.hotkey_manager = HotkeyManager(self.settings_manager)
-            self.hotkey_manager.set_press_callback(self.on_option_press)
-            self.hotkey_manager.set_release_callback(self.on_option_release)
+            from src.hotkey_manager_factory import HotkeyManagerFactory
             
-            # 应用当前热键设置
-            current_hotkey = self.settings_manager.get_hotkey()
-            self.hotkey_manager.update_hotkey(current_hotkey)
-            self.hotkey_manager.update_delay_settings()  # 更新延迟设置
+            # 获取热键方案设置
+            scheme = self.settings_manager.get_hotkey_scheme()
             
-            # 启动监听
-            self.hotkey_manager.start_listening()
+            # 使用工厂模式创建热键管理器
+            self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(scheme, self.settings_manager)
             
-            pass  # 热键管理器重启成功
-            
-            # 显示成功通知
-            if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.showMessage(
-                    "热键功能",
-                    "热键功能已成功重启",
-                    QSystemTrayIcon.MessageIcon.Information,
-                    3000
-                )
+            if self.hotkey_manager:
+                self.hotkey_manager.set_press_callback(self.on_option_press)
+                self.hotkey_manager.set_release_callback(self.on_option_release)
+                
+                # 应用当前热键设置
+                current_hotkey = self.settings_manager.get_hotkey()
+                self.hotkey_manager.update_hotkey(current_hotkey)
+                self.hotkey_manager.update_delay_settings()
+                
+                # 启动监听
+                self.hotkey_manager.start_listening()
+                
+                logging.info(f"热键管理器重启成功，使用方案: {scheme}")
+                
+                # 显示成功通知
+                if hasattr(self, 'tray_icon') and self.tray_icon:
+                    self.tray_icon.showMessage(
+                        "热键功能",
+                        "热键功能已成功重启",
+                        QSystemTrayIcon.MessageIcon.Information,
+                        3000
+                    )
+            else:
+                logging.error(f"热键管理器创建失败，方案: {scheme}")
+                self.hotkey_manager = None
+                
         except Exception as e:
             logging.error(f"热键管理器重启失败: {e}")
             self.hotkey_manager = None
     
-    def start_hotkey_monitor(self):
-        """启动热键状态监控"""
-        if not self.hotkey_manager:
-            return
-            
-        # 添加监控线程停止标志
-        self._monitor_should_stop = False
-        
-        def monitor_hotkey_status():
-            consecutive_failures = 0
-            max_failures = 3  # 连续失败3次后降低检查频率
-            
-            while not self._monitor_should_stop:
-                try:
-                    # 根据失败次数调整检查间隔
-                    check_interval = 5 if consecutive_failures < max_failures else 15
-                    time.sleep(check_interval)
-                    
-                    if self._monitor_should_stop:  # 再次检查退出标志
-                        break
-                        
-                    if self.hotkey_manager:
-                        # 使用热键管理器的get_status方法进行全面检查
-                        status = self.hotkey_manager.get_status()
-                        
-                        if not status['active']:
-                            consecutive_failures += 1
-                            if not self._monitor_should_stop:  # 确保不在退出过程中
-                                self.restart_hotkey_manager()
-                                
-                                # 重启后短暂等待，然后重新检查
-                                time.sleep(2)
-                                new_status = self.hotkey_manager.get_status() if self.hotkey_manager else {'active': False}
-                                if new_status['active']:
-                                    consecutive_failures = 0  # 重置失败计数
-                        else:
-                            # 热键正常，重置失败计数
-                            if consecutive_failures > 0:
-                                consecutive_failures = 0
-                    else:
-                        consecutive_failures += 1
-                        
-                except Exception as e:
-                    consecutive_failures += 1
-                    if not self._monitor_should_stop:
-                        logging.error(f"热键状态监控出错: {e}")
-                        
-            pass  # 热键状态监控已停止
-        
-        # 启动监控线程
-        self._monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
-        self._monitor_thread.start()
-        pass  # 热键状态监控已启动
+    # 移除自动监控功能 - 根据奥卡姆剃刀原理简化架构
+    # def start_hotkey_monitor(self):
+    #     """已移除：自动热键状态监控功能"""
+    #     pass
     
     def is_component_ready(self, component_name, check_method=None):
         """统一的组件状态检查方法
@@ -661,9 +626,9 @@ class Application(QObject):
                 self._set_system_volume(self.previous_volume)
                 pass  # 系统音量已恢复
             
-            # 停止监控线程
-            if hasattr(self, '_monitor_should_stop'):
-                self._monitor_should_stop = True
+            # 移除监控线程相关代码 - 简化架构
+            # if hasattr(self, '_monitor_should_stop'):
+            #     self._monitor_should_stop = True
             
             # 使用统一方法清理所有组件
             components_to_cleanup = [
@@ -716,12 +681,12 @@ class Application(QObject):
                 logging.error(f"应用退出失败: {e}")
     
     def _quick_cleanup(self):
-        """快速清理关键资源，避免长时间等待导致卡死"""
+        """快速清理关键资源，避免长时间等待导致卡死 - 简化版本"""
         pass  # 开始快速清理资源
         try:
-            # 0. 首先停止热键状态监控线程，避免在清理过程中重启热键管理器
-            if hasattr(self, '_monitor_should_stop'):
-                self._monitor_should_stop = True
+            # 0. 已移除：热键状态监控线程相关逻辑
+            # if hasattr(self, '_monitor_should_stop'):
+            #     self._monitor_should_stop = True
             
             # 1. 立即停止录音相关操作
             self.recording = False
@@ -1062,11 +1027,11 @@ class Application(QObject):
         pass
 
     def quit_application(self):
-        """退出应用程序"""
+        """退出应用程序 - 简化版本"""
         try:
-            # 1. 首先停止热键状态监控线程，避免在退出过程中重启热键管理器
-            if hasattr(self, '_monitor_should_stop'):
-                self._monitor_should_stop = True
+            # 1. 已移除：热键状态监控线程相关逻辑
+            # if hasattr(self, '_monitor_should_stop'):
+            #     self._monitor_should_stop = True
             
             # 2. 停止热键监听，避免在清理过程中触发新的操作
             if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
@@ -1289,8 +1254,8 @@ class Application(QObject):
                 try:
                     print("✓ 启动热键监听...")
                     self.hotkey_manager.start_listening()
-                    # 启动热键状态监控
-                    self.start_hotkey_monitor()
+                    # 已移除：启动热键状态监控
+                    # self.start_hotkey_monitor()
                     logging.info("热键监听已启动")
                 except Exception as e:
                     logging.error(f"启动热键监听失败: {e}")
@@ -1301,21 +1266,26 @@ class Application(QObject):
                         self.hotkey_manager.set_press_callback(self.on_option_press)
                         self.hotkey_manager.set_release_callback(self.on_option_release)
                         self.hotkey_manager.start_listening()
-                        # 启动热键状态监控
-                        self.start_hotkey_monitor()
+                        # 已移除：启动热键状态监控
+                        # self.start_hotkey_monitor()
                     except Exception as e2:
                         logging.error(f"重新初始化热键管理器失败: {e2}")
                         self.hotkey_manager = None
             else:
                 try:
                     print("✓ 初始化热键管理器...")
-                    self.hotkey_manager = HotkeyManager(self.settings_manager)
-                    self.hotkey_manager.set_press_callback(self.on_option_press)
-                    self.hotkey_manager.set_release_callback(self.on_option_release)
-                    self.hotkey_manager.start_listening()
-                    # 启动热键状态监控
-                    self.start_hotkey_monitor()
-                    logging.info("热键管理器初始化完成")
+                    from src.hotkey_manager_factory import HotkeyManagerFactory
+                    scheme = self.settings_manager.get_hotkey_scheme()
+                    self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(scheme, self.settings_manager)
+                    if self.hotkey_manager:
+                        self.hotkey_manager.set_press_callback(self.on_option_press)
+                        self.hotkey_manager.set_release_callback(self.on_option_release)
+                        self.hotkey_manager.start_listening()
+                        # 已移除：启动热键状态监控
+                        # self.start_hotkey_monitor()
+                        logging.info("热键管理器初始化完成")
+                    else:
+                        logging.error("热键管理器创建失败")
                 except Exception as e:
                     logging.error(f"重新创建热键管理器失败: {e}")
                     logging.error(f"详细错误信息: {traceback.format_exc()}")
@@ -1436,31 +1406,55 @@ class Application(QObject):
         try:
             # 应用热键设置（如果热键管理器已初始化）
             try:
+                current_scheme = self.settings_manager.get_hotkey_scheme()
+                current_hotkey = self.settings_manager.get_hotkey()
+                
+                # 检查是否需要重新创建热键管理器（方案变化）
+                need_recreate = False
                 if self.hotkey_manager:
-                    current_hotkey = self.settings_manager.get_hotkey()
-                    self.hotkey_manager.stop_listening()  # 先停止监听
-                    # 停止现有的状态监控
-                    if hasattr(self, '_monitor_should_stop'):
-                        self._monitor_should_stop = True
-                    self.hotkey_manager.update_hotkey(current_hotkey)  # 更新热键
-                    self.hotkey_manager.update_delay_settings()  # 更新延迟设置
-                    self.hotkey_manager.start_listening()  # 重新开始监听
-                    # 重新启动状态监控
-                    self.start_hotkey_monitor()
-                else:
+                    # 检查当前热键管理器的类型是否与设置中的方案匹配
+                    current_manager_type = type(self.hotkey_manager).__name__.lower()
+                    if current_scheme == 'hammerspoon' and 'hammerspoon' not in current_manager_type:
+                        need_recreate = True
+                        logging.info(f"热键方案从 python 切换到 {current_scheme}，需要重新创建热键管理器")
+                    elif current_scheme == 'python' and 'hammerspoon' in current_manager_type:
+                        need_recreate = True
+                        logging.info(f"热键方案从 hammerspoon 切换到 {current_scheme}，需要重新创建热键管理器")
+                
+                if need_recreate or not self.hotkey_manager:
+                    # 停止并清理现有的热键管理器
+                    if self.hotkey_manager:
+                        try:
+                            self.hotkey_manager.stop_listening()
+                            if hasattr(self.hotkey_manager, 'cleanup'):
+                                self.hotkey_manager.cleanup()
+                        except Exception as e:
+                            logging.error(f"停止现有热键管理器失败: {e}")
+                    
+                    # 创建新的热键管理器
                     try:
-                        self.hotkey_manager = HotkeyManager(self.settings_manager)
-                        self.hotkey_manager.set_press_callback(self.on_option_press)
-                        self.hotkey_manager.set_release_callback(self.on_option_release)
-                        current_hotkey = self.settings_manager.get_hotkey()
-                        self.hotkey_manager.update_hotkey(current_hotkey)
-                        self.hotkey_manager.update_delay_settings()  # 更新延迟设置
-                        self.hotkey_manager.start_listening()
-                        # 启动热键状态监控
-                        self.start_hotkey_monitor()
+                        from src.hotkey_manager_factory import HotkeyManagerFactory
+                        self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(current_scheme, self.settings_manager)
+                        if self.hotkey_manager:
+                            self.hotkey_manager.set_press_callback(self.on_option_press)
+                            self.hotkey_manager.set_release_callback(self.on_option_release)
+                            self.hotkey_manager.update_hotkey(current_hotkey)
+                            self.hotkey_manager.update_delay_settings()
+                            self.hotkey_manager.start_listening()
+                            logging.info(f"热键管理器已重新创建，使用方案: {current_scheme}")
+                        else:
+                            logging.error("热键管理器创建失败")
                     except Exception as e2:
                         logging.error(f"重新创建热键管理器失败: {e2}")
                         logging.error(f"详细错误信息: {traceback.format_exc()}")
+                else:
+                    # 只需要更新现有热键管理器的设置
+                    self.hotkey_manager.stop_listening()
+                    self.hotkey_manager.update_hotkey(current_hotkey)
+                    self.hotkey_manager.update_delay_settings()
+                    self.hotkey_manager.start_listening()
+                    logging.info(f"热键设置已更新，热键: {current_hotkey}")
+                    
             except Exception as e:
                 logging.error(f"应用热键设置失败: {e}")
                 logging.error(f"详细错误信息: {traceback.format_exc()}")

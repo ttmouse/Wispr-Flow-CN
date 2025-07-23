@@ -136,10 +136,24 @@ class AppLoader(QObject):
     def _load_hotkey_manager(self):
         """加载热键管理器"""
         try:
-            from src.hotkey_manager import HotkeyManager
-            manager = HotkeyManager(self.settings_manager)
-            self.components['hotkey_manager'] = manager
-            self.component_loaded.emit('hotkey_manager', manager)
+            from src.hotkey_manager_factory import HotkeyManagerFactory
+            
+            # 获取热键方案设置
+            scheme = self.settings_manager.get_hotkey_scheme()
+            
+            # 使用工厂模式创建热键管理器
+            manager = HotkeyManagerFactory.create_hotkey_manager(scheme, self.settings_manager)
+            
+            if manager:
+                self.components['hotkey_manager'] = manager
+                self.component_loaded.emit('hotkey_manager', manager)
+                import logging
+                logging.info(f"热键管理器加载成功，使用方案: {scheme}")
+            else:
+                import logging
+                logging.error(f"热键管理器创建失败，方案: {scheme}")
+                self.components['hotkey_manager'] = None
+                
         except Exception as e:
             import logging
             logging.error(f"热键管理器加载失败: {e}")

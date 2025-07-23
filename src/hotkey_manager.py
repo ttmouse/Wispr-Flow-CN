@@ -3,11 +3,12 @@ import time
 import logging
 import Quartz
 import threading
+from .hotkey_manager_base import HotkeyManagerBase
 
-class HotkeyManager:
+class PythonHotkeyManager(HotkeyManagerBase):
     def __init__(self, settings_manager=None):
-        self.press_callback = None
-        self.release_callback = None
+        super().__init__(settings_manager)
+        # 保留原有的属性初始化
         self.keyboard_listener = None
         self.fn_listener_thread = None
         self.other_keys_pressed = set()  # 记录当前按下的其他键
@@ -520,6 +521,7 @@ class HotkeyManager:
             
             return {
                 'active': is_active,
+                'scheme': 'python',
                 'hotkey_type': self.hotkey_type,
                 'listener_running': listener_running,
                 'fn_thread_running': fn_thread_running,
@@ -529,6 +531,7 @@ class HotkeyManager:
             self.logger.error(f"获取热键状态失败: {e}")
             return {
                 'active': False,
+                'scheme': 'python',
                 'hotkey_type': self.hotkey_type,
                 'listener_running': False,
                 'fn_thread_running': False,

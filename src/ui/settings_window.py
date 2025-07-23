@@ -64,6 +64,22 @@ class SettingsWindow(QDialog):
             # 收集所有设置到字典中
             settings_to_save = {}
             
+            # 检查热键方案是否发生变化
+            old_scheme = self.settings_manager.get_hotkey_scheme()
+            new_scheme = None
+            scheme_changed = False
+            
+            # 收集热键方案设置
+            try:
+                scheme_value = self.hotkey_scheme_combo.currentText()
+                new_scheme = scheme_value
+                scheme_changed = (old_scheme != new_scheme)
+                settings_to_save['hotkey_scheme'] = scheme_value
+            except Exception as e:
+                import logging
+                logging.error(f"收集热键方案设置失败: {e}")
+                raise
+            
             # 收集快捷键设置
             try:
                 hotkey_value = self.hotkey_combo.currentText()
@@ -181,6 +197,29 @@ class SettingsWindow(QDialog):
                 logging.error(f"应用音频设备设置失败: {e}")
                 # 不抛出异常，因为设置已经保存成功
             
+            # 如果热键方案发生变化，应用新的热键管理器
+            if scheme_changed:
+                try:
+                    # 获取主应用实例并应用新的热键方案
+                    parent_window = self.parent()
+                    if parent_window and hasattr(parent_window, 'app_instance'):
+                        app_instance = parent_window.app_instance
+                        if app_instance and hasattr(app_instance, 'apply_settings'):
+                            # 使用apply_settings方法来应用新的热键方案
+                            app_instance.apply_settings()
+                            import logging
+                            logging.info(f"热键方案已从 {old_scheme} 切换到 {new_scheme}，新方案已立即应用")
+                        else:
+                            import logging
+                            logging.info(f"热键方案已从 {old_scheme} 切换到 {new_scheme}，将在下次启动时生效")
+                    else:
+                        import logging
+                        logging.info(f"热键方案已从 {old_scheme} 切换到 {new_scheme}，将在下次启动时生效")
+                except Exception as e:
+                    import logging
+                    logging.error(f"应用新热键方案失败: {e}")
+                    # 不抛出异常，因为设置已经保存成功
+            
             # 发出保存完成信号（使用线程安全的方式）
             try:
                 # 使用 QTimer.singleShot 确保信号在主线程中发射
@@ -257,6 +296,25 @@ class SettingsWindow(QDialog):
         tab = QWidget()
         layout = QVBoxLayout()
         
+        # 热键方案设置组
+        scheme_group = QGroupBox("热键方案设置")
+        scheme_layout = QVBoxLayout()
+        
+        scheme_description = QLabel("选择热键监听方案：")
+        self.hotkey_scheme_combo = QComboBox()
+        self.hotkey_scheme_combo.addItems(['hammerspoon', 'python'])
+        current_scheme = self.settings_manager.get_hotkey_scheme()
+        self.hotkey_scheme_combo.setCurrentText(current_scheme)
+        
+        scheme_help_text = QLabel("Hammerspoon方案：更稳定，需要安装Hammerspoon\nPython方案：原生实现，可能在某些情况下不稳定")
+        scheme_help_text.setStyleSheet("color: gray; font-size: 12px;")
+        scheme_help_text.setWordWrap(True)
+        
+        scheme_layout.addWidget(scheme_description)
+        scheme_layout.addWidget(self.hotkey_scheme_combo)
+        scheme_layout.addWidget(scheme_help_text)
+        scheme_group.setLayout(scheme_layout)
+        
         # 快捷键设置组
         hotkey_group = QGroupBox("快捷键设置")
         hotkey_layout = QVBoxLayout()
@@ -311,6 +369,7 @@ class SettingsWindow(QDialog):
         delay_layout.addWidget(delay_help_text)
         delay_group.setLayout(delay_layout)
         
+        layout.addWidget(scheme_group)
         layout.addWidget(hotkey_group)
         layout.addWidget(delay_group)
         layout.addStretch()
@@ -686,6 +745,10 @@ class SettingsWindow(QDialog):
         """从设置管理器加载设置到UI"""
         # 更新所有UI控件的值
         self.hotkey_combo.setCurrentText(self.settings_manager.get_hotkey())
+        
+        # 更新热键方案设置
+        current_scheme = self.settings_manager.get_hotkey_scheme()
+        self.hotkey_scheme_combo.setCurrentText(current_scheme)
         
         # 更新音频设置
         current_device = self.settings_manager.get_setting('audio.input_device')
