@@ -169,7 +169,8 @@ class MainWindow(QMainWindow):
         if self.app_instance and hasattr(self.app_instance, 'show_settings'):
             self.app_instance.show_settings()
         else:
-            print("无法打开设置窗口：应用程序实例不可用")
+            import logging
+            logging.error("无法打开设置窗口：应用程序实例不可用")
     
     def open_settings_panel(self):
         """打开设置面板"""
@@ -185,7 +186,8 @@ class MainWindow(QMainWindow):
             settings_window = SettingsWindow(self, settings_manager, audio_capture)
             settings_window.exec()
         except Exception as e:
-            print(f"打开设置面板失败: {e}")
+            import logging
+            logging.error(f"打开设置面板失败: {e}")
     
 
     
@@ -383,13 +385,40 @@ class MainWindow(QMainWindow):
             
             # 传递高亮后的文本给ModernListWidget
             self.history_list.addItem(highlighted_text)
-            print(f"添加到历史记录: {clean_text[:50]}...")
             
-            # 只有在不是加载历史记录时才保存
-            if not self._loading_history:
-                self.save_history()
-        else:
-            print(f"添加历史记录失败（文本为空）: {text[:50]}...")
+            # 添加同步验证机制，确保UI与数据管理器索引一致
+            from PyQt6.QtCore import QTimer
+            def verify_sync():
+                ui_count = self.history_list.count()
+                manager_count = len(self.history_manager.history_items)
+                if ui_count != manager_count:
+                    self._resync_history_ui()
+            
+            # 延迟验证，等待异步更新完成
+            QTimer.singleShot(20, verify_sync)
+            
+            # 滚动到最新项
+            self.history_list.scrollToBottom()
+            
+            # 保存到文件
+            self.save_history()
+    
+    def _resync_history_ui(self):
+        """重新同步历史记录UI"""
+        try:
+            # 清空UI列表
+            self.history_list.clear()
+            
+            # 重新添加所有历史记录
+            for i, text in enumerate(self.history_manager.get_history_texts()):
+                text_with_highlight = self._apply_hotword_highlight(text)
+                self.history_list.addItem(text_with_highlight)
+            
+        except Exception as e:
+            import logging
+            logging.error(f"重新同步历史记录UI失败: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
     
     def update_status(self, status):
         """更新状态显示"""
@@ -431,29 +460,68 @@ class MainWindow(QMainWindow):
                     # 更新widget的显示内容
                     if widget and hasattr(widget, 'setText'):
                         widget.setText(highlighted_text)
-                        # print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
+                        pass  # 已更新历史记录项
             
             pass
         except Exception as e:
-            print(f"❌ 重新应用热词高亮失败: {e}")
+            import logging
+            logging.error(f"重新应用热词高亮失败: {e}")
             import traceback
-            print(traceback.format_exc())
+            logging.error(traceback.format_exc())
     
     def _on_history_item_clicked(self, item):
         """处理历史记录项点击事件"""
-        # 获取实际的widget来获取HTML文本
-        widget = self.history_list.itemWidget(item)
-        if widget and hasattr(widget, 'getText'):
-            text = widget.getText()
-        else:
-            text = item.text()
-        
-        if text:
-            self.history_item_clicked.emit(text)
+        try:
+            # 获取历史记录项的索引
+            index = self.history_list.row(item)
+            total_count = len(self.history_manager.history_items)
+            ui_count = self.history_list.count()
+            
+            if index < 0:
+                self.update_status("点击处理失败：无效索引")
+                return
+            
+            # 优先使用备用方法获取文本，避免索引不同步问题
+            original_text = None
+            
+            # 方法1：直接从列表项获取文本（最可靠）
+            if item and item.text():
+                from utils.text_utils import clean_html_tags
+                fallback_text = clean_html_tags(item.text())
+                if fallback_text and fallback_text.strip():
+                    original_text = fallback_text
+            
+            # 方法2：如果索引在管理器范围内，尝试从管理器获取
+            if not original_text and index < total_count:
+                manager_text = self.history_manager.get_original_text_by_index(index)
+                if manager_text and manager_text.strip():
+                    original_text = manager_text
+            
+            # 如果两种方法都失败
+            if not original_text:
+                self.update_status("点击处理失败：无法获取文本")
+                return
+            
+            # 成功获取文本，发出点击信号
+            if original_text and original_text.strip():
+                # 立即更新状态显示，提供即时反馈
+                self.update_status("正在处理点击...")
+                
+                # 发出信号
+                self.history_item_clicked.emit(original_text)
+            else:
+                self.update_status("点击处理失败：文本为空")
+                
+        except Exception as e:
+            import logging
+            logging.error(f"处理历史记录项点击失败: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            self.update_status("点击处理出错")
     
-    def display_result(self, text):
+    def display_result(self, text, skip_history=False):
         """显示识别结果"""
-        if text and text.strip():
+        if text and text.strip() and not skip_history:
             self.add_to_history(text)
     
     def closeEvent(self, event):
@@ -476,7 +544,8 @@ class MainWindow(QMainWindow):
             event.accept()  # 接受关闭事件
             pass
         except Exception as e:
-            print(f"❌ 处理主窗口关闭事件失败: {e}")
+            import logging
+            logging.error(f"处理主窗口关闭事件失败: {e}")
             # 即使出错也要退出程序
             try:
                 QApplication.instance().quit()
@@ -547,14 +616,15 @@ class MainWindow(QMainWindow):
                     self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
                     
                 except Exception as e:
-                    print(f"显示窗口时出错: {e}")
+                    import logging
+                    logging.error(f"显示窗口时出错: {e}")
                     self._fallback_show_window()
             else:
                 self._fallback_show_window()
             
-            pass
         except Exception as e:
-            print(f"❌ 显示窗口失败: {e}")
+            import logging
+            logging.error(f"显示窗口失败: {e}")
     
     def _fallback_show_window(self):
         """后备的窗口显示方法"""
@@ -585,52 +655,46 @@ class MainWindow(QMainWindow):
             try:
                 with open(self.history_file, 'w', encoding='utf-8') as f:
                     json.dump(history_data, f, ensure_ascii=False, indent=2)
-                pass
             finally:
                 if hasattr(signal, 'SIGALRM'):
                     signal.alarm(0)  # 取消超时
                     
         except TimeoutError:
-            print("⚠️ 保存历史记录超时，跳过保存操作")
+            import logging
+            logging.warning("保存历史记录超时，跳过保存操作")
         except Exception as e:
-            print(f"保存历史记录失败: {e}")
+            import logging
+            logging.error(f"保存历史记录失败: {e}")
     
     def load_history(self):
         """从文件加载历史记录"""
         try:
-            # print(f"开始加载历史记录，文件路径: {self.history_file}")
             if os.path.exists(self.history_file):
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     history_data = json.load(f)
                 
-                # print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
-                
                 # 清空现有历史记录
                 self.history_list.clear()
                 self.history_manager.clear_history()
-                # print("✓ 已清空现有历史记录列表")
                 
                 # 使用历史记录管理器加载数据
                 if history_data:
                     self._loading_history = True
                     loaded_count = self.history_manager.load_history_data(history_data)
                     
-                    # 将历史记录添加到UI
-                    for text in self.history_manager.get_history_texts():
+                    # 将历史记录添加到UI，确保顺序一致
+                    history_texts = self.history_manager.get_history_texts()
+                    
+                    for i, text in enumerate(history_texts):
                         text_with_highlight = self._apply_hotword_highlight(text)
                         self.history_list.addItem(text_with_highlight)
                     
                     self._loading_history = False
-                    # print(f"✓ 历史记录加载完成，共加载 {loaded_count} 条记录")
-                    # print(f"✓ 当前列表项数量: {self.history_list.count()}")
-                else:
-                    pass
-            else:
-                pass
         except Exception as e:
-            print(f"❌ 加载历史记录失败: {e}")
+            import logging
+            logging.error(f"加载历史记录失败: {e}")
             import traceback
-            traceback.print_exc()
+            logging.error(traceback.format_exc())
     
     def _apply_hotword_highlight(self, text):
         """应用热词高亮（使用简单的加粗效果）"""
@@ -660,7 +724,8 @@ class MainWindow(QMainWindow):
             
             return highlighted_text
         except Exception as e:
-            print(f"应用热词高亮失败: {e}")
+            import logging
+            logging.error(f"应用热词高亮失败: {e}")
             return text
     
     def update_hotkey_status(self):

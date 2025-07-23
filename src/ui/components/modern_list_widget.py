@@ -21,6 +21,9 @@ class ModernListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.empty_widget = None
+        self._last_click_time = 0
+        self._last_clicked_item = None  # 记录上次点击的项目
+        self._click_debounce_ms = 50  # 减少到50ms防抖间隔
         self._setup_ui()
         self._setup_styles()
         self._setup_scrolling()
@@ -94,34 +97,66 @@ class ModernListWidget(QListWidget):
         self.empty_widget.setParent(self.viewport())
         self.empty_widget.show()
         self.empty_widget.setGeometry(self.viewport().rect())
-        print("✓ 显示空状态提示")
     
     def _hide_empty_state(self):
         """隐藏空状态"""
         self.empty_widget.hide()
-        # print("✓ 隐藏空状态提示，显示历史记录列表")
+        pass
     
     def mousePressEvent(self, event):
         """处理鼠标点击事件"""
         try:
+            # 改进的防抖处理：只对同一项目进行防抖，不同项目可以立即点击
+            import time
+            current_time = time.time() * 1000  # 转换为毫秒
+            current_item = self.itemAt(event.pos())
+            
+            # 只有在短时间内点击同一项目时才进行防抖
+            if (current_item is not None and 
+                current_item == self._last_clicked_item and 
+                current_time - self._last_click_time < self._click_debounce_ms):
+                # 在防抖间隔内点击同一项目，忽略此次点击
+                return
+            
+            self._last_click_time = current_time
+            self._last_clicked_item = current_item
+            
+            # 确保事件正常传递给父类
             super().mousePressEvent(event)
-            item = self.itemAt(event.pos())
-            if item:
-                QTimer.singleShot(100, self.clearSelection)
+            
         except Exception as e:
-            print(f"❌ 鼠标点击事件处理失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"鼠标点击事件处理失败: {e}")
+            # 即使出错也要确保事件传递
+            try:
+                super().mousePressEvent(event)
+            except:
+                pass
     
     def mouseReleaseEvent(self, event):
         """处理鼠标释放事件"""
         try:
+            item_at_pos = self.itemAt(event.pos())
+            
+            # 先调用父类方法，确保itemClicked信号能正常触发
             super().mouseReleaseEvent(event)
-            QTimer.singleShot(100, self.clearSelection)
+            
+            # 只在点击空白区域时清除选择，避免影响正常的项目点击
+            if item_at_pos is None:
+                # 点击的是空白区域，立即清除选择
+                self.clearSelection()
+            else:
+                # 点击的是列表项，使用极短延迟确保itemClicked信号先触发
+                QTimer.singleShot(5, self.clearSelection)  # 减少到5ms，几乎无感知延迟
+                
         except Exception as e:
-            print(f"❌ 鼠标释放事件处理失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"鼠标释放事件处理失败: {e}")
+            # 即使出错也要确保事件传递
+            try:
+                super().mouseReleaseEvent(event)
+            except:
+                pass
     
     def resizeEvent(self, event):
         """处理窗口大小改变事件"""
@@ -130,9 +165,8 @@ class ModernListWidget(QListWidget):
             self._update_item_sizes()
             self.updateEmptyState()
         except Exception as e:
-            print(f"❌ 窗口大小改变事件处理失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"窗口大小改变事件处理失败: {e}")
     
     def _update_item_sizes(self):
         """更新所有项目的大小"""
@@ -144,9 +178,8 @@ class ModernListWidget(QListWidget):
                     if widget and hasattr(widget, 'sizeHint'):
                         item.setSizeHint(widget.sizeHint())
         except Exception as e:
-            print(f"❌ 更新项目大小失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"更新项目大小失败: {e}")
     
     def get_item_count(self):
         """获取列表项数量"""

@@ -37,10 +37,11 @@ class FunASREngine:
                 with open(hotwords_file, 'r', encoding='utf-8') as f:
                     self.hotwords = [line.strip() for line in f 
                                    if line.strip() and not line.strip().startswith('#')]
-                print(f"✅ 热词加载成功: 共加载 {len(self.hotwords)} 个热词")
-                print(f"📝 热词列表: {', '.join(self.hotwords[:10])}{'...' if len(self.hotwords) > 10 else ''}")
+                import logging
+                logging.info(f"热词加载成功: 共加载 {len(self.hotwords)} 个热词")
             else:
-                print(f"⚠️ 热词文件不存在: {hotwords_file}")
+                import logging
+                logging.warning(f"热词文件不存在: {hotwords_file}")
             
             # 检查模型文件是否存在
             asr_model_dir = os.path.join(cache_dir, 'damo', 'speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch')
@@ -55,7 +56,8 @@ class FunASREngine:
             # 标点模型是可选的
             self.has_punc_model = os.path.exists(punc_model_dir)
             if not self.has_punc_model:
-                print("⚠️ 标点模型不存在，将跳过标点处理")
+                import logging
+                logging.warning("标点模型不存在，将跳过标点处理")
             
             # 使用 redirect_stdout 来捕获输出
             f = io.StringIO()
@@ -79,15 +81,15 @@ class FunASREngine:
                 
             # 设置引擎就绪状态
             self.is_ready = True
-            pass  # FunASR引擎初始化完成
                 
         except Exception as e:
             self.is_ready = False
-            error_msg = f"❌ 模型加载失败: {str(e)}\n"
+            import logging
+            error_msg = f"模型加载失败: {str(e)}\n"
             error_msg += f"系统路径: {sys.path}\n"
             error_msg += f"当前目录: {os.getcwd()}\n"
             error_msg += f"环境变量: MODELSCOPE_CACHE={os.environ.get('MODELSCOPE_CACHE', '未设置')}\n"
-            print(error_msg)
+            logging.error(error_msg)
             raise
 
     def preprocess_audio(self, audio_data):
@@ -111,7 +113,8 @@ class FunASREngine:
                 if float(audio_max) > 0.0:
                     audio_data = audio_data / audio_max
             except Exception as e:
-                print(f"音频归一化处理时出错: {e}")
+                import logging
+                logging.error(f"音频归一化处理时出错: {e}")
                 # 如果处理失败，跳过归一化步骤
                 pass
 
@@ -123,7 +126,8 @@ class FunASREngine:
                     preemphasis_coef = 0.97
                     audio_data = np.append(audio_data[0], audio_data[1:] - preemphasis_coef * audio_data[:-1])
             except Exception as e:
-                print(f"预加重处理时出错: {e}")
+                import logging
+                logging.error(f"预加重处理时出错: {e}")
                 # 如果处理失败，跳过预加重步骤
                 pass
 
@@ -152,7 +156,8 @@ class FunASREngine:
                     if len(non_silent_chunks) > 0:  # 使用len()而不是直接判断列表
                         audio_data = np.concatenate(non_silent_chunks)
             except Exception as e:
-                print(f"静音检测处理时出错: {e}")
+                import logging
+                logging.error(f"静音检测处理时出错: {e}")
                 # 如果处理失败，保持原始音频数据
                 pass
 
@@ -163,7 +168,8 @@ class FunASREngine:
             return audio_data
             
         except Exception as e:
-            print(f"❌ 音频预处理失败: {e}")
+            import logging
+            logging.error(f"音频预处理失败: {e}")
             return audio_data  # 如果处理失败，返回原始音频
 
     def _transcribe_single(self, audio_chunk):
@@ -182,16 +188,18 @@ class FunASREngine:
                     beam_size=5                # 恢复原来的beam size
                 )
                 
-                # 添加热词使用日志
+                # 热词处理
                 if self.hotwords:
-                    print(f"🎯 单块处理使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
+                    import logging
+                    logging.debug(f"单块处理使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
             
             if isinstance(result, list) and len(result) > 0:
                 text = result[0].get('text', '')
                 return text
             return ''
         except Exception as e:
-            print(f"❌ 单块处理失败: {e}")
+            import logging
+            logging.error(f"单块处理失败: {e}")
             return ''
 
     def _merge_results(self, chunk_results):
@@ -230,15 +238,17 @@ class FunASREngine:
                     hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None  # 热词权重
                 )
                 
-                # 添加热词使用日志
+                # 热词处理
                 if self.hotwords:
-                    print(f"🎯 标点模型使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
+                    import logging
+                    logging.debug(f"标点模型使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
             
             if isinstance(result, list) and len(result) > 0:
                 return result[0].get('text', text)
             return text
         except Exception as e:
-            print(f"❌ 标点处理失败: {e}")
+            import logging
+            logging.error(f"标点处理失败: {e}")
             return text
 
     def transcribe(self, audio_data):
@@ -263,9 +273,10 @@ class FunASREngine:
                     hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None  # 热词权重
                 )
                 
-                # 添加热词使用日志
+                # 热词处理
                 if self.hotwords:
-                    print(f"🎯 主转写使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
+                    import logging
+                    logging.debug(f"主转写使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
             
             if isinstance(result, list) and len(result) > 0:
                 text = result[0].get('text', '')
@@ -285,7 +296,8 @@ class FunASREngine:
             return [{"text": final_text}]
             
         except Exception as e:
-            print(f"❌ 转写失败: {e}")
+            import logging
+            logging.error(f"转写失败: {e}")
             raise
 
     def _process_text(self, text):
@@ -348,13 +360,15 @@ class FunASREngine:
             if os.path.exists(hotwords_file):
                 with open(hotwords_file, "r", encoding="utf-8") as f:
                     self.hotwords = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-                print(f"🔄 热词重新加载成功: 共加载 {len(self.hotwords)} 个热词")
-                print(f"📝 热词列表: {', '.join(self.hotwords[:10])}{'...' if len(self.hotwords) > 10 else ''}")
+                import logging
+                logging.info(f"热词重新加载成功: 共加载 {len(self.hotwords)} 个热词")
             else:
-                print(f"⚠️ 热词文件不存在: {hotwords_file}")
+                import logging
+                logging.warning(f"热词文件不存在: {hotwords_file}")
                 self.hotwords = []
         except Exception as e:
-            print(f"❌ 重新加载热词失败: {e}")
+            import logging
+            logging.error(f"重新加载热词失败: {e}")
             self.hotwords = []
     
     def _get_hotword_weight(self):
@@ -392,7 +406,8 @@ class FunASREngine:
         for similar_word, correct_word in pronunciation_map.items():
             if similar_word in corrected_text and correct_word in self.hotwords:
                 corrected_text = corrected_text.replace(similar_word, correct_word)
-                print(f"🔧 发音纠错: '{similar_word}' -> '{correct_word}'")
+                import logging
+                logging.info(f"发音纠错: '{similar_word}' -> '{correct_word}'")
         
         return corrected_text
     
@@ -457,10 +472,9 @@ class FunASREngine:
             if hasattr(self, 'hotwords'):
                 self.hotwords.clear()
                 
-            pass
-            
         except Exception as e:
-            print(f"❌ 清理FunASR引擎资源失败: {e}")
+            import logging
+            logging.error(f"清理FunASR引擎资源失败: {e}")
     
     def __del__(self):
         """析构函数，确保资源被释放"""

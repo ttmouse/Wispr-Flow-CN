@@ -91,7 +91,8 @@ class AppLoader(QObject):
             if hasattr(self.app_instance, '_check_development_permissions'):
                 self.app_instance._check_development_permissions()
         except Exception as e:
-            print(f"权限检查失败: {e}")
+            import logging
+            logging.error(f"权限检查失败: {e}")
             
     def _load_funasr_engine(self):
         """加载FunASR引擎"""
@@ -101,18 +102,35 @@ class AppLoader(QObject):
             self.components['funasr_engine'] = engine
             self.component_loaded.emit('funasr_engine', engine)
             
-            # 更新模型缓存
+            # 批量更新模型缓存和路径，避免重复保存
             if engine.is_ready:
                 model_paths = engine.get_model_paths()
-                self.settings_manager.update_model_paths(model_paths)
                 asr_available = bool(model_paths.get('asr_model_path'))
                 punc_available = bool(model_paths.get('punc_model_path'))
-                self.settings_manager.update_models_cache(asr_available, punc_available)
+                
+                # 批量更新所有设置，只保存一次
+                from datetime import datetime
+                now = datetime.now().isoformat()
+                settings_to_update = {
+                    'cache.models.last_check': now,
+                    'cache.models.asr_available': asr_available,
+                    'cache.models.punc_available': punc_available
+                }
+                
+                # 添加模型路径设置
+                if 'asr_model_path' in model_paths:
+                    settings_to_update['asr.model_path'] = model_paths['asr_model_path']
+                if 'punc_model_path' in model_paths:
+                    settings_to_update['asr.punc_model_path'] = model_paths['punc_model_path']
+                
+                # 一次性保存所有设置
+                self.settings_manager.set_multiple_settings(settings_to_update)
             else:
                 self.settings_manager.update_models_cache(False, False)
                 
         except Exception as e:
-            print(f"FunASR引擎加载失败: {e}")
+            import logging
+            logging.error(f"FunASR引擎加载失败: {e}")
             self.components['funasr_engine'] = None
             
     def _load_hotkey_manager(self):
@@ -123,19 +141,23 @@ class AppLoader(QObject):
             self.components['hotkey_manager'] = manager
             self.component_loaded.emit('hotkey_manager', manager)
         except Exception as e:
-            print(f"热键管理器加载失败: {e}")
+            import logging
+            logging.error(f"热键管理器加载失败: {e}")
             self.components['hotkey_manager'] = None
             
     def _load_clipboard_manager(self):
         """加载剪贴板管理器"""
         try:
             from src.clipboard_manager import ClipboardManager
-            debug_mode = self.settings_manager.get_setting('clipboard_debug', False)
+            # 启用调试模式以获取详细日志
+            debug_mode = self.settings_manager.get_setting('clipboard_debug', True)  # 默认启用调试
             manager = ClipboardManager(debug_mode=debug_mode)
             self.components['clipboard_manager'] = manager
             self.component_loaded.emit('clipboard_manager', manager)
+            pass  # 剪贴板管理器已加载
         except Exception as e:
-            print(f"剪贴板管理器加载失败: {e}")
+            import logging
+            logging.error(f"剪贴板管理器加载失败: {e}")
             self.components['clipboard_manager'] = None
             
     def _load_other_components(self):
@@ -147,9 +169,9 @@ class AppLoader(QObject):
             self.components['context_manager'] = context
             self.component_loaded.emit('context_manager', context)
             
-            # 音频管理器
+            # 音频管理器 - 不传入parent避免线程问题
             from src.audio_manager import AudioManager
-            audio_manager = AudioManager(self.app_instance)
+            audio_manager = AudioManager()
             self.components['audio_manager'] = audio_manager
             self.component_loaded.emit('audio_manager', audio_manager)
             
@@ -160,7 +182,8 @@ class AppLoader(QObject):
             self.component_loaded.emit('audio_capture_thread', audio_capture_thread)
             
         except Exception as e:
-            print(f"其他组件加载失败: {e}")
+            import logging
+            logging.error(f"其他组件加载失败: {e}")
             
     def get_component(self, name):
         """获取已加载的组件"""
@@ -263,6 +286,8 @@ class LoadingSplash(QSplashScreen):
             if "has been deleted" in str(e):
                 pass
             else:
-                print(f"更新进度失败: {e}")
+                import logging
+                logging.error(f"更新进度失败: {e}")
         except Exception as e:
-            print(f"更新进度失败: {e}")
+            import logging
+            logging.error(f"更新进度失败: {e}")

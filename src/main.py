@@ -42,15 +42,18 @@ def setup_logging():
     
     # 配置日志
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,  # 改为INFO级别，减少调试信息
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_filename, encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
-        ]
+        ],
+        force=True  # 强制重新配置日志
     )
     
+    print(f"✓ 日志系统已初始化，日志文件: {log_filename}")
     logging.info(f"日志文件: {log_filename}")
+    logging.info("应用程序日志系统启动成功")
 
 # 应用信息
 APP_NAME = "Dou-flow"  # 统一应用名称3
@@ -93,12 +96,12 @@ def handle_common_exceptions(show_error=True):
                 error_msg = f"文件未找到: {e}"
                 logging.error(error_msg)
                 if show_error:
-                    print(f"❌ {error_msg}")
+                    logging.error(error_msg)
             except Exception as e:
                 error_msg = f"操作失败: {e}"
                 logging.error(error_msg)
                 if show_error:
-                    print(f"❌ {error_msg}")
+                    logging.error(error_msg)
                 # 记录详细的错误堆栈
                 logging.debug(traceback.format_exc())
         return wrapper
@@ -111,7 +114,12 @@ class Application(QObject):
     stop_recording_signal = pyqtSignal()
 
     def __init__(self):
+        # 先创建QApplication实例，确保在主线程中
+        self.app = QApplication(sys.argv)
+        
+        # 然后调用父类初始化
         super().__init__()
+        
         # 初始化资源清理
         atexit.register(self.cleanup_resources)
         
@@ -119,7 +127,6 @@ class Application(QObject):
         self._app_lock = threading.RLock()
         
         try:
-            self.app = QApplication(sys.argv)
             
             # 设置Qt应用程序的异常处理
             self.app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
@@ -185,10 +192,8 @@ class Application(QObject):
             self.tray_icon.show()
             
             # 确认系统托盘图标设置成功
-            if self.tray_icon.isVisible():
-                print("✓ 系统托盘图标已设置")
-            else:
-                print("⚠️ 系统托盘图标设置失败")
+            if not self.tray_icon.isVisible():
+                pass  # 静默处理托盘图标设置失败
             
             # 初始化基础组件
             self.state_manager = StateManager()
@@ -203,7 +208,6 @@ class Application(QObject):
             # 初始化状态变量
             self.recording = False
             self.previous_volume = None
-            self._pending_paste_text = None  # 用于延迟粘贴的文本
             self.funasr_engine = None  # 延迟初始化
             self.hotkey_manager = None  # 延迟初始化
             self.clipboard_manager = None  # 延迟初始化
@@ -232,8 +236,8 @@ class Application(QObject):
             self._start_async_loading()
 
         except Exception as e:
-            print(f"❌ 初始化失败: {e}")
-            print(traceback.format_exc())
+            logging.error(f"初始化失败: {e}")
+            logging.error(traceback.format_exc())
             sys.exit(1)
     
     def _setup_mac_event_handling(self):
@@ -245,9 +249,9 @@ class Application(QObject):
             # 创建dock菜单
             self._setup_dock_menu()
             
-            print("✓ macOS事件处理器已安装")
+            pass  # macOS事件处理器已安装
         except Exception as e:
-            print(f"❌ 设置macOS事件处理失败: {e}")
+            logging.error(f"设置macOS事件处理失败: {e}")
     
     def _setup_dock_menu(self):
         """设置macOS Dock图标菜单（通过系统托盘实现）"""
@@ -255,13 +259,11 @@ class Application(QObject):
             # 在macOS上，dock菜单实际上是通过系统托盘图标的右键菜单实现的
             # 由于PyQt6没有直接的setDockMenu方法，我们使用系统托盘图标来提供类似功能
             # 系统托盘菜单已经在初始化时创建，这里只是确认功能可用
-            if hasattr(self, 'tray_icon') and self.tray_icon.isVisible():
-                print("✓ Dock菜单功能通过系统托盘图标提供")
-            else:
-                print("⚠️ 系统托盘图标未正确设置")
+            if not (hasattr(self, 'tray_icon') and self.tray_icon.isVisible()):
+                pass  # 静默处理托盘图标问题
             
         except Exception as e:
-            print(f"❌ 设置Dock菜单失败: {e}")
+            logging.error(f"设置Dock菜单失败: {e}")
     
     def eventFilter(self, obj, event):
         """事件过滤器，处理应用程序级别的事件"""
@@ -270,23 +272,17 @@ class Application(QObject):
             if obj == self.app:
                 # 处理 Dock 图标点击事件
                 if event.type() == 121:  # QEvent.Type.ApplicationActivate
-                    print("🔍 检测到 Dock 图标点击事件，准备显示窗口")
                     # 确保在主线程中执行窗口显示
                     if QThread.currentThread() == QApplication.instance().thread():
                         self._show_window_internal()
                     else:
                         self.show_window_signal.emit()
-                    print("✓ 窗口已显示")
                     return False  # 继续传递事件
-                
-                # 处理其他可能的激活事件
-                elif event.type() in [24, 99, 214]:  # WindowActivate, ActivationChange, ApplicationStateChange
-                    print(f"🔍 检测到其他激活事件: {event.type()}")
             
             # 对于其他事件，继续正常处理
             return False
         except Exception as e:
-            print(f"❌ 事件过滤器处理失败: {e}")
+            logging.error(f"事件过滤器处理失败: {e}")
             return False
     
     def _start_async_loading(self):
@@ -324,7 +320,7 @@ class Application(QObject):
             pass  # 组件加载完成
             
         except Exception as e:
-            print(f"组件 {component_name} 加载后处理失败: {e}")
+            logging.error(f"组件 {component_name} 加载后处理失败: {e}")
     
     def on_loading_completed(self):
         """当所有组件加载完成时的回调"""
@@ -345,11 +341,11 @@ class Application(QObject):
             pass  # 应用程序启动完成
             
         except Exception as e:
-            print(f"加载完成处理失败: {e}")
+            logging.error(f"加载完成处理失败: {e}")
     
     def on_loading_failed(self, error_message):
         """当加载失败时的回调"""
-        print(f"❌ 组件加载失败: {error_message}")
+        logging.error(f"组件加载失败: {error_message}")
         
         # 隐藏启动界面
         if hasattr(self, 'splash'):
@@ -378,7 +374,7 @@ class Application(QObject):
             
             pass  # 最终初始化完成
         except Exception as e:
-            print(f"初始化设置失败: {e}")
+            logging.error(f"初始化设置失败: {e}")
     
     def _mark_initialization_complete(self):
         """标记初始化完成"""
@@ -390,7 +386,7 @@ class Application(QObject):
             # 通知初始化完成
             self.update_ui_signal.emit("✓ 应用初始化完成", "")
         except Exception as e:
-            print(f"标记初始化完成失败: {e}")
+            logging.error(f"标记初始化完成失败: {e}")
     
     # 旧的复杂异步初始化方法已被简化的initialize_components方法替代
 
@@ -453,8 +449,7 @@ class Application(QObject):
             self.settings_manager.update_permissions_cache(has_accessibility, has_mic_access)
                 
         except Exception as e:
-            print(f"权限检查失败: {e}")
-            print("如果快捷键无法正常工作，请手动检查系统权限设置")
+            logging.error(f"权限检查失败: {e}")
             # 权限检查失败时也更新缓存，避免重复检查
             self.settings_manager.update_permissions_cache(False, False)
 
@@ -474,7 +469,7 @@ class Application(QObject):
             self.restart_hotkey_manager()
             
         except Exception as e:
-            print(f"❌ 安全重启热键管理器失败: {e}")
+            logging.error(f"安全重启热键管理器失败: {e}")
             # 显示错误通知
             if hasattr(self, 'tray_icon') and self.tray_icon:
                 self.tray_icon.showMessage(
@@ -520,13 +515,12 @@ class Application(QObject):
                     3000
                 )
         except Exception as e:
-            print(f"热键管理器重启失败: {e}")
+            logging.error(f"热键管理器重启失败: {e}")
             self.hotkey_manager = None
     
     def start_hotkey_monitor(self):
         """启动热键状态监控"""
         if not self.hotkey_manager:
-            print("⚠️ 热键管理器未就绪，无法启动状态监控")
             return
             
         # 添加监控线程停止标志
@@ -552,38 +546,31 @@ class Application(QObject):
                         if not status['active']:
                             consecutive_failures += 1
                             if not self._monitor_should_stop:  # 确保不在退出过程中
-                                print(f"⚠️  检测到热键失效 (第{consecutive_failures}次): {status}")
-                                print("尝试重启热键管理器...")
                                 self.restart_hotkey_manager()
                                 
                                 # 重启后短暂等待，然后重新检查
                                 time.sleep(2)
                                 new_status = self.hotkey_manager.get_status() if self.hotkey_manager else {'active': False}
                                 if new_status['active']:
-                                    print("✓ 热键管理器重启成功")
                                     consecutive_failures = 0  # 重置失败计数
-                                else:
-                                    print("❌ 热键管理器重启失败")
                         else:
                             # 热键正常，重置失败计数
                             if consecutive_failures > 0:
-                                print("✓ 热键状态已恢复正常")
                                 consecutive_failures = 0
                     else:
                         consecutive_failures += 1
-                        print(f"⚠️  热键管理器不存在 (第{consecutive_failures}次)")
                         
                 except Exception as e:
                     consecutive_failures += 1
                     if not self._monitor_should_stop:
-                        print(f"热键状态监控出错 (第{consecutive_failures}次): {e}")
+                        logging.error(f"热键状态监控出错: {e}")
                         
-            print("✓ 热键状态监控已停止")
+            pass  # 热键状态监控已停止
         
         # 启动监控线程
         self._monitor_thread = threading.Thread(target=monitor_hotkey_status, daemon=True)
         self._monitor_thread.start()
-        print("✓ 热键状态监控已启动")
+        pass  # 热键状态监控已启动
     
     def is_component_ready(self, component_name, check_method=None):
         """统一的组件状态检查方法
@@ -612,7 +599,7 @@ class Application(QObject):
             # 默认检查：组件存在且不为None
             return True
         except Exception as e:
-            print(f"检查组件 {component_name} 状态失败: {e}")
+            logging.error(f"检查组件 {component_name} 状态失败: {e}")
             return False
     
     def is_ready_for_recording(self):
@@ -645,25 +632,25 @@ class Application(QObject):
                     
                     # 等待线程结束
                     if not component.wait(timeout):
-                        print(f"⚠️ {component_name}未能及时结束，强制终止")
+                        logging.warning(f"{component_name}未能及时结束，强制终止")
                         component.terminate()
                         component.wait(100)  # 再等100ms
                         
                 setattr(self, component_name, None)
-                print(f"✓ {component_name}已清理")
+                pass  # 组件已清理
                 return True
             
             # 处理普通组件
             if hasattr(component, cleanup_method):
                 getattr(component, cleanup_method)()
-                print(f"✓ {component_name}已清理")
+                pass  # 组件已清理
                 return True
             else:
-                print(f"⚠️ {component_name}没有{cleanup_method}方法")
+                pass  # 组件没有清理方法
                 return False
                 
         except Exception as e:
-            print(f"❌ 清理{component_name}失败: {e}")
+            logging.error(f"清理{component_name}失败: {e}")
             return False
     
     def cleanup_resources(self):
@@ -672,7 +659,7 @@ class Application(QObject):
             # 恢复系统音量（如果有保存的音量）
             if hasattr(self, 'previous_volume') and self.previous_volume is not None:
                 self._set_system_volume(self.previous_volume)
-                print("✓ 系统音量已恢复")
+                pass  # 系统音量已恢复
             
             # 停止监控线程
             if hasattr(self, '_monitor_should_stop'):
@@ -712,25 +699,25 @@ class Application(QObject):
                         if tracker and hasattr(tracker, '_stop'):
                             tracker._stop()
                 except Exception as tracker_e:
-                    print(f"⚠️ 清理资源跟踪器失败: {tracker_e}")
+                    logging.error(f"清理资源跟踪器失败: {tracker_e}")
                     
             except Exception as e:
-                print(f"❌ 清理多进程资源失败: {e}")
+                logging.error(f"清理多进程资源失败: {e}")
             
-            print("✓ 资源清理完成")
+            pass  # 资源清理完成
         except Exception as e:
-            print(f"❌ 资源清理失败: {e}")
+            logging.error(f"资源清理失败: {e}")
         finally:
             # 确保关键资源被清理
             try:
                 if hasattr(self, 'app'):
                     self.app.quit()
             except Exception as e:
-                print(f"❌ 应用退出失败: {e}")
+                logging.error(f"应用退出失败: {e}")
     
     def _quick_cleanup(self):
         """快速清理关键资源，避免长时间等待导致卡死"""
-        print("开始快速清理资源...")
+        pass  # 开始快速清理资源
         try:
             # 0. 首先停止热键状态监控线程，避免在清理过程中重启热键管理器
             if hasattr(self, '_monitor_should_stop'):
@@ -744,7 +731,7 @@ class Application(QObject):
                 try:
                     self.recording_timer.stop()
                 except Exception as e:
-                    print(f"⚠️ 停止录音定时器失败: {e}")
+                    logging.error(f"停止录音定时器失败: {e}")
             
             # 3. 快速终止线程，不等待
             if hasattr(self, 'audio_capture_thread') and self.audio_capture_thread:
@@ -752,14 +739,14 @@ class Application(QObject):
                     if self.audio_capture_thread.isRunning():
                         self.audio_capture_thread.terminate()  # 直接终止，不等待
                 except Exception as e:
-                    print(f"⚠️ 终止音频捕获线程失败: {e}")
+                    logging.error(f"终止音频捕获线程失败: {e}")
             
             if hasattr(self, 'transcription_thread') and self.transcription_thread:
                 try:
                     if self.transcription_thread.isRunning():
                         self.transcription_thread.terminate()  # 直接终止，不等待
                 except Exception as e:
-                    print(f"⚠️ 终止转写线程失败: {e}")
+                    logging.error(f"终止转写线程失败: {e}")
             
             # 4. 快速清理音频资源
             if hasattr(self, 'audio_capture') and self.audio_capture:
@@ -769,14 +756,14 @@ class Application(QObject):
                         self.audio_capture.stream.stop_stream()
                         self.audio_capture.stream.close()
                 except Exception as e:
-                    print(f"⚠️ 关闭音频流失败: {e}")
+                    logging.error(f"关闭音频流失败: {e}")
             
             # 5. 恢复系统音量
             if hasattr(self, 'previous_volume') and self.previous_volume is not None:
                 try:
                     self._set_system_volume(self.previous_volume)
                 except Exception as e:
-                    print(f"⚠️ 恢复系统音量失败: {e}")
+                    logging.error(f"恢复系统音量失败: {e}")
             
             # 6. 清理热键管理器（快速版本）
             if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
@@ -784,26 +771,26 @@ class Application(QObject):
                     # 调用停止监听方法，但不等待清理完成
                     self.hotkey_manager.stop_listening()
                 except Exception as e:
-                    print(f"⚠️ 快速清理热键管理器失败: {e}")
+                    logging.error(f"快速清理热键管理器失败: {e}")
             
             # 7. 关闭主窗口
             if hasattr(self, 'main_window') and self.main_window:
                 try:
                     self.main_window.close()
                 except Exception as e:
-                    print(f"⚠️ 关闭主窗口失败: {e}")
+                    logging.error(f"关闭主窗口失败: {e}")
             
             # 8. 隐藏系统托盘图标
             if hasattr(self, 'tray_icon') and self.tray_icon:
                 try:
                     self.tray_icon.hide()
                 except Exception as e:
-                    print(f"⚠️ 隐藏系统托盘图标失败: {e}")
+                    logging.error(f"隐藏系统托盘图标失败: {e}")
             
         except Exception as e:
-            print(f"❌ 快速清理失败: {e}")
+            logging.error(f"快速清理失败: {e}")
             import traceback
-            print(traceback.format_exc())
+            logging.error(traceback.format_exc())
 
     # closeEvent方法已移除，因为Application类继承自QObject，不是QWidget
     # 窗口关闭事件应该在MainWindow中处理
@@ -828,9 +815,9 @@ class Application(QObject):
                     '-e', 'set volume output muted false'
                 ], check=True)
         except subprocess.CalledProcessError as e:
-            print(f"❌ 设置系统音量失败: {e}")
+            logging.error(f"设置系统音量失败: {e}")
         except Exception as e:
-            print(f"❌ 设置系统音量时发生错误: {e}")
+            logging.error(f"设置系统音量时发生错误: {e}")
 
     def _get_system_volume(self):
         """获取当前系统音量"""
@@ -852,10 +839,10 @@ class Application(QObject):
             volume = int(volume_str)
             return volume
         except subprocess.CalledProcessError as e:
-            print(f"❌ 获取系统音量失败: {e}")
+            logging.error(f"获取系统音量失败: {e}")
             return None
         except Exception as e:
-            print(f"❌ 获取系统音量时发生错误: {e}")
+            logging.error(f"获取系统音量时发生错误: {e}")
             return None
     
     def _restore_volume_async(self, volume):
@@ -863,7 +850,7 @@ class Application(QObject):
         try:
             self._set_system_volume(volume)
         except Exception as e:
-            print(f"⚠️ 异步恢复音量失败: {e}")
+            logging.error(f"异步恢复音量失败: {e}")
 
     @handle_common_exceptions(show_error=True)
     def start_recording(self):
@@ -910,15 +897,15 @@ class Application(QObject):
                         
                     except Exception as e:
                         error_msg = f"开始录音时出错: {str(e)}"
-                        print(error_msg)
+                        logging.error(error_msg)
                         self.update_ui_signal.emit(f"❌ {error_msg}", "")
                         
             except Exception as e:
                 import traceback
                 error_msg = f"start_recording线程安全异常: {str(e)}"
-                print(f"❌ {error_msg}")
-                print(f"当前线程: {threading.current_thread().name}")
-                print(f"详细堆栈: {traceback.format_exc()}")
+                logging.error(f"{error_msg}")
+                logging.error(f"当前线程: {threading.current_thread().name}")
+                logging.error(f"详细堆栈: {traceback.format_exc()}")
                 self.update_ui_signal.emit(f"❌ {error_msg}", "")
 
     def stop_recording(self):
@@ -969,10 +956,9 @@ class Application(QObject):
                     self.transcription_thread.transcription_done.connect(self.on_transcription_done)
                     self.transcription_thread.start()
                 else:
-                    print("❌ 未检测到声音")
                     self.update_ui_signal.emit("❌ 未检测到声音", "")
             except Exception as e:
-                print(f"❌ 录音失败: {e}")
+                logging.error(f"录音失败: {e}")
                 self.update_ui_signal.emit(f"❌ 录音失败: {e}", "")
     
     def _auto_stop_recording(self):
@@ -1010,7 +996,7 @@ class Application(QObject):
                     self.settings_window.close()
                     self.settings_window = None
                 except Exception as e:
-                    print(f"⚠️ 清理设置窗口失败: {e}")
+                    logging.error(f"清理设置窗口失败: {e}")
             
             if hasattr(self, 'audio_capture') and self.audio_capture:
                 self.audio_capture.clear_recording_data()
@@ -1022,7 +1008,7 @@ class Application(QObject):
             if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
                 self.hotkey_manager.stop_listening()
         except Exception as e:
-            print(f"❌ 清理资源失败: {e}")
+            logging.error(f"清理资源失败: {e}")
 
     @pyqtSlot()
     def show_window(self):
@@ -1077,19 +1063,17 @@ class Application(QObject):
 
     def quit_application(self):
         """退出应用程序"""
-        print("开始退出应用程序...")
         try:
             # 1. 首先停止热键状态监控线程，避免在退出过程中重启热键管理器
             if hasattr(self, '_monitor_should_stop'):
                 self._monitor_should_stop = True
-                print("✓ 热键状态监控已标记停止")
             
             # 2. 停止热键监听，避免在清理过程中触发新的操作
             if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
                 try:
                     self.hotkey_manager.stop_listening()
                 except Exception as e:
-                    print(f"⚠️ 停止热键监听失败: {e}")
+                    logging.error(f"停止热键监听失败: {e}")
             
             # 3. 快速清理资源，避免长时间等待
             self._quick_cleanup()
@@ -1099,7 +1083,7 @@ class Application(QObject):
                 self.app.quit()
                 
         except Exception as e:
-            print(f"❌ 退出应用程序时出错: {e}")
+            logging.error(f"退出应用程序时出错: {e}")
             # 强制退出
             import os
             os._exit(0)
@@ -1111,7 +1095,7 @@ class Application(QObject):
             self.main_window.raise_()
             self.main_window.activateWindow()
         except Exception as e:
-            print(f"恢复窗口级别时出错: {e}")
+            logging.error(f"恢复窗口级别时出错: {e}")
     
     def _show_window_internal(self):
         """在主线程中显示窗口"""
@@ -1154,7 +1138,7 @@ class Application(QObject):
                         self.main_window.activateWindow()
                     
                 except Exception as e:
-                    print(f"激活窗口时出错: {e}")
+                    logging.error(f"激活窗口时出错: {e}")
                     # 如果原生方法失败，使用 Qt 方法
                     self.main_window.show()
                     self.main_window.raise_()
@@ -1166,140 +1150,183 @@ class Application(QObject):
                 self.main_window.raise_()
                 self.main_window.activateWindow()
             
-            print("✓ 窗口已显示")
+            pass  # 窗口已显示
         except Exception as e:
-            print(f"❌ 显示窗口失败: {e}")
+            logging.error(f"显示窗口失败: {e}")
     
-    def _delayed_paste(self):
-        """延迟执行粘贴操作 - 确保完全替换剪贴板内容"""
-        if hasattr(self, '_pending_paste_text') and self._pending_paste_text:
-            # 调试模式：显示延迟粘贴信息
-            if hasattr(self.clipboard_manager, 'debug_mode') and self.clipboard_manager.debug_mode:
-                print(f"🔍 [调试] 开始延迟粘贴，文本: '{self._pending_paste_text[:30]}...'")
-            
-            # 执行粘贴操作，safe_copy_and_paste 会确保完全替换剪贴板内容
-            self._paste_and_reactivate(self._pending_paste_text)
-            self._pending_paste_text = None
+    # _delayed_paste 方法已移除，现在使用 lambda 函数直接处理延迟粘贴
     
     def _paste_and_reactivate(self, text):
         """执行粘贴操作 - 确保完全替换剪贴板内容"""
         try:
             # 检查剪贴板管理器是否已初始化
             if not self.clipboard_manager:
-                print("⚠️ 剪贴板管理器尚未就绪，无法执行粘贴操作")
                 return
             
-            # 清理HTML标签，确保复制纯文本
-            clean_text = clean_html_tags(text)
-            
-            # 调试模式：显示粘贴前信息
-            if hasattr(self.clipboard_manager, 'debug_mode') and self.clipboard_manager.debug_mode:
-                print(f"🔍 [调试] 执行粘贴操作，文本: '{clean_text[:30]}...'")
-            
             # 使用安全的复制粘贴方法，确保完全替换剪贴板内容
-            success = self.clipboard_manager.safe_copy_and_paste(clean_text)
+            success = self.clipboard_manager.safe_copy_and_paste(text)
             if not success:
-                print("❌ 安全粘贴操作失败")
+                logging.warning("安全粘贴操作失败")
             
         except Exception as e:
-            print(f"❌ 粘贴操作失败: {e}")
-            print(traceback.format_exc())
+            logging.error(f"粘贴操作失败: {e}")
+            logging.error(traceback.format_exc())
+    
+    def _paste_and_reactivate_with_feedback(self, text):
+        """执行粘贴操作并返回成功状态"""
+        try:
+            # 检查剪贴板管理器是否已初始化
+            if not self.clipboard_manager:
+                return False
+            
+            # 检查文本是否有效
+            if not text or not text.strip():
+                return False
+            
+            # 使用安全的复制粘贴方法，确保完全替换剪贴板内容
+            success = self.clipboard_manager.safe_copy_and_paste(text)
+            return success
+            
+        except Exception as e:
+            logging.error(f"粘贴操作异常: {e}")
+            logging.error(traceback.format_exc())
+            return False
     
     def on_transcription_done(self, text):
         """转写完成的回调 - 优化剪贴板替换逻辑"""
         if text and text.strip():
-            # 清理HTML标签用于剪贴板复制
-            clean_text = clean_html_tags(text)
-            
             # 调试模式：显示转录完成信息
-            if hasattr(self.clipboard_manager, 'debug_mode') and self.clipboard_manager.debug_mode:
-                print(f"🔍 [调试] 转录完成，文本长度: {len(clean_text)}")
+            # 调试信息已移除
             
             # 1. 更新UI并添加到历史记录（无论窗口是否可见）
             self.main_window.display_result(text)  # UI显示保留HTML格式
             
-            # 2. 存储待粘贴文本，但不立即复制到剪贴板
-            # 这样可以避免在延迟期间剪贴板内容被累积
-            self._pending_paste_text = clean_text  # 粘贴使用纯文本
-            
-            # 3. 使用可配置的延迟时间
+            # 2. 使用可配置的延迟时间，用lambda函数捕获当前文本
             delay = self.settings_manager.get_setting('paste.transcription_delay', 30)
-            QTimer.singleShot(delay, self._delayed_paste)
+            QTimer.singleShot(delay, lambda: self._paste_and_reactivate(text))
             
-            # 打印日志
-            print(f"✓ 转录完成: {clean_text[:50]}{'...' if len(clean_text) > 50 else ''}")
+            # 转录完成
     
     def on_history_item_clicked(self, text):
         """处理历史记录点击事件"""
-        # 清理HTML标签
-        clean_text = clean_html_tags(text)
-        
-        # 1. 先复制到剪贴板（如果剪贴板管理器已就绪）
-        if self.clipboard_manager:
-            self.clipboard_manager.copy_to_clipboard(clean_text)
-        # 2. 更新UI
-        self.update_ui_signal.emit("准备粘贴历史记录", clean_text)
-        # 3. 使用可配置的延迟时间
-        self._pending_paste_text = clean_text
-        delay = self.settings_manager.get_setting('paste.history_click_delay', 50)
-        QTimer.singleShot(delay, self._delayed_paste)
+        try:
+            # 检查文本是否有效
+            if not text or not text.strip():
+                # 只更新状态，不传递文本内容避免添加到历史记录
+                self.main_window.update_status("点击失败")
+                return
+            
+            # 1. 立即更新UI反馈（只更新状态，不传递文本）
+            self.main_window.update_status("正在处理历史记录点击...")
+            
+            # 2. 检查剪贴板管理器是否可用
+            if not self.clipboard_manager:
+                self.main_window.update_status("点击失败")
+                return
+            
+            # 3. 检查是否启用自动粘贴
+            auto_paste_enabled = self.settings_manager.get_setting('paste.auto_paste_enabled', True)
+            
+            if auto_paste_enabled:
+                # 使用极短延迟或立即执行粘贴（_paste_and_reactivate内部会处理复制）
+                delay = self.settings_manager.get_setting('paste.history_click_delay', 0)  # 默认无延迟
+                if delay <= 0:
+                    # 立即执行粘贴
+                    success = self._paste_and_reactivate_with_feedback(text)
+                    if success:
+                        self.main_window.update_status("历史记录已粘贴")
+                    else:
+                        self.main_window.update_status("粘贴失败")
+                else:
+                    # 使用lambda函数捕获当前文本，避免变量覆盖问题
+                    QTimer.singleShot(delay, lambda: self._paste_and_reactivate_with_feedback(text))
+            else:
+                # 如果不自动粘贴，只复制到剪贴板
+                success = self.clipboard_manager.copy_to_clipboard(text)
+                if success:
+                    self.main_window.update_status("历史记录已复制")
+                else:
+                    self.main_window.update_status("复制失败")
+            
+        except Exception as e:
+            logging.error(f"处理历史记录点击事件失败: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            self.main_window.update_status("点击处理出错")
 
     def update_ui(self, status, result):
         """更新界面显示"""
         self.main_window.update_status(status)
         if result and result.strip():
-            # 只有在不是历史记录点击的情况下才添加到历史记录
-            if status != "准备粘贴历史记录":
-                self.main_window.display_result(result)
+            # 只有在不是历史记录相关操作的情况下才添加到历史记录
+            history_related_statuses = [
+                "准备粘贴历史记录", 
+                "历史记录已复制", 
+                "正在处理点击...",
+                "正在处理历史记录点击...",
+                "历史记录已粘贴",
+                "粘贴失败",
+                "复制失败",
+                "点击失败",
+                "点击处理出错"
+            ]
+            if status not in history_related_statuses:
+                self.main_window.display_result(result, skip_history=False)
+            else:
+                # 对于历史记录相关操作，显示结果但不添加到历史记录
+                self.main_window.display_result(result, skip_history=True)
 
     def run(self):
         """运行应用程序"""
         try:
+            print("✓ 应用程序正在启动...")
+            logging.info("应用程序启动")
+            
             # 主窗口已在初始化时显示，这里不需要重复显示
             
             # 启动热键监听（如果热键管理器已初始化）
             if self.hotkey_manager:
                 try:
+                    print("✓ 启动热键监听...")
                     self.hotkey_manager.start_listening()
-                    print("✓ 热键监听已启动")
                     # 启动热键状态监控
                     self.start_hotkey_monitor()
-                    print("✓ 热键状态监控已启动")
+                    logging.info("热键监听已启动")
                 except Exception as e:
-                    print(f"❌ 启动热键监听失败: {e}")
-                    print(f"详细错误信息: {traceback.format_exc()}")
+                    logging.error(f"启动热键监听失败: {e}")
+                    logging.error(f"详细错误信息: {traceback.format_exc()}")
                     # 尝试重新初始化热键管理器
                     try:
-                        print("尝试重新初始化热键管理器...")
                         self.hotkey_manager = HotkeyManager(self.settings_manager)
                         self.hotkey_manager.set_press_callback(self.on_option_press)
                         self.hotkey_manager.set_release_callback(self.on_option_release)
                         self.hotkey_manager.start_listening()
                         # 启动热键状态监控
                         self.start_hotkey_monitor()
-                        print("✓ 热键管理器重新初始化成功")
                     except Exception as e2:
-                        print(f"❌ 重新初始化热键管理器失败: {e2}")
+                        logging.error(f"重新初始化热键管理器失败: {e2}")
                         self.hotkey_manager = None
             else:
-                print("⚠️  热键管理器未初始化，尝试重新创建...")
                 try:
+                    print("✓ 初始化热键管理器...")
                     self.hotkey_manager = HotkeyManager(self.settings_manager)
                     self.hotkey_manager.set_press_callback(self.on_option_press)
                     self.hotkey_manager.set_release_callback(self.on_option_release)
                     self.hotkey_manager.start_listening()
                     # 启动热键状态监控
                     self.start_hotkey_monitor()
-                    print("✓ 热键管理器重新创建成功")
+                    logging.info("热键管理器初始化完成")
                 except Exception as e:
-                    print(f"❌ 重新创建热键管理器失败: {e}")
-                    print(f"详细错误信息: {traceback.format_exc()}")
+                    logging.error(f"重新创建热键管理器失败: {e}")
+                    logging.error(f"详细错误信息: {traceback.format_exc()}")
             
+            print("✓ 进入主事件循环")
+            logging.info("进入Qt主事件循环")
             # 运行应用程序主循环
             return self.app.exec()
         except Exception as e:
-            print(f"❌ 运行应用程序时出错: {e}")
-            print(traceback.format_exc())
+            logging.error(f"运行应用程序时出错: {e}")
+            logging.error(traceback.format_exc())
             return 1
         finally:
             # 使用快速清理避免卡死
@@ -1396,9 +1423,9 @@ class Application(QObject):
             self.settings_window.activateWindow()
             
         except Exception as e:
-            print(f"❌ 显示设置窗口失败: {e}")
+            logging.error(f"显示设置窗口失败: {e}")
             import traceback
-            print(traceback.format_exc())
+            logging.error(traceback.format_exc())
             # 如果出错，确保清理窗口实例
             self.settings_window = None
     
@@ -1407,13 +1434,10 @@ class Application(QObject):
     def apply_settings(self):
         """应用设置"""
         try:
-            print("开始应用设置...")
-            
             # 应用热键设置（如果热键管理器已初始化）
             try:
                 if self.hotkey_manager:
                     current_hotkey = self.settings_manager.get_hotkey()
-                    print(f"应用热键设置: {current_hotkey}")
                     self.hotkey_manager.stop_listening()  # 先停止监听
                     # 停止现有的状态监控
                     if hasattr(self, '_monitor_should_stop'):
@@ -1423,9 +1447,7 @@ class Application(QObject):
                     self.hotkey_manager.start_listening()  # 重新开始监听
                     # 重新启动状态监控
                     self.start_hotkey_monitor()
-                    print("✓ 热键设置已应用")
                 else:
-                    print("⚠️  热键管理器不存在，尝试重新创建...")
                     try:
                         self.hotkey_manager = HotkeyManager(self.settings_manager)
                         self.hotkey_manager.set_press_callback(self.on_option_press)
@@ -1436,56 +1458,46 @@ class Application(QObject):
                         self.hotkey_manager.start_listening()
                         # 启动热键状态监控
                         self.start_hotkey_monitor()
-                        print("✓ 热键管理器重新创建并应用设置成功")
                     except Exception as e2:
-                        print(f"❌ 重新创建热键管理器失败: {e2}")
-                        print(f"详细错误信息: {traceback.format_exc()}")
+                        logging.error(f"重新创建热键管理器失败: {e2}")
+                        logging.error(f"详细错误信息: {traceback.format_exc()}")
             except Exception as e:
-                print(f"❌ 应用热键设置失败: {e}")
-                print(f"详细错误信息: {traceback.format_exc()}")
+                logging.error(f"应用热键设置失败: {e}")
+                logging.error(f"详细错误信息: {traceback.format_exc()}")
             
             # 应用音频设置
             try:
                 if hasattr(self, 'audio_capture') and self.audio_capture:
                     volume_threshold = self.settings_manager.get_setting('audio.volume_threshold')
-                    print(f"应用音量阈值: {volume_threshold}")
                     self.audio_capture.set_volume_threshold(volume_threshold)
-                    print("✓ 音频设置已应用")
             except Exception as e:
-                print(f"❌ 应用音频设置失败: {e}")
+                logging.error(f"应用音频设置失败: {e}")
             
             # 应用ASR设置（如果语音识别引擎已初始化）
             try:
                 if self.funasr_engine:
                     model_path = self.settings_manager.get_setting('asr.model_path')
                     if model_path and hasattr(self.funasr_engine, 'load_model'):
-                        print(f"加载ASR模型: {model_path}")
                         self.funasr_engine.load_model(model_path)
                     
                     punc_model_path = self.settings_manager.get_setting('asr.punc_model_path')
                     if punc_model_path and hasattr(self.funasr_engine, 'load_punctuation_model'):
-                        print(f"加载标点模型: {punc_model_path}")
                         self.funasr_engine.load_punctuation_model(punc_model_path)
                     
                     # 重新加载热词
                     if hasattr(self.funasr_engine, 'reload_hotwords'):
                         self.funasr_engine.reload_hotwords()
-                        print("✓ 热词已重新加载")
                     
                     # 确保state_manager有funasr_engine的引用
                     if hasattr(self, 'state_manager') and self.state_manager:
                         self.state_manager.funasr_engine = self.funasr_engine
-                        print("✓ FunASR引擎已重新关联到状态管理器")
-                    
-                    print("✓ ASR设置已应用")
             except Exception as e:
-                print(f"❌ 应用ASR设置失败: {e}")
+                logging.error(f"应用ASR设置失败: {e}")
             
-            print("✓ 所有设置已应用")
         except Exception as e:
             import traceback
-            print(f"❌ 应用设置失败: {e}")
-            print(traceback.format_exc())
+            logging.error(f"应用设置失败: {e}")
+            logging.error(traceback.format_exc())
 
 def global_exception_handler(exc_type, exc_value, exc_traceback):
     """全局异常处理器，防止应用程序闪退"""
@@ -1497,12 +1509,9 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
     # 记录异常到日志
     error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     logging.error(f"未捕获的异常: {error_msg}")
-    print(f"❌ 未捕获的异常: {exc_type.__name__}: {exc_value}")
-    print(f"详细信息: {error_msg}")
     
     # 对于UI相关的异常，尝试继续运行而不是崩溃
     if 'Qt' in str(exc_type) or 'PyQt' in str(exc_type):
-        print("⚠️  检测到Qt/PyQt异常，尝试继续运行...")
         return
     
     # 对于其他严重异常，调用默认处理器
@@ -1516,11 +1525,9 @@ if __name__ == "__main__":
     sys.excepthook = global_exception_handler
     
     try:
-        print("正在创建应用程实例...")
         app = Application()
-        print("应用程序实例已创建，正在运行...")
         sys.exit(app.run())
     except Exception as e:
-        print(f"运行应用程序时出错: {e}")
-        print(traceback.format_exc())
+        logging.error(f"运行应用程序时出错: {e}")
+        logging.error(traceback.format_exc())
         sys.exit(1)

@@ -29,13 +29,17 @@ class TextLabel(QLabel):
         self.setWordWrap(True)
         self.setTextFormat(Qt.TextFormat.RichText)  # 使用富文本格式支持HTML
         self.setOpenExternalLinks(False)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # 移除文本选择功能，避免阻止鼠标事件传播到父级列表项
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         
         # 设置渲染属性
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        
+        # 确保鼠标事件能传播到父组件
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
     
     def _setup_font(self):
         """设置字体和渲染策略"""
@@ -80,22 +84,7 @@ class TextLabel(QLabel):
         super().setText(text if text else "")
         self.updateGeometry()
     
-    def _clean_html_tags(self, text):
-        """清理HTML标签，保留纯文本内容"""
-        if not text:
-            return ""
-        
-        # 移除HTML标签
-        clean_text = re.sub(r'<[^>]+>', '', text)
-        
-        # 处理HTML实体
-        clean_text = clean_text.replace('&lt;', '<')
-        clean_text = clean_text.replace('&gt;', '>')
-        clean_text = clean_text.replace('&amp;', '&')
-        clean_text = clean_text.replace('&quot;', '"')
-        clean_text = clean_text.replace('&#39;', "'")
-        
-        return clean_text.strip()
+
     
     def sizeHint(self):
         """计算文本标签的建议大小"""
@@ -109,9 +98,9 @@ class TextLabel(QLabel):
             available_width = self._calculate_available_width()
             return self._calculate_text_size(font_metrics, text_content, available_width)
         except Exception as e:
-            print(f"❌ 计算文本大小失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"计算文本大小失败: {e}")
+            logging.debug(traceback.format_exc())
             # 返回一个安全的默认大小
             from PyQt6.QtCore import QSize
             return QSize(300, 30)

@@ -30,7 +30,8 @@ class AudioCapture:
             self.audio = pyaudio.PyAudio()
             self.device_index = self._get_default_mic_index()
         except Exception as e:
-            print(f"初始化音频系统失败: {e}")
+            import logging
+            logging.error(f"初始化音频系统失败: {e}")
             self.audio = None
             self.device_index = None
         
@@ -38,10 +39,10 @@ class AudioCapture:
         """获取默认麦克风索引"""
         try:
             default_device = self.audio.get_default_input_device_info()
-            pass  # 使用默认麦克风
             return default_device['index']
         except Exception as e:
-            print(f"获取默认麦克风失败: {e}")
+            import logging
+            logging.error(f"获取默认麦克风失败: {e}")
             return None
 
     def start_recording(self):
@@ -76,11 +77,11 @@ class AudioCapture:
                     frames_per_buffer=512,  # 减小缓冲区大小以降低延迟
                     stream_callback=None
                 )
-                pass  # 开始录音
                 return
             except Exception as e:
                 retry_count += 1
-                print(f"尝试 {retry_count}/{max_retries} 启动录音失败: {e}")
+                import logging
+                logging.error(f"尝试 {retry_count}/{max_retries} 启动录音失败: {e}")
                 self._cleanup()
                 time.sleep(0.5)  # 等待系统资源释放
         
@@ -97,7 +98,8 @@ class AudioCapture:
             if self.stream:
                 self.stream.close()
         except Exception as e:
-            print(f"停止录音失败: {e}")
+            import logging
+            logging.error(f"停止录音失败: {e}")
             # 强制重新初始化音频系统
             self._cleanup()
             self._initialize_audio()
@@ -141,7 +143,8 @@ class AudioCapture:
             return data
             
         except Exception as e:
-            print(f"❌ stop_recording处理音频数据时出错: {e}")
+            import logging
+            logging.error(f"stop_recording处理音频数据时出错: {e}")
             return np.array([], dtype=np.float32)
 
     def _cleanup(self):
@@ -154,7 +157,8 @@ class AudioCapture:
                 if hasattr(self.stream, 'close'):
                     self.stream.close()
             except Exception as e:
-                print(f"清理音频流失败: {e}")
+                import logging
+                logging.error(f"清理音频流失败: {e}")
             finally:
                 self.stream = None
             
@@ -171,7 +175,8 @@ class AudioCapture:
                     self.audio.terminate()
                     
             except Exception as e:
-                print(f"清理音频系统失败: {e}")
+                import logging
+                logging.error(f"清理音频系统失败: {e}")
             finally:
                 self.audio = None
                 # 给系统更多时间释放音频资源
@@ -193,14 +198,16 @@ class AudioCapture:
         try:
             self._cleanup()
         except Exception as e:
-            print(f"❌ 清理音频捕获资源失败: {e}")
+            import logging
+            logging.error(f"清理音频捕获资源失败: {e}")
     
     def __del__(self):
         """析构函数，确保资源被正确释放"""
         try:
             self._cleanup()
         except Exception as e:
-            print(f"析构时清理资源失败: {e}")
+            import logging
+            logging.error(f"析构时清理资源失败: {e}")
 
     def set_device(self, device_name=None):
         """设置音频输入设备"""
@@ -223,11 +230,11 @@ class AudioCapture:
                     self.device_index = i
                     return True
                     
-            pass  # 未找到设备
             return False
             
         except Exception as e:
-            print(f"❌ 设置音频设备失败: {e}")
+            import logging
+            logging.error(f"设置音频设备失败: {e}")
             return False
 
     def _is_valid_audio(self, data):
@@ -282,13 +289,15 @@ class AudioCapture:
                     if silence_count >= max_silence:
                         return None  # 返回None表示需要停止录音
                 except Exception as e:
-                    print(f"静音检测比较时出错: {e}")
+                    import logging
+                    logging.error(f"静音检测比较时出错: {e}")
                     # 如果比较失败，继续录音
                     pass
                     
                 return data
             except Exception as e:
-                print(f"读取音频时出错: {e}")
+                import logging
+                logging.error(f"读取音频时出错: {e}")
                 return b""
         return b""
 
@@ -322,7 +331,8 @@ class AudioCapture:
             if valid_count < min_valid:
                 return np.array([], dtype=np.float32)
         except Exception as e:
-            print(f"音频数据检查时出错: {e}")
+            import logging
+            logging.error(f"音频数据检查时出错: {e}")
             # 如果比较失败，返回原始数据
             pass
             
@@ -343,4 +353,3 @@ class AudioCapture:
     def set_volume_threshold(self, threshold):
         """设置音量阈值（0-1000的值会被转换为0-0.02的浮点数）"""
         self.volume_threshold = (threshold / 1000.0) * 0.02
-        pass  # 音量阈值已更新

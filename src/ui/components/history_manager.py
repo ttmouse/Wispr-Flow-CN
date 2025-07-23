@@ -56,7 +56,8 @@ class HistoryManager:
             
             return highlighted_text
         except Exception as e:
-            print(f"应用热词高亮失败: {e}")
+            import logging
+            logging.error(f"应用热词高亮失败: {e}")
             return text
     
     def _get_hotwords(self) -> List[str]:
@@ -82,17 +83,16 @@ class HistoryManager:
             save_data = []
             for item in limited_items:
                 if isinstance(item, dict):
-                    # 清理HTML标签，保存纯文本
-                    clean_text = clean_html_tags(item.get('text', ''))
+                    # 直接保存原始文本，不进行HTML清理
+                    text = item.get('text', '')
                     save_data.append({
-                        'text': clean_text,
+                        'text': text,
                         'timestamp': item.get('timestamp', datetime.now().isoformat())
                     })
                 elif isinstance(item, str):
                     # 兼容字符串格式
-                    clean_text = clean_html_tags(item)
                     save_data.append({
-                        'text': clean_text,
+                        'text': item,
                         'timestamp': datetime.now().isoformat()
                     })
             
@@ -105,7 +105,8 @@ class HistoryManager:
             return True
             
         except Exception as e:
-            print(f"❌ 保存历史记录失败: {e}")
+            import logging
+            logging.error(f"保存历史记录失败: {e}")
             return False
     
     def load_history(self) -> List[Dict[str, str]]:
@@ -118,7 +119,7 @@ class HistoryManager:
             with open(self.history_file, 'r', encoding='utf-8') as f:
                 history_data = json.load(f)
             
-            # print(f"✓ 历史记录文件存在，包含 {len(history_data)} 条记录")
+
             
             if not history_data:
                 pass
@@ -129,9 +130,8 @@ class HistoryManager:
             return processed_data
             
         except Exception as e:
-            print(f"❌ 加载历史记录失败: {e}")
-            import traceback
-            traceback.print_exc()
+            import logging
+            logging.error(f"加载历史记录失败: {e}", exc_info=True)
             return []
     
     def _process_loaded_data(self, history_data: List) -> List[Dict[str, str]]:
@@ -157,14 +157,14 @@ class HistoryManager:
         # 按时间戳排序（最新的在后）
         if processed_data and processed_data[0].get('timestamp'):
             processed_data.sort(key=lambda x: x.get('timestamp', ''), reverse=False)
-            # print("✓ 已按时间戳排序历史记录（正序）")
+
         
         return processed_data
     
     def reapply_hotword_highlight(self, history_items: List[str]) -> List[str]:
         """重新应用热词高亮到历史记录项"""
         try:
-            # print(f"开始重新应用热词高亮，历史记录项数量: {len(history_items)}")
+
             
             highlighted_items = []
             for i, text in enumerate(history_items):
@@ -173,15 +173,14 @@ class HistoryManager:
                 # 重新应用热词高亮
                 highlighted_text = self.apply_hotword_highlight(original_text)
                 highlighted_items.append(highlighted_text)
-                # print(f"✓ 已更新历史记录项 {i+1}: {original_text[:30]}...")
+
             
             pass
             return highlighted_items
             
         except Exception as e:
-            print(f"❌ 重新应用热词高亮失败: {e}")
-            import traceback
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"重新应用热词高亮失败: {e}", exc_info=True)
             return history_items
     
     def create_history_entry(self, text: str, timestamp: Optional[str] = None) -> Dict[str, str]:
@@ -217,9 +216,43 @@ class HistoryManager:
     def get_history_for_save(self) -> List[Dict[str, str]]:
         """获取用于保存的历史记录数据"""
         return [{
-            'text': clean_html_tags(item['text']),
+            'text': item['text'],
             'timestamp': item['timestamp']
         } for item in self.history_items]
+    
+    def get_original_text_by_index(self, index: int) -> str:
+        """根据索引获取原始文本（不含HTML标签）"""
+        try:
+            if not self.history_items:
+                return ""
+            
+            if index < 0:
+                return ""
+            
+            if index >= len(self.history_items):
+                return ""
+            
+            item = self.history_items[index]
+            if not isinstance(item, dict):
+                return ""
+            
+            text = item.get('text', '')
+            if not text:
+                # 尝试从highlighted_text字段获取并清理HTML
+                highlighted_text = item.get('highlighted_text', '')
+                if highlighted_text:
+                    from utils.text_utils import clean_html_tags
+                    cleaned_text = clean_html_tags(highlighted_text)
+                    if cleaned_text and cleaned_text.strip():
+                        return cleaned_text
+                return ""
+            
+            return text
+            
+        except Exception as e:
+            import logging
+            logging.error(f"获取索引 {index} 的原始文本时出错: {e}", exc_info=True)
+            return ""
     
     def clear_history(self):
         """清空历史记录"""

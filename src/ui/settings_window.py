@@ -61,24 +61,21 @@ class SettingsWindow(QDialog):
     def save_settings(self):
         """保存设置"""
         try:
-            # print("开始保存设置...")
-            
             # 收集所有设置到字典中
             settings_to_save = {}
             
             # 收集快捷键设置
             try:
                 hotkey_value = self.hotkey_combo.currentText()
-                # print(f"收集快捷键设置: {hotkey_value}")
                 settings_to_save['hotkey'] = hotkey_value
             except Exception as e:
-                print(f"收集快捷键设置失败: {e}")
+                import logging
+                logging.error(f"收集快捷键设置失败: {e}")
                 raise
             
             # 收集音频设备设置
             try:
                 device_text = self.input_device.currentText()
-                # print(f"当前选择的设备: {device_text}")
                 
                 # 如果是系统默认设备，提取实际的设备名称
                 if device_text.startswith("系统默认 ("):
@@ -86,25 +83,24 @@ class SettingsWindow(QDialog):
                 else:
                     device_name = device_text
                 
-                # print(f"收集音频设备设置: {device_name}")
                 settings_to_save['audio.input_device'] = device_name
             except Exception as e:
-                print(f"收集音频设备设置失败: {e}")
+                import logging
+                logging.error(f"收集音频设备设置失败: {e}")
                 # 不抛出异常，继续收集其他设置
             
             # 收集音频控制设置
             try:
                 # 将0-20的值转换为0-1000范围后保存
                 volume_value = int(self.volume_threshold.value() * 1000 / 20)
-                # print(f"收集音量阈值: {volume_value}")
                 settings_to_save['audio.volume_threshold'] = volume_value
                 
                 # 收集录音时长设置
                 duration_value = self.recording_duration.value()
-                # print(f"收集录音时长: {duration_value}")
                 settings_to_save['audio.max_recording_duration'] = duration_value
             except Exception as e:
-                print(f"收集音频控制设置失败: {e}")
+                import logging
+                logging.error(f"收集音频控制设置失败: {e}")
                 raise
             
             # 收集ASR设置
@@ -113,24 +109,18 @@ class SettingsWindow(QDialog):
                 punc_model_path = self.punc_model_path.text()
                 auto_punctuation = self.auto_punctuation.isChecked()
                 
-                # print(f"收集ASR模型路径: {asr_model_path}")
-                # print(f"收集标点模型路径: {punc_model_path}")
-                # print(f"收集自动标点设置: {auto_punctuation}")
-                
                 settings_to_save['asr.model_path'] = asr_model_path
                 settings_to_save['asr.punc_model_path'] = punc_model_path
                 settings_to_save['asr.auto_punctuation'] = auto_punctuation
             except Exception as e:
-                print(f"收集ASR设置失败: {e}")
+                import logging
+                logging.error(f"收集ASR设置失败: {e}")
                 raise
             
             # 收集热词设置
             try:
                 hotword_weight = self.hotword_weight.value()  # 保持为int类型
                 pronunciation_correction = self.enable_pronunciation_correction.isChecked()
-                
-                # print(f"收集热词权重: {hotword_weight} (类型: {type(hotword_weight)})")
-                # print(f"收集发音纠错设置: {pronunciation_correction}")
                 
                 # 确保热词权重是有效的整数值
                 if not isinstance(hotword_weight, int) or hotword_weight < 10 or hotword_weight > 100:
@@ -139,9 +129,10 @@ class SettingsWindow(QDialog):
                 settings_to_save['asr.hotword_weight'] = hotword_weight
                 settings_to_save['asr.enable_pronunciation_correction'] = pronunciation_correction
             except Exception as e:
-                print(f"收集热词设置失败: {e}")
+                import logging
+                logging.error(f"收集热词设置失败: {e}")
                 import traceback
-                print(f"热词设置错误详情: {traceback.format_exc()}")
+                logging.error(f"热词设置错误详情: {traceback.format_exc()}")
                 raise
             
             # 收集粘贴延迟设置
@@ -149,28 +140,23 @@ class SettingsWindow(QDialog):
                 transcription_delay = self.transcription_delay.value()
                 history_delay = self.history_delay.value()
                 
-                # print(f"收集转录延迟: {transcription_delay}ms")
-                # print(f"收集历史记录延迟: {history_delay}ms")
-                
                 settings_to_save['paste.transcription_delay'] = transcription_delay
                 settings_to_save['paste.history_click_delay'] = history_delay
             except Exception as e:
-                print(f"收集粘贴延迟设置失败: {e}")
+                import logging
+                logging.error(f"收集粘贴延迟设置失败: {e}")
                 raise
             
             # 收集快捷键延迟设置
             try:
                 recording_start_delay = self.recording_start_delay.value()
-                
-                # print(f"收集录制启动延迟: {recording_start_delay}ms")
-                
                 settings_to_save['hotkey_settings.recording_start_delay'] = recording_start_delay
             except Exception as e:
-                print(f"收集快捷键延迟设置失败: {e}")
+                import logging
+                logging.error(f"收集快捷键延迟设置失败: {e}")
                 raise
             
             # 批量保存所有设置
-            # print(f"批量保存设置: {settings_to_save}")
             if not self.settings_manager.set_multiple_settings(settings_to_save):
                 raise Exception("批量保存设置失败")
             
@@ -183,52 +169,55 @@ class SettingsWindow(QDialog):
                     device_name = device_text
                 
                 if self.audio_capture:
-                    # print("更新 AudioCapture 设备...")
                     success = self.audio_capture.set_device(device_name)
                     if not success:
-                        print("警告: 音频设备设置失败，但设置已保存")
+                        import logging
+                        logging.warning("音频设备设置失败，但设置已保存")
                 else:
-                    print("警告: audio_capture 实例不存在")
+                    import logging
+                    logging.warning("audio_capture 实例不存在")
             except Exception as e:
-                print(f"应用音频设备设置失败: {e}")
+                import logging
+                logging.error(f"应用音频设备设置失败: {e}")
                 # 不抛出异常，因为设置已经保存成功
             
             # 发出保存完成信号（使用线程安全的方式）
             try:
-                # print("发出设置保存信号...")
                 # 使用 QTimer.singleShot 确保信号在主线程中发射
                 from PyQt6.QtCore import QTimer
                 QTimer.singleShot(0, self._emit_settings_saved_signal)
-                # print("✓ 设置已保存")
             except Exception as e:
-                print(f"发出保存信号失败: {e}")
+                import logging
+                logging.error(f"发出保存信号失败: {e}")
                 # 不抛出异常，因为设置已经保存成功
             
             # 直接关闭设置窗口，不显示成功提示
             try:
-                # print("设置保存成功，关闭设置窗口...")
                 self.close()
             except Exception as e:
-                print(f"关闭窗口失败: {e}")
+                import logging
+                logging.error(f"关闭窗口失败: {e}")
                 # 不抛出异常
             
         except Exception as e:
             import traceback
+            import logging
             error_msg = f"保存设置失败: {e}\n{traceback.format_exc()}"
-            print(f"❌ {error_msg}")
+            logging.error(error_msg)
             
             # 显示错误对话框
             try:
                 QMessageBox.critical(self, "保存失败", f"保存设置时发生错误:\n\n{str(e)}\n\n请检查控制台输出获取详细信息。")
             except Exception as dialog_error:
-                print(f"显示错误对话框失败: {dialog_error}")
+                logging.error(f"显示错误对话框失败: {dialog_error}")
 
     def _emit_settings_saved_signal(self):
         """发出设置保存完成信号"""
         try:
             self.settings_saved.emit()
         except Exception as e:
-            print(f"发出设置保存信号失败: {e}")
+            import logging
+            logging.error(f"发出设置保存信号失败: {e}")
 
     def closeEvent(self, event):
         """窗口关闭事件"""
@@ -246,9 +235,9 @@ class SettingsWindow(QDialog):
             except:
                 pass
             
-            pass
         except Exception as e:
-            print(f"关闭设置窗口时出错: {e}")
+            import logging
+            logging.error(f"关闭设置窗口时出错: {e}")
         finally:
             event.accept()
 
@@ -258,7 +247,8 @@ class SettingsWindow(QDialog):
             try:
                 self.audio.terminate()
             except Exception as e:
-                print(f"清理音频资源失败: {e}")
+                import logging
+                logging.error(f"清理音频资源失败: {e}")
             finally:
                 self.audio = None
 
@@ -371,7 +361,12 @@ class SettingsWindow(QDialog):
         # 创建滑块
         self.volume_threshold = QSlider(Qt.Orientation.Horizontal)
         self.volume_threshold.setRange(0, 20)  # 0-20 对应 0-0.02
-        self.volume_threshold.setValue(int(self.settings_manager.get_setting('audio.volume_threshold') * 20 / 1000))
+        # 修复音量阈值初始化：正确的计算公式
+        current_threshold = self.settings_manager.get_setting('audio.volume_threshold', 150)
+        slider_value = int(current_threshold * 20 / 1000)
+        self.volume_threshold.setValue(slider_value)
+        # 更新显示标签
+        self.volume_value_label.setText(str(slider_value))
         self.volume_threshold.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.volume_threshold.setTickInterval(1)  # 每0.001一个刻度
         
@@ -748,7 +743,8 @@ class SettingsWindow(QDialog):
                 default_name = default_device['name']
                 devices.append(f"系统默认 ({default_name})")
             except Exception as e:
-                print(f"获取默认设备失败: {e}")
+                import logging
+                logging.error(f"获取默认设备失败: {e}")
                 default_name = None
                 devices.append("系统默认")
             
@@ -761,13 +757,14 @@ class SettingsWindow(QDialog):
                         name = device_info['name']
                         if default_name is None or name != default_name:  # 避免重复添加默认设备
                             devices.append(name)
-                            # print(f"发现输入设备: {name}")
                 except Exception as e:
-                    print(f"获取设备 {i} 信息失败: {e}")
+                    import logging
+                    logging.error(f"获取设备 {i} 信息失败: {e}")
                     continue
                     
         except Exception as e:
-            print(f"获取音频设备列表失败: {e}")
+            import logging
+            logging.error(f"获取音频设备列表失败: {e}")
             if not devices:  # 如果还没有添加任何设备
                 devices = ["系统默认"]
             
@@ -809,10 +806,9 @@ class SettingsWindow(QDialog):
             if not device_found:
                 self.input_device.setCurrentIndex(0)
             
-            pass
-            
         except Exception as e:
-            print(f"❌ 更新设备列表失败: {e}")
+            import logging
+            logging.error(f"更新设备列表失败: {e}")
             # 确保至少有一个选项
             if self.input_device.count() == 0:
                 self.input_device.addItem("系统默认")
@@ -827,7 +823,8 @@ class SettingsWindow(QDialog):
             else:
                 self.hotword_text_edit.setText("# 热词列表\n# 每行一个热词，以#开头的行为注释\n")
         except Exception as e:
-            print(f"❌ 加载热词失败: {e}")
+            import logging
+            logging.error(f"加载热词失败: {e}")
             QMessageBox.warning(self, "错误", f"加载热词失败: {e}")
     
     def _save_hotwords(self):
@@ -840,7 +837,6 @@ class SettingsWindow(QDialog):
             
             # 通知用户保存成功
             QMessageBox.information(self, "成功", "热词已保存成功！\n\n重新开始录音后生效。")
-            pass
             
             # 如果有状态管理器，重新加载热词
             if hasattr(self, 'parent') and self.parent and hasattr(self.parent, 'state_manager'):
@@ -848,5 +844,6 @@ class SettingsWindow(QDialog):
                     self.parent.state_manager.reload_hotwords()
                     
         except Exception as e:
-            print(f"❌ 保存热词失败: {e}")
+            import logging
+            logging.error(f"保存热词失败: {e}")
             QMessageBox.critical(self, "错误", f"保存热词失败: {e}")

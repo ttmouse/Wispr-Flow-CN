@@ -62,7 +62,8 @@ class SimpleStyleConfig:
                     file_config = json.load(f)
                     self._merge_config(file_config)
         except Exception as e:
-            print(f"加载样式配置文件失败: {e}")
+            import logging
+            logging.error(f"加载样式配置文件失败: {e}")
     
     def _merge_config(self, file_config):
         """合并配置"""

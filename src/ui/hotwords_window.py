@@ -165,7 +165,8 @@ class ModernTitleBar(QWidget):
                 self._is_dragging = True
                 self._drag_start_pos = event.pos()
         except Exception as e:
-            print(f"标题栏鼠标按下事件错误: {e}")
+            import logging
+            logging.error(f"标题栏鼠标按下事件错误: {e}")
 
     def mouseMoveEvent(self, event) -> None:
         """
@@ -175,7 +176,8 @@ class ModernTitleBar(QWidget):
             if self._is_dragging:
                 self.parent.move(self.parent.pos() + event.pos() - self._drag_start_pos)
         except Exception as e:
-            print(f"标题栏鼠标移动事件错误: {e}")
+            import logging
+            logging.error(f"标题栏鼠标移动事件错误: {e}")
 
     def mouseReleaseEvent(self, event) -> None:
         """
@@ -184,7 +186,8 @@ class ModernTitleBar(QWidget):
         try:
             self._is_dragging = False
         except Exception as e:
-            print(f"标题栏鼠标释放事件错误: {e}")
+            import logging
+            logging.error(f"标题栏鼠标释放事件错误: {e}")
 
 
 class ModernDialog(QDialog):

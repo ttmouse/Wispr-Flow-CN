@@ -3,8 +3,8 @@
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
-    "volume_threshold": 150,
-    "max_recording_duration": 10
+    "volume_threshold": 250,
+    "max_recording_duration": 20
   },
   "asr": {
     "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
@@ -23,13 +23,13 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-22T20:53:17.759435",
-      "accessibility": false,
+      "last_check": "2025-07-23T18:14:10.332371",
+      "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-22T20:50:08.545075",
+      "last_check": "2025-07-23T18:14:14.721752",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

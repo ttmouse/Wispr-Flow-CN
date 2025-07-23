@@ -27,8 +27,9 @@ class GlobalHotkeyManager(QObject):
                         # 发出热键触发信号
                         self.hotkey_triggered.emit()
                 except Exception as e:
-                    print(f"❌ 处理按键事件失败: {e}")
-                    print(traceback.format_exc())
+                    import logging
+                    logging.error(f"处理按键事件失败: {e}")
+                    logging.debug(traceback.format_exc())
             
             def on_release(key):
                 try:
@@ -38,8 +39,9 @@ class GlobalHotkeyManager(QObject):
                     elif hasattr(key, 'char') and key.char == '.':
                         self.pressed_keys.discard('.')
                 except Exception as e:
-                    print(f"❌ 处理按键释放事件失败: {e}")
-                    print(traceback.format_exc())
+                    import logging
+                    logging.error(f"处理按键释放事件失败: {e}")
+                    logging.debug(traceback.format_exc())
 
             # 启动监听器
             self.keyboard_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
@@ -47,8 +49,9 @@ class GlobalHotkeyManager(QObject):
             self.keyboard_listener.start()
             pass  # 全局快捷键已注册
         except Exception as e:
-            print(f"❌ 设置全局快捷键失败: {e}")
-            print(traceback.format_exc())
+            import logging
+            logging.error(f"设置全局快捷键失败: {e}")
+            logging.debug(traceback.format_exc())
 
     def cleanup(self):
         """清理资源"""

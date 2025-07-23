@@ -304,12 +304,15 @@ class SettingsManager:
 
     def update_model_paths(self, paths):
         """更新模型路径设置"""
-        success = True
+        settings_to_update = {}
         if 'asr_model_path' in paths:
-            success &= self.set_setting('asr.model_path', paths['asr_model_path'])
+            settings_to_update['asr.model_path'] = paths['asr_model_path']
         if 'punc_model_path' in paths:
-            success &= self.set_setting('asr.punc_model_path', paths['punc_model_path'])
-        return success
+            settings_to_update['asr.punc_model_path'] = paths['punc_model_path']
+        
+        if settings_to_update:
+            return self.set_multiple_settings(settings_to_update)
+        return True
 
     def is_cache_expired(self, cache_type: str) -> bool:
         """检查缓存是否过期
@@ -338,11 +341,12 @@ class SettingsManager:
         """更新权限缓存状态"""
         try:
             now = datetime.now().isoformat()
-            success = True
-            success &= self.set_setting('cache.permissions.last_check', now)
-            success &= self.set_setting('cache.permissions.accessibility', accessibility)
-            success &= self.set_setting('cache.permissions.microphone', microphone)
-            return success
+            settings_to_update = {
+                'cache.permissions.last_check': now,
+                'cache.permissions.accessibility': accessibility,
+                'cache.permissions.microphone': microphone
+            }
+            return self.set_multiple_settings(settings_to_update)
         except Exception as e:
             self.logger.error(f"更新权限缓存失败: {e}")
             return False
@@ -351,11 +355,12 @@ class SettingsManager:
         """更新模型缓存状态"""
         try:
             now = datetime.now().isoformat()
-            success = True
-            success &= self.set_setting('cache.models.last_check', now)
-            success &= self.set_setting('cache.models.asr_available', asr_available)
-            success &= self.set_setting('cache.models.punc_available', punc_available)
-            return success
+            settings_to_update = {
+                'cache.models.last_check': now,
+                'cache.models.asr_available': asr_available,
+                'cache.models.punc_available': punc_available
+            }
+            return self.set_multiple_settings(settings_to_update)
         except Exception as e:
             self.logger.error(f"更新模型缓存失败: {e}")
             return False

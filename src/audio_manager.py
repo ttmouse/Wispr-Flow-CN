@@ -128,10 +128,10 @@ class AudioManager(QObject):
             result = subprocess.run(['osascript', '-e', script], 
                                   capture_output=True, text=True)
             if result.returncode == 0 and "true" in result.stdout.lower():
-                print("✓ 已暂停正在播放的音频")
                 return True
         except Exception as e:
-            print(f"暂停音频失败: {e}")
+            import logging
+            logging.error(f"暂停音频失败: {e}")
         return False
         
     def _resume_all_audio(self):
@@ -205,10 +205,10 @@ class AudioManager(QObject):
         
         try:
             subprocess.run(['osascript', '-e', script], check=True)
-            print("✓ 已恢复音频播放")
             return True
         except Exception as e:
-            print(f"恢复音频失败: {e}")
+            import logging
+            logging.error(f"恢复音频失败: {e}")
         return False
         
     def mute_other_apps(self):
@@ -219,7 +219,8 @@ class AudioManager(QObject):
                 self.paused_apps.add("audio_paused")
             
         except Exception as e:
-            print(f"❌ 暂停其他应用失败: {e}")
+            import logging
+            logging.error(f"暂停其他应用失败: {e}")
             
     def resume_other_apps(self):
         """恢复其他应用的媒体播放"""
@@ -229,11 +230,13 @@ class AudioManager(QObject):
                 self.paused_apps.clear()
             
         except Exception as e:
-            print(f"❌ 恢复其他应用失败: {e}")
+            import logging
+            logging.error(f"恢复其他应用失败: {e}")
             
     def cleanup(self):
         """清理资源"""
         try:
             self.resume_other_apps()
         except Exception as e:
-            print(f"❌ 清理音频管理器失败: {e}") 
+            import logging
+            logging.error(f"清理音频管理器失败: {e}")

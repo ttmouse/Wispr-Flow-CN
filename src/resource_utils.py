@@ -37,7 +37,8 @@ def get_resource_path(relative_path):
         return relative_path  # 返回原始路径作为后备
         
     except Exception as e:
-        print(f"❌ 获取资源路径失败: {e}")
+        import logging
+        logging.error(f"获取资源路径失败: {e}")
         return relative_path
 
 def get_icon_path(icon_name):

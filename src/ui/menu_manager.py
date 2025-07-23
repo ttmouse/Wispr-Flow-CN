@@ -95,6 +95,7 @@ class MenuManager:
                 # 如果主应用没有quit_application方法，使用rumps默认退出
                 rumps.quit_application()
         except Exception as e:
-            print(f"❌ 退出应用时出错: {e}")
+            import logging
+            logging.error(f"退出应用时出错: {e}")
             # 强制退出
             rumps.quit_application()

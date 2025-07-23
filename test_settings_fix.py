@@ -1,65 +1,62 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-测试设置面板修复效果
-验证设置面板保存后能否正常再次打开
+测试设置保存修复效果
 """
 
 import sys
 import os
-import time
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import QTimer
+import logging
+from datetime import datetime
 
-# 添加src目录到Python路径
+# 添加src目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from settings_manager import SettingsManager
-from ui.settings_window import SettingsWindow
+# 配置简单的日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
-def test_settings_window_lifecycle():
-    """
-    测试设置窗口的生命周期：
-    1. 创建并显示设置窗口
-    2. 模拟保存设置
-    3. 关闭窗口
-    4. 再次尝试打开设置窗口
-    """
-    print("\n=== 设置窗口生命周期测试 ===")
+def test_settings_manager():
+    """测试设置管理器的批量保存功能"""
+    print("=== 测试设置管理器修复效果 ===")
     
-    # 初始化设置管理器
-    settings_manager = SettingsManager()
-    
-    # 第一次创建设置窗口
-    print("1. 创建第一个设置窗口...")
-    window1 = SettingsWindow(settings_manager=settings_manager)
-    print(f"   窗口1创建成功，可见性: {window1.isVisible()}")
-    
-    # 显示窗口
-    window1.show()
-    print(f"   窗口1显示后，可见性: {window1.isVisible()}")
-    
-    # 模拟保存操作（不实际保存，只是测试窗口状态）
-    print("2. 模拟保存操作...")
-    
-    # 关闭窗口
-    print("3. 关闭窗口...")
-    window1.close()
-    print(f"   窗口1关闭后，可见性: {window1.isVisible()}")
-    
-    # 等待一下确保窗口完全关闭
-    QApplication.processEvents()
-    time.sleep(0.1)
-    
-    # 第二次创建设置窗口（模拟用户再次打开）
-    print("4. 创建第二个设置窗口...")
-    window2 = SettingsWindow(settings_manager=settings_manager)
-    print(f"   窗口2创建成功，可见性: {window2.isVisible()}")
-    
-    # 显示第二个窗口
-    window2.show()
-    print(f"   窗口2显示后，可见性: {window2.isVisible()}")
-    
-    # 检查窗口是否正常工作
-    if window2.isVisible():
-        print("✓ 测试通
+    try:
+        from settings_manager import SettingsManager
+        
+        # 创建设置管理器实例
+        settings_manager = SettingsManager()
+        print("✓ 设置管理器初始化成功")
+        
+        # 测试批量模型路径更新（修复前会产生多个日志）
+        print("\n--- 测试模型路径批量更新 ---")
+        model_paths = {
+            'asr_model_path': '/test/asr/model/path',
+            'punc_model_path': '/test/punc/model/path'
+        }
+        
+        result = settings_manager.update_model_paths(model_paths)
+        print(f"模型路径更新结果: {result}")
+        
+        # 测试批量模型缓存更新（修复前会产生多个日志）
+        print("\n--- 测试模型缓存批量更新 ---")
+        result = settings_manager.update_models_cache(True, True)
+        print(f"模型缓存更新结果: {result}")
+        
+        # 测试批量权限缓存更新（修复前会产生多个日志）
+        print("\n--- 测试权限缓存批量更新 ---")
+        result = settings_manager.update_permissions_cache(True, True)
+        print(f"权限缓存更新结果: {result}")
+        
+        print("\n✓ 所有测试完成，检查上方日志输出")
+        print("修复效果：每个批量操作应该只产生一条'设置保存成功'日志")
+        
+    except Exception as e:
+        print(f"❌ 测试失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    test_settings_manager()

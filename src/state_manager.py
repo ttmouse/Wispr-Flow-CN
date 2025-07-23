@@ -43,7 +43,8 @@ class StateManager(QObject):
             self.stop_sound.setLoopCount(1)
             self.stop_sound.status()  # 预加载音效
         except Exception as e:
-            print(f"音效初始化失败: {e}")
+            import logging
+            logging.error(f"音效初始化失败: {e}")
     
     def start_recording(self):
         """开始录音"""
@@ -52,7 +53,8 @@ class StateManager(QObject):
             self.status_changed.emit(self.status)
             # 开始录音时不播放音效
         except Exception as e:
-            print(f"开始录音失败: {e}")
+            import logging
+            logging.error(f"开始录音失败: {e}")
     
     def stop_recording(self):
         """停止录音"""
@@ -63,7 +65,8 @@ class StateManager(QObject):
             # 播放停止音效 - 使用新实例避免状态冲突
             self._play_stop_sound()
         except Exception as e:
-            print(f"停止录音失败: {e}")
+            import logging
+            logging.error(f"停止录音失败: {e}")
     
     def _play_stop_sound(self):
         """播放停止音效 - 使用预初始化的音效实例"""
@@ -98,7 +101,8 @@ class StateManager(QObject):
                     pass  # 停止音效未就绪，无法播放
                 
         except Exception as e:
-            print(f"❌ 播放停止音效失败: {e}")
+            import logging
+            logging.error(f"播放停止音效失败: {e}")
     
     def update_status(self, status):
         """更新状态"""
@@ -138,4 +142,5 @@ class StateManager(QObject):
             
             pass  # StateManager资源已清理
         except Exception as e:
-            print(f"❌ StateManager资源清理失败: {e}")
+            import logging
+            logging.error(f"StateManager资源清理失败: {e}")

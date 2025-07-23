@@ -41,7 +41,8 @@ class AudioCaptureThread(QThread):
                             last_emit_time = current_time
                             
             except Exception as e:
-                print(f"❌ 音频捕获错误: {e}")
+                import logging
+                logging.error(f"音频捕获错误: {e}")
                 break
         
         # 最终清理和发送剩余数据
@@ -57,7 +58,8 @@ class AudioCaptureThread(QThread):
             if not self.is_recording:  # 如果是自动停止，发送信号
                 self.recording_stopped.emit()
         except Exception as e:
-            print(f"❌ 音频停止清理错误: {e}")
+            import logging
+            logging.error(f"音频停止清理错误: {e}")
             # 确保即使出错也发送停止信号
             try:
                 if not self.is_recording:
@@ -92,5 +94,6 @@ class TranscriptionThread(QThread):
                 text = str(result)
             self.transcription_done.emit(text)
         except Exception as e:
-            print(f"❌ 转写失败: {e}")
+            import logging
+            logging.error(f"转写失败: {e}")
             self.transcription_done.emit("转写失败，请重试")
