@@ -294,20 +294,47 @@ print("[ASR] Hammerspoon热键脚本已加载")
             except Exception as e:
                 self.logger.error(f"清理文件失败 {file_path}: {e}")
     
+    def _check_hammerspoon_process(self) -> bool:
+        """检查Hammerspoon进程是否正在运行"""
+        try:
+            # 使用pgrep检查Hammerspoon进程
+            result = subprocess.run(['pgrep', '-f', 'Hammerspoon'], 
+                                  capture_output=True, text=True, timeout=5)
+            return result.returncode == 0
+        except Exception as e:
+            self.logger.error(f"检查Hammerspoon进程失败: {e}")
+            return False
+    
     def get_status(self) -> Dict[str, Any]:
         """获取热键管理器状态"""
         try:
+            # 首先检查Hammerspoon进程是否运行
+            hammerspoon_running = self._check_hammerspoon_process()
+            
+            if not hammerspoon_running:
+                return {
+                    'active': False,
+                    'scheme': 'hammerspoon',
+                    'hotkey_type': self.hotkey_type,
+                    'error_count': self.error_count,
+                    'last_error': 'Hammerspoon进程未运行',
+                    'is_recording': False,
+                    'hammerspoon_running': False
+                }
+            
             # 读取状态文件
             if os.path.exists(self.status_file):
                 with open(self.status_file, 'r') as f:
                     status_data = json.load(f)
                     
-                # 检查状态是否过期（超过10秒认为过期）
+                # 检查状态是否过期（超过30秒认为过期）
                 current_time = time.time()
-                if current_time - status_data.get('timestamp', 0) > 10:
+                if current_time - status_data.get('timestamp', 0) > 30:
                     status_data['active'] = False
                     status_data['last_error'] = '状态过期'
                 
+                # 添加进程运行状态
+                status_data['hammerspoon_running'] = True
                 return status_data
             else:
                 return {
@@ -316,7 +343,8 @@ print("[ASR] Hammerspoon热键脚本已加载")
                     'hotkey_type': self.hotkey_type,
                     'error_count': self.error_count,
                     'last_error': '状态文件不存在',
-                    'is_recording': False
+                    'is_recording': False,
+                    'hammerspoon_running': True
                 }
                 
         except Exception as e:
@@ -327,7 +355,8 @@ print("[ASR] Hammerspoon热键脚本已加载")
                 'hotkey_type': self.hotkey_type,
                 'error_count': self.error_count + 1,
                 'last_error': f'获取状态失败: {e}',
-                'is_recording': False
+                'is_recording': False,
+                'hammerspoon_running': False
             }
     
     def update_hotkey(self, hotkey_type: str) -> bool:

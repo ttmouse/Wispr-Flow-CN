@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         # 设置应用图标
         # 导入资源工具
         import sys
+        import os
         sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         from resource_utils import get_icon_path
         
@@ -92,6 +93,18 @@ class MainWindow(QMainWindow):
         self.hotkey_status_timer = QTimer()
         self.hotkey_status_timer.timeout.connect(self.update_hotkey_status)
         self.hotkey_status_timer.start(2000)  # 每2秒检查一次
+        
+        # 初始化状态稳定器
+        try:
+            import sys
+            import os
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            from hotkey_status_stabilizer import create_status_stabilizer
+            self.status_stabilizer = create_status_stabilizer()
+        except Exception as e:
+            import logging
+            logging.error(f"初始化状态稳定器失败: {e}")
+            self.status_stabilizer = None
         
         # 标记初始化完成
         self._initialization_complete = True
@@ -729,49 +742,104 @@ class MainWindow(QMainWindow):
             return text
     
     def update_hotkey_status(self):
-        """更新热键状态显示"""
+        """更新热键状态显示（使用状态稳定器）"""
         try:
             if not hasattr(self, 'hotkey_status_label') or not self.app_instance:
                 return
             
             # 从应用程序实例获取热键管理器
             hotkey_manager = getattr(self.app_instance, 'hotkey_manager', None)
-            if not hotkey_manager:
-                # 热键管理器不存在
-                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
-                self.hotkey_status_label.setToolTip("热键状态：未初始化")
-                return
             
-            # 获取热键状态
-            status = hotkey_manager.get_status()
-            
-            if status['active']:
-                # 热键正常工作
-                if status['is_recording']:
-                    # 正在录音
-                    self.hotkey_status_label.setStyleSheet("color: #ff6b35; font-size: 10px; margin-left: 8px;")
-                    self.hotkey_status_label.setToolTip(f"热键状态：录音中 ({status['hotkey_type']})")
-                else:
-                    # 正常待机
-                    self.hotkey_status_label.setStyleSheet("color: #00cc66; font-size: 10px; margin-left: 8px;")
-                    self.hotkey_status_label.setToolTip(f"热键状态：正常 ({status['hotkey_type']})")
+            # 使用状态稳定器获取稳定的状态
+            if hasattr(self, 'status_stabilizer') and self.status_stabilizer:
+                status = self.status_stabilizer.get_stable_status(hotkey_manager)
             else:
-                # 热键失效
-                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
-                tooltip_details = []
-                if not status['listener_running']:
-                    tooltip_details.append("监听器未运行")
-                if status['hotkey_type'] == 'fn' and not status['fn_thread_running']:
-                    tooltip_details.append("Fn监听线程未运行")
-                
-                detail_text = ", ".join(tooltip_details) if tooltip_details else "未知错误"
-                self.hotkey_status_label.setToolTip(f"热键状态：失效 ({status['hotkey_type']}) - {detail_text}")
+                # 回退到原始状态检测
+                if not hotkey_manager:
+                    status = {
+                        'active': False,
+                        'scheme': 'unknown',
+                        'hotkey_type': 'unknown',
+                        'is_recording': False,
+                        'last_error': '热键管理器不存在'
+                    }
+                else:
+                    status = hotkey_manager.get_status()
+            
+            # 根据稳定状态更新UI
+            self._update_status_ui(status)
                 
         except Exception as e:
             # 状态检查出错
             if hasattr(self, 'hotkey_status_label'):
                 self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
                 self.hotkey_status_label.setToolTip(f"热键状态：检查出错 - {str(e)}")
+    
+    def _update_status_ui(self, status):
+        """根据状态更新UI显示"""
+        try:
+            if not hasattr(self, 'hotkey_status_label'):
+                return
+            
+            # 获取状态信息
+            is_active = status.get('active', False)
+            is_recording = status.get('is_recording', False)
+            hotkey_type = status.get('hotkey_type', 'unknown')
+            scheme = status.get('scheme', 'unknown')
+            stability = status.get('stability', '')
+            active_ratio = status.get('active_ratio', 0)
+            
+            # 构建工具提示
+            tooltip_parts = []
+            
+            if is_active:
+                if is_recording:
+                    # 正在录音
+                    self.hotkey_status_label.setStyleSheet("color: #ff6b35; font-size: 10px; margin-left: 8px;")
+                    tooltip_parts.append(f"热键状态：录音中 ({hotkey_type})")
+                else:
+                    # 正常待机
+                    self.hotkey_status_label.setStyleSheet("color: #00cc66; font-size: 10px; margin-left: 8px;")
+                    tooltip_parts.append(f"热键状态：正常 ({hotkey_type})")
+            else:
+                # 热键失效
+                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
+                
+                # 分析失效原因
+                if scheme == 'hammerspoon' and not status.get('hammerspoon_running', True):
+                    tooltip_parts.append("Hammerspoon进程未运行")
+                elif not status.get('listener_running', True):
+                    tooltip_parts.append("监听器未运行")
+                if hotkey_type == 'fn' and not status.get('fn_thread_running', True):
+                    tooltip_parts.append("Fn监听线程未运行")
+                if status.get('last_error'):
+                    tooltip_parts.append(f"错误: {status['last_error']}")
+                
+                if not tooltip_parts:
+                    tooltip_parts.append(f"热键状态：失效 ({hotkey_type})")
+                else:
+                    tooltip_parts.insert(0, f"热键状态：失效 ({hotkey_type})")
+            
+            # 添加稳定性信息（调试用）
+            if stability:
+                if stability == 'stable_active':
+                    tooltip_parts.append(f"稳定性：良好 ({active_ratio:.1%})")
+                elif stability == 'stable_inactive':
+                    tooltip_parts.append(f"稳定性：稳定失效 ({active_ratio:.1%})")
+                elif stability == 'unstable_using_last':
+                    tooltip_parts.append(f"稳定性：不稳定，使用上次状态 ({active_ratio:.1%})")
+                elif stability == 'unstable_no_history':
+                    tooltip_parts.append(f"稳定性：不稳定，无历史记录 ({active_ratio:.1%})")
+            
+            # 添加方案信息
+            tooltip_parts.append(f"方案: {scheme}")
+            
+            # 设置工具提示
+            self.hotkey_status_label.setToolTip("\n".join(tooltip_parts))
+            
+        except Exception as e:
+            import logging
+            logging.error(f"更新状态UI失败: {e}")
     
     def quit_application(self):
         """退出应用程序"""
