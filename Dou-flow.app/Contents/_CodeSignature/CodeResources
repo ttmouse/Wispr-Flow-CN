@@ -14,11 +14,11 @@
 		</data>
 		<key>Resources/resources/hotwords.txt</key>
 		<data>
-		4gTKv0uP/H1PqTF/O294aBu8ajE=
+		VhJDCWDT+pDuYhZIwoRDbXR+RhA=
 		</data>
 		<key>Resources/resources/icon.icns</key>
 		<data>
-		8zWyvkvwigIJwq9J6lNvPcV11K8=
+		t6o0AEqBdEdUxpDQkfwUxKKebpw=
 		</data>
 		<key>Resources/resources/mic-icon.png</key>
 		<data>
@@ -51,6 +51,86 @@
 		<key>Resources/resources/stop.wav</key>
 		<data>
 		QSgkzgxUo8upSwSqDtb8r3gouNE=
+		</data>
+		<key>Resources/src/.DS_Store</key>
+		<data>
+		T0/MtVYVhSEdt62zthtStWgCl5Y=
+		</data>
+		<key>Resources/src/audio_capture.py</key>
+		<data>
+		jhZs4ygCia9oMK2NmgKozfUrItI=
+		</data>
+		<key>Resources/src/audio_manager.py</key>
+		<data>
+		mc6sOGXntNvgHNFLTV7kAslrzSs=
+		</data>
+		<key>Resources/src/audio_threads.py</key>
+		<data>
+		swL23nZqX8mkq3B6AfHqy1O4cXw=
+		</data>
+		<key>Resources/src/clipboard_manager.py</key>
+		<data>
+		1hfmvZzzXzdop1R6+vy12xAm//Y=
+		</data>
+		<key>Resources/src/config.py</key>
+		<data>
+		JfGp9i8g8GMLYa7uHVcZnfvrvIc=
+		</data>
+		<key>Resources/src/context_manager.py</key>
+		<data>
+		vydM6dXTqAkEZKsALMf8gOdrBAk=
+		</data>
+		<key>Resources/src/funasr_engine.py</key>
+		<data>
+		bb8vdYWdzU3FVEBeI43C0g4YG7M=
+		</data>
+		<key>Resources/src/global_hotkey.py</key>
+		<data>
+		ystrxuGP73rf9zgFz8SZ/1/B5zU=
+		</data>
+		<key>Resources/src/hotkey_manager.py</key>
+		<data>
+		QL1sKhhHT+SroCgJVjcaJ80x3j0=
+		</data>
+		<key>Resources/src/main.py</key>
+		<data>
+		0KiIZVfwVGTIsXBQdjw5Saza7rI=
+		</data>
+		<key>Resources/src/settings_manager.py</key>
+		<data>
+		L+l2c2NuANofuDtVjJkIqBccBFk=
+		</data>
+		<key>Resources/src/state_manager.py</key>
+		<data>
+		pkq0OYAxRjuBx25/lctlf+EGSGU=
+		</data>
+		<key>Resources/src/ui/components/__init__.py</key>
+		<data>
+		vKyMZg9QGN33ERsPXX9pZWq/O50=
+		</data>
+		<key>Resources/src/ui/components/modern_button.py</key>
+		<data>
+		mLAL26PQQsIGH7zWjA7c6hy3cEk=
+		</data>
+		<key>Resources/src/ui/components/modern_list.py</key>
+		<data>
+		hviOpOCVwsI6XO8jbbLuxWVI0pA=
+		</data>
+		<key>Resources/src/ui/hotwords_window.py</key>
+		<data>
+		/wXRJOT0/UMhAflME/Z4FM5QSLk=
+		</data>
+		<key>Resources/src/ui/main_window.py</key>
+		<data>
+		4nzwdN7LawDJZv3TbunAMEsn5x0=
+		</data>
+		<key>Resources/src/ui/menu_manager.py</key>
+		<data>
+		q0c/OfP9QLF6oUNLP8+YyWt05Yw=
+		</data>
+		<key>Resources/src/ui/settings_window.py</key>
+		<data>
+		0nE3yjEx4YhI0Xw4z2vs7hGjJUE=
 		</data>
 	</dict>
 	<key>files2</key>
@@ -86,26 +166,36 @@
 			7iF7KQKozYL6zLjkGkDMOvkTEzKqq2Nv3Ts9zrvlBAI=
 			</data>
 		</dict>
+		<key>Resources/modelscope</key>
+		<dict>
+			<key>symlink</key>
+			<string>/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope</string>
+		</dict>
+		<key>Resources/requirements.txt</key>
+		<dict>
+			<key>symlink</key>
+			<string>/Users/douba/Downloads/GPT插件/ASR-FunASR/requirements.txt</string>
+		</dict>
 		<key>Resources/resources/hotwords.txt</key>
 		<dict>
 			<key>hash</key>
 			<data>
-			4gTKv0uP/H1PqTF/O294aBu8ajE=
+			VhJDCWDT+pDuYhZIwoRDbXR+RhA=
 			</data>
 			<key>hash2</key>
 			<data>
-			2y6pn0cwy4GzbXolekuGwH9BA1H3dPEUphkUhDc1nzM=
+			HicJj7VTN/3QUjUcqOXbx3zfPsg+oI9OlxBLr5/9QNY=
 			</data>
 		</dict>
 		<key>Resources/resources/icon.icns</key>
 		<dict>
 			<key>hash</key>
 			<data>
-			8zWyvkvwigIJwq9J6lNvPcV11K8=
+			t6o0AEqBdEdUxpDQkfwUxKKebpw=
 			</data>
 			<key>hash2</key>
 			<data>
-			7iF7KQKozYL6zLjkGkDMOvkTEzKqq2Nv3Ts9zrvlBAI=
+			Augp0iRWuMYMh8CGmGM6gK7jDYwZpsOqYjpwckcebgY=
 			</data>
 		</dict>
 		<key>Resources/resources/mic-icon.png</key>
@@ -174,6 +264,11 @@
 			KPiS5ea/Mpmsmp4N2aIQ0IHgmF5/xV54t6MkPLurUhw=
 			</data>
 		</dict>
+		<key>Resources/resources/resources</key>
+		<dict>
+			<key>symlink</key>
+			<string>/Users/douba/Downloads/GPT插件/ASR-FunASR/resources</string>
+		</dict>
 		<key>Resources/resources/start.wav</key>
 		<dict>
 			<key>hash</key>
@@ -194,6 +289,225 @@
 			<key>hash2</key>
 			<data>
 			Bw5mBELn4lV6A2rr+1cnS+Jzi6QKUQ+FGlAYjrNxiPg=
+			</data>
+		</dict>
+		<key>Resources/src/audio_capture.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			jhZs4ygCia9oMK2NmgKozfUrItI=
+			</data>
+			<key>hash2</key>
+			<data>
+			6sZZkDvvX0rpYWfDx1R7sJtlWYIaDP3r92wXgYhCPnI=
+			</data>
+		</dict>
+		<key>Resources/src/audio_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			mc6sOGXntNvgHNFLTV7kAslrzSs=
+			</data>
+			<key>hash2</key>
+			<data>
+			r7hUFfOGuOlHwR7fJexZtngqifK2J1Jahf1B367Y/so=
+			</data>
+		</dict>
+		<key>Resources/src/audio_threads.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			swL23nZqX8mkq3B6AfHqy1O4cXw=
+			</data>
+			<key>hash2</key>
+			<data>
+			NFZBQWprk1FOGzNIsWyVfdSQvgBpKuOIY/c8zm4s7Go=
+			</data>
+		</dict>
+		<key>Resources/src/clipboard_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			1hfmvZzzXzdop1R6+vy12xAm//Y=
+			</data>
+			<key>hash2</key>
+			<data>
+			cmGHtPAyEt1/o02GLe1aHY4A7LZXQNfrVzNcKPY4Byc=
+			</data>
+		</dict>
+		<key>Resources/src/config.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			JfGp9i8g8GMLYa7uHVcZnfvrvIc=
+			</data>
+			<key>hash2</key>
+			<data>
+			IXPQntnuuL0CHLUWuEkN14YeelzmUyrdnZOF7xFYzxE=
+			</data>
+		</dict>
+		<key>Resources/src/context_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			vydM6dXTqAkEZKsALMf8gOdrBAk=
+			</data>
+			<key>hash2</key>
+			<data>
+			erCAiCh0GSw1fuJ8P81SSjUlPbvzH843hHh6pJWc9UY=
+			</data>
+		</dict>
+		<key>Resources/src/funasr_engine.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			bb8vdYWdzU3FVEBeI43C0g4YG7M=
+			</data>
+			<key>hash2</key>
+			<data>
+			1W2H5My0BdDnPHdm1sGLGaIlK7UNXC1p5szzl5U3OEU=
+			</data>
+		</dict>
+		<key>Resources/src/global_hotkey.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			ystrxuGP73rf9zgFz8SZ/1/B5zU=
+			</data>
+			<key>hash2</key>
+			<data>
+			vnut0z5H0YhmuRldo77VbOn3AtI+6GqziVGeXW4etbE=
+			</data>
+		</dict>
+		<key>Resources/src/hotkey_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			QL1sKhhHT+SroCgJVjcaJ80x3j0=
+			</data>
+			<key>hash2</key>
+			<data>
+			gL5WqRmpPc3h2mFevu4zNRJMKThSg/eeW+JngOh4z3E=
+			</data>
+		</dict>
+		<key>Resources/src/main.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			0KiIZVfwVGTIsXBQdjw5Saza7rI=
+			</data>
+			<key>hash2</key>
+			<data>
+			+0Jb/blo0QaRRwUfwFUUAKdBoa6E7AtoIMObAd2eyXo=
+			</data>
+		</dict>
+		<key>Resources/src/modelscope</key>
+		<dict>
+			<key>symlink</key>
+			<string>/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope</string>
+		</dict>
+		<key>Resources/src/settings_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			L+l2c2NuANofuDtVjJkIqBccBFk=
+			</data>
+			<key>hash2</key>
+			<data>
+			QiwSZ92uhjvltn/pFohR1sMaKTd/20wJSW1Kae5YQtM=
+			</data>
+		</dict>
+		<key>Resources/src/src</key>
+		<dict>
+			<key>symlink</key>
+			<string>/Users/douba/Downloads/GPT插件/ASR-FunASR/src</string>
+		</dict>
+		<key>Resources/src/state_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			pkq0OYAxRjuBx25/lctlf+EGSGU=
+			</data>
+			<key>hash2</key>
+			<data>
+			285oQuNZGv6joeF9sMu/OvJeECzw8bkyFbt0J6t4j24=
+			</data>
+		</dict>
+		<key>Resources/src/ui/components/__init__.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			vKyMZg9QGN33ERsPXX9pZWq/O50=
+			</data>
+			<key>hash2</key>
+			<data>
+			964xOZtSJ1282ygVNIN1XFHYU8z4CwD/3EdePEEc7YY=
+			</data>
+		</dict>
+		<key>Resources/src/ui/components/modern_button.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			mLAL26PQQsIGH7zWjA7c6hy3cEk=
+			</data>
+			<key>hash2</key>
+			<data>
+			jXvoMpaGxmTs692pbeFTKjqeqt/mwsx01RnXL/ZmCec=
+			</data>
+		</dict>
+		<key>Resources/src/ui/components/modern_list.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			hviOpOCVwsI6XO8jbbLuxWVI0pA=
+			</data>
+			<key>hash2</key>
+			<data>
+			T3P1rcSHuCEN3tRsnjxWll1J5mMNzCLj11VFBCTQYw4=
+			</data>
+		</dict>
+		<key>Resources/src/ui/hotwords_window.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			/wXRJOT0/UMhAflME/Z4FM5QSLk=
+			</data>
+			<key>hash2</key>
+			<data>
+			GDtjQCK033D+oEPdUayBwDWa8P5fndFKgtEAY+8XDNc=
+			</data>
+		</dict>
+		<key>Resources/src/ui/main_window.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			4nzwdN7LawDJZv3TbunAMEsn5x0=
+			</data>
+			<key>hash2</key>
+			<data>
+			svgUhYYUtm5Xp/UTW7M46lUlWsqRIsOLfQVnQ/6C+bA=
+			</data>
+		</dict>
+		<key>Resources/src/ui/menu_manager.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			q0c/OfP9QLF6oUNLP8+YyWt05Yw=
+			</data>
+			<key>hash2</key>
+			<data>
+			6vl+Csb/82hJNz9aS/6vpxQAjv+kKFZi25B4NSAktqU=
+			</data>
+		</dict>
+		<key>Resources/src/ui/settings_window.py</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			0nE3yjEx4YhI0Xw4z2vs7hGjJUE=
+			</data>
+			<key>hash2</key>
+			<data>
+			ivxQHcwqCCG3yn2mLLkAWLGDCMw8njBueCjKlsU7MN0=
 			</data>
 		</dict>
 		<key>entitlements.plist</key>

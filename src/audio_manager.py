@@ -14,13 +14,10 @@ class AudioManager(QObject):
             self.moveToThread(parent.thread())
         
     def _pause_all_audio(self):
-        """暂停所有音频播放"""
+        """简化的音频暂停 - 只处理最常用的应用"""
         script = '''
         on run
             set didPause to false
-            
-            -- 获取系统音量
-            set originalVolume to output volume of (get volume settings)
             
             -- 暂停 Music
             try
@@ -42,81 +39,11 @@ class AudioManager(QObject):
                 end tell
             end try
             
-            -- 暂停 Chrome
-            try
-                tell application "Google Chrome"
-                    tell active tab of front window
-                        execute javascript "
-                            const audios = document.querySelectorAll('audio, video');
-                            let paused = false;
-                            audios.forEach(a => {
-                                if (!a.paused) {
-                                    a.pause();
-                                    paused = true;
-                                }
-                            });
-                            if (paused) { return 'true'; }
-                            return 'false';
-                        "
-                        if result is "true" then
-                            set didPause to true
-                        end if
-                    end tell
-                end tell
-            end try
-            
-            -- 暂停 Safari
-            try
-                tell application "Safari"
-                    tell current tab of front window
-                        do JavaScript "
-                            const audios = document.querySelectorAll('audio, video');
-                            let paused = false;
-                            audios.forEach(a => {
-                                if (!a.paused) {
-                                    a.pause();
-                                    paused = true;
-                                }
-                            });
-                            if (paused) { return 'true'; }
-                            return 'false';
-                        "
-                        if result is "true" then
-                            set didPause to true
-                        end if
-                    end tell
-                end tell
-            end try
-            
-            -- 暂停 QQ音乐
-            try
-                tell application "QQMusic"
-                    if player state is playing then
-                        pause
-                        set didPause to true
-                    end if
-                end tell
-            end try
-            
-            -- 暂停网易云音乐
-            try
-                tell application "NeteaseMusic"
-                    if player state is playing then
-                        pause
-                        set didPause to true
-                    end if
-                end tell
-            end try
-            
-            -- 暂停其他可能的音频源
+            -- 发送通用媒体暂停键
             try
                 tell application "System Events"
-                    set frontApp to name of first application process whose frontmost is true
-                    if frontApp is not in {"Music", "Spotify", "Google Chrome", "Safari", "QQMusic", "NeteaseMusic"} then
-                        -- 尝试发送通用的媒体按键
-                        key code 16 using {command down}  -- Command + P，通用的播放/暂停快捷键
-                        set didPause to true
-                    end if
+                    key code 16 using {command down}  -- Command + P
+                    set didPause to true
                 end tell
             end try
             
@@ -135,7 +62,7 @@ class AudioManager(QObject):
         return False
         
     def _resume_all_audio(self):
-        """恢复所有音频播放"""
+        """简化的音频恢复 - 只处理最常用的应用"""
         script = '''
         on run
             -- 恢复 Music
@@ -152,52 +79,10 @@ class AudioManager(QObject):
                 end tell
             end try
             
-            -- 恢复 Chrome
-            try
-                tell application "Google Chrome"
-                    tell active tab of front window
-                        execute javascript "
-                            const audios = document.querySelectorAll('audio, video');
-                            audios.forEach(a => a.play());
-                        "
-                    end tell
-                end tell
-            end try
-            
-            -- 恢复 Safari
-            try
-                tell application "Safari"
-                    tell current tab of front window
-                        do JavaScript "
-                            const audios = document.querySelectorAll('audio, video');
-                            audios.forEach(a => a.play());
-                        "
-                    end tell
-                end tell
-            end try
-            
-            -- 恢复 QQ音乐
-            try
-                tell application "QQMusic"
-                    play
-                end tell
-            end try
-            
-            -- 恢复网易云音乐
-            try
-                tell application "NeteaseMusic"
-                    play
-                end tell
-            end try
-            
-            -- 恢复其他可能的音频源
+            -- 发送通用媒体播放键
             try
                 tell application "System Events"
-                    set frontApp to name of first application process whose frontmost is true
-                    if frontApp is not in {"Music", "Spotify", "Google Chrome", "Safari", "QQMusic", "NeteaseMusic"} then
-                        -- 尝试发送通用的媒体按键
-                        key code 16 using {command down}  -- Command + P，通用的播放/暂停快捷键
-                    end if
+                    key code 16 using {command down}  -- Command + P
                 end tell
             end try
         end run

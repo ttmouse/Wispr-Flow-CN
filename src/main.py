@@ -265,23 +265,18 @@ class Application(QObject):
             logging.error(f"设置Dock菜单失败: {e}")
     
     def eventFilter(self, obj, event):
-        """事件过滤器，处理应用程序级别的事件"""
+        """优化的事件过滤器，减少处理时间"""
         try:
-            # 只处理应用程序对象的事件
-            if obj == self.app:
-                # 处理 Dock 图标点击事件
-                if event.type() == 121:  # QEvent.Type.ApplicationActivate
-                    # 确保在主线程中执行窗口显示
-                    if QThread.currentThread() == QApplication.instance().thread():
-                        self._show_window_internal()
-                    else:
-                        self.show_window_signal.emit()
-                    return False  # 继续传递事件
+            # 快速检查：只处理应用程序对象的特定事件
+            if obj == self.app and event.type() == 121:  # QEvent.Type.ApplicationActivate
+                # 使用信号异步处理，避免阻塞事件循环
+                self.show_window_signal.emit()
+                return False  # 继续传递事件
             
-            # 对于其他事件，继续正常处理
+            # 对于其他事件，直接返回，减少处理时间
             return False
-        except Exception as e:
-            logging.error(f"事件过滤器处理失败: {e}")
+        except Exception:
+            # 简化异常处理，避免日志记录阻塞
             return False
     
     def _start_async_loading(self):

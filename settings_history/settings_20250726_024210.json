@@ -1,6 +1,6 @@
 {
   "hotkey": "fn",
-  "hotkey_scheme": "hammerspoon",
+  "hotkey_scheme": "python",
   "high_frequency_words": [],
   "audio": {
     "input_device": null,
@@ -24,13 +24,13 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-24T03:29:42.034141",
+      "last_check": "2025-07-26T02:23:39.253758",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-24T03:29:48.405033",
+      "last_check": "2025-07-26T02:23:42.595126",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

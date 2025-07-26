@@ -3,6 +3,7 @@ import time
 import logging
 import Quartz
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from .hotkey_manager_base import HotkeyManagerBase
 
 class PythonHotkeyManager(HotkeyManagerBase):
@@ -21,6 +22,9 @@ class PythonHotkeyManager(HotkeyManagerBase):
         # 简化的状态检查变量
         self.last_state_check = 0       # 上次状态检查时间
         self.delayed_threads = []       # 延迟线程池（减少使用）
+        
+        # 线程池用于优化性能
+        self.thread_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="HotkeyManager")
         
         # 简化的延迟检测相关变量
         self.hotkey_press_time = 0      # 热键按下的时间
@@ -47,18 +51,20 @@ class PythonHotkeyManager(HotkeyManagerBase):
         self.release_callback = callback
 
     def _schedule_delayed_check(self, key_str):
-        """简化的延迟检查方法"""
-        # 直接移除按键，减少线程使用
+        """使用线程池的延迟检查方法"""
         def delayed_check():
             time.sleep(0.05)  # 减少等待时间到50ms
             with self._state_lock:
                 self.other_keys_pressed.discard(key_str)
         
-        # 只在必要时创建线程，限制数量
-        if len([t for t in self.delayed_threads if t.is_alive()]) < 3:
-            thread = threading.Thread(target=delayed_check, daemon=True)
-            thread.start()
-            self.delayed_threads.append(thread)
+        # 使用线程池提交任务，避免频繁创建线程
+        try:
+            self.thread_pool.submit(delayed_check)
+        except Exception as e:
+            self.logger.error(f"提交延迟检查任务失败: {e}")
+            # 降级处理：直接移除按键
+            with self._state_lock:
+                self.other_keys_pressed.discard(key_str)
     
     def reset_state(self):
         """重置所有状态"""
@@ -109,16 +115,17 @@ class PythonHotkeyManager(HotkeyManagerBase):
         return False
     
     def _start_delayed_hotkey_check(self):
-        """启动延迟检测线程"""
+        """使用线程池启动延迟检测"""
         with self._state_lock:
             if self.hotkey_press_time == 0:
                 self.hotkey_press_time = time.time()
-                # 启动一个线程来持续检查
-                import threading
-                thread = threading.Thread(target=self._delayed_check_worker, daemon=True)
-                thread.start()
-                # 将线程添加到管理列表中
-                self.delayed_threads.append(thread)
+                # 使用线程池提交延迟检测任务
+                try:
+                    self.thread_pool.submit(self._delayed_check_worker)
+                except Exception as e:
+                    self.logger.error(f"提交延迟检测任务失败: {e}")
+                    # 重置状态
+                    self.hotkey_press_time = 0
     
     def _delayed_check_worker(self):
         """简化的延迟检测工作线程 - 优化锁持有时间"""
@@ -289,8 +296,8 @@ class PythonHotkeyManager(HotkeyManagerBase):
                         # 重置错误计数
                         error_count = 0
                         
-                        # 固定休眠时间，减少CPU使用
-                        time.sleep(0.02)  # 50Hz检查频率
+                        # 降低检查频率，减少系统调用和CPU使用
+                        time.sleep(0.1)  # 10Hz检查频率，从50Hz降低
                     else:
                         # 非fn模式时降低检查频率
                         time.sleep(0.1)
@@ -457,7 +464,15 @@ class PythonHotkeyManager(HotkeyManagerBase):
             # 停止监听
             self.stop_listening()
             
-            # 等待并清理所有延迟线程
+            # 关闭线程池
+            if hasattr(self, 'thread_pool') and self.thread_pool:
+                try:
+                    self.thread_pool.shutdown(wait=True, timeout=2.0)
+                    self.logger.info("线程池已关闭")
+                except Exception as e:
+                    self.logger.warning(f"关闭线程池时出现异常: {e}")
+            
+            # 等待并清理所有延迟线程（保留作为备用）
             active_threads = [t for t in self.delayed_threads if t.is_alive()]
             
             for i, thread in enumerate(active_threads):
