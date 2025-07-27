@@ -12,7 +12,7 @@ pip install pillow
 # 跳过图标处理（图标已存在）
 echo "跳过图标处理，使用现有图标文件"
 
-# 创建应用
+# 创建应用,根目录下的run_local.command
 bash run_local.command
 
 echo "✓ 应用已创建在项目根目录：Dou-flow.app"

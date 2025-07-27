@@ -79,30 +79,73 @@ cd "$DIR/../../../"
 # 设置错误处理
 set -e
 
-# 尝试多种方式激活 conda 环境
-if [ -f "$HOME/miniconda3/bin/activate" ]; then
-    source "$HOME/miniconda3/bin/activate" funasr_env
-elif [ -f "/opt/miniconda3/bin/activate" ]; then
-    source "/opt/miniconda3/bin/activate" funasr_env
-elif [ -f "$HOME/anaconda3/bin/activate" ]; then
-    source "$HOME/anaconda3/bin/activate" funasr_env
-elif command -v conda >/dev/null 2>&1; then
-    # 如果conda在PATH中，尝试直接激活
-    eval "$(conda shell.bash hook)"
-    conda activate funasr_env
-else
-    echo "错误: 无法找到conda环境" >&2
+# 显示用户友好的错误信息
+show_error() {
+    osascript -e "display dialog \"$1\" buttons {\"确定\"} default button \"确定\" with icon stop with title \"Dou-flow 启动错误\""
     exit 1
-fi
+}
 
-# 检查Python环境
-if ! command -v python >/dev/null 2>&1; then
-    echo "错误: 无法找到Python" >&2
-    exit 1
-fi
+show_info() {
+    osascript -e "display dialog \"$1\" buttons {\"确定\"} default button \"确定\" with icon note with title \"Dou-flow\""
+}
 
-# 运行程序，并捕获错误
-python src/main.py 2>&1 | tee app_error.log
+# 检查并安装conda环境
+check_and_install_conda() {
+    # 检查conda是否安装
+    if ! command -v conda >/dev/null 2>&1; then
+        show_error "未检测到conda环境。请先安装Miniconda：
+
+1. 访问 https://docs.conda.io/en/latest/miniconda.html
+2. 下载适合您系统的版本
+3. 安装后重新运行此应用"
+        return 1
+    fi
+
+    # 检查funasr_env环境是否存在
+    if ! conda env list | grep -q "funasr_env"; then
+        show_info "首次运行需要安装依赖环境，这可能需要几分钟时间..."
+
+        # 创建环境
+        conda create -n funasr_env python=3.10 -y || show_error "创建conda环境失败"
+
+        # 激活环境并安装依赖
+        eval "$(conda shell.bash hook)"
+        conda activate funasr_env
+        pip install -r requirements.txt || show_error "安装依赖失败"
+
+        show_info "环境安装完成！"
+    fi
+}
+
+# 主要逻辑
+main() {
+    # 检查并安装环境
+    check_and_install_conda
+
+    # 激活环境
+    if [ -f "$HOME/miniconda3/bin/activate" ]; then
+        source "$HOME/miniconda3/bin/activate" funasr_env
+    elif [ -f "/opt/miniconda3/bin/activate" ]; then
+        source "/opt/miniconda3/bin/activate" funasr_env
+    elif [ -f "$HOME/anaconda3/bin/activate" ]; then
+        source "$HOME/anaconda3/bin/activate" funasr_env
+    elif command -v conda >/dev/null 2>&1; then
+        eval "$(conda shell.bash hook)"
+        conda activate funasr_env
+    else
+        show_error "无法激活conda环境"
+    fi
+
+    # 检查Python环境
+    if ! command -v python >/dev/null 2>&1; then
+        show_error "Python环境异常"
+    fi
+
+    # 运行程序
+    python src/main.py 2>&1 | tee app_error.log
+}
+
+main "$@"
 EOL
 
 # 设置执行权限

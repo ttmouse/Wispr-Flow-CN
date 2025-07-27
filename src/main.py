@@ -1,6 +1,12 @@
 import sys
 import traceback
 import os
+
+# 添加项目根目录到Python路径，解决导入问题
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 from functools import wraps
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QDialog
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
@@ -55,8 +61,27 @@ def setup_logging():
     logging.info("应用程序日志系统启动成功")
 
 # 应用信息
-APP_NAME = "Dou-flow"  # 统一应用名称3
+APP_NAME = "Dou-flow"  # 统一应用名称
 APP_AUTHOR = "ttmouse"
+
+# 环境检查和提示
+def check_environment():
+    """检查当前Python环境并给出提示"""
+    import sys
+    python_path = sys.executable
+
+    # 检查是否在正确的conda环境中
+    if 'funasr_env' in python_path:
+        print("✅ 当前使用conda funasr_env环境 (推荐)")
+        return True
+    elif 'venv' in python_path:
+        print("⚠️  当前使用项目venv环境")
+        print("💡 建议使用: conda activate funasr_env && python src/main.py")
+        return False
+    else:
+        print(f"❌ 当前环境: {python_path}")
+        print("💡 建议使用: conda activate funasr_env && python src/main.py")
+        return False
 # 设置环境变量以隐藏系统日志
 os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false;qt.core.qobject.timer=false'
 os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
@@ -218,7 +243,11 @@ class Application(QObject):
             self.show_window_signal.connect(self._show_window_internal)
             
             # 创建并显示启动加载界面
-            from src.app_loader import LoadingSplash, AppLoader
+            try:
+                from src.app_loader import LoadingSplash, AppLoader
+            except ImportError:
+                # 如果在src目录下运行，使用相对导入
+                from app_loader import LoadingSplash, AppLoader
             self.splash = LoadingSplash()
             self.splash.show()
             
@@ -489,7 +518,10 @@ class Application(QObject):
         
         # 重新创建热键管理器
         try:
-            from src.hotkey_manager_factory import HotkeyManagerFactory
+            try:
+                from src.hotkey_manager_factory import HotkeyManagerFactory
+            except ImportError:
+                from hotkey_manager_factory import HotkeyManagerFactory
             
             # 获取热键方案设置
             scheme = self.settings_manager.get_hotkey_scheme()
@@ -1269,7 +1301,10 @@ class Application(QObject):
             else:
                 try:
                     print("✓ 初始化热键管理器...")
-                    from src.hotkey_manager_factory import HotkeyManagerFactory
+                    try:
+                        from src.hotkey_manager_factory import HotkeyManagerFactory
+                    except ImportError:
+                        from hotkey_manager_factory import HotkeyManagerFactory
                     scheme = self.settings_manager.get_hotkey_scheme()
                     self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(scheme, self.settings_manager)
                     if self.hotkey_manager:
@@ -1428,7 +1463,10 @@ class Application(QObject):
                     
                     # 创建新的热键管理器
                     try:
-                        from src.hotkey_manager_factory import HotkeyManagerFactory
+                        try:
+                            from src.hotkey_manager_factory import HotkeyManagerFactory
+                        except ImportError:
+                            from hotkey_manager_factory import HotkeyManagerFactory
                         self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(current_scheme, self.settings_manager)
                         if self.hotkey_manager:
                             self.hotkey_manager.set_press_callback(self.on_option_press)
@@ -1509,7 +1547,10 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统
     logging.info("应用程序启动")
-    
+
+    # 检查环境
+    check_environment()
+
     # 设置全局异常处理器
     sys.excepthook = global_exception_handler
     

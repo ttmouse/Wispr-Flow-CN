@@ -183,7 +183,7 @@ class FunASREngine:
                     mode='offline',
                     decode_method='greedy_search',  # 改回greedy_search
                     disable_progress_bar=True,
-                    hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None,  # 热词权重
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None,
                     cache_size=2000,           # 恢复原来的缓存大小
                     beam_size=5                # 恢复原来的beam size
                 )
@@ -191,7 +191,7 @@ class FunASREngine:
                 # 热词处理
                 if self.hotwords:
                     import logging
-                    logging.debug(f"单块处理使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
+                    logging.debug(f"单块处理使用热词: {len(self.hotwords)} 个热词，权重: 50.0")
             
             if isinstance(result, list) and len(result) > 0:
                 text = result[0].get('text', '')
@@ -235,20 +235,14 @@ class FunASREngine:
                     cache_size=1000,
                     hotword_score=2.0,
                     min_sentence_length=2,
-                    hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None  # 热词权重
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None
                 )
-                
-                # 热词处理
-                if self.hotwords:
-                    import logging
-                    logging.debug(f"标点模型使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
-            
+
             if isinstance(result, list) and len(result) > 0:
                 return result[0].get('text', text)
             return text
         except Exception as e:
-            import logging
-            logging.error(f"标点处理失败: {e}")
+            print(f"❌ 标点处理失败: {e}")
             return text
 
     def transcribe(self, audio_data):
@@ -270,13 +264,13 @@ class FunASREngine:
                     mode='offline',      # 使用离线模式以提高准确率
                     decode_method='greedy_search',  # 使用贪婪搜索解码
                     disable_progress_bar=True,  # 禁用进度条
-                    hotwords=[(word, self._get_hotword_weight()) for word in self.hotwords] if self.hotwords else None  # 热词权重
+                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None
                 )
                 
                 # 热词处理
                 if self.hotwords:
                     import logging
-                    logging.debug(f"主转写使用热词: {len(self.hotwords)} 个热词，权重: {self._get_hotword_weight()}")
+                    logging.debug(f"主转写使用热词: {len(self.hotwords)} 个热词，权重: 50.0")
             
             if isinstance(result, list) and len(result) > 0:
                 text = result[0].get('text', '')
@@ -371,11 +365,7 @@ class FunASREngine:
             logging.error(f"重新加载热词失败: {e}")
             self.hotwords = []
     
-    def _get_hotword_weight(self):
-        """获取热词权重"""
-        if self.settings_manager:
-            return self.settings_manager.get_hotword_weight()
-        return 80.0  # 默认权重
+
     
     def _is_pronunciation_correction_enabled(self):
         """检查是否启用发音纠错"""
