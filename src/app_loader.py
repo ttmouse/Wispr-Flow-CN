@@ -1,9 +1,9 @@
 import threading
 import time
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QMetaObject, Q_ARG, pyqtSlot
 from PyQt6.QtWidgets import QSplashScreen, QLabel, QProgressBar, QVBoxLayout, QWidget
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtGui import QPixmap, QFont, QColor
 import os
 
 class AppLoader(QObject):
@@ -100,7 +100,13 @@ class AppLoader(QObject):
             from src.funasr_engine import FunASREngine
             engine = FunASREngine(self.settings_manager)
             self.components['funasr_engine'] = engine
-            self.component_loaded.emit('funasr_engine', engine)
+            # 确保信号在主线程中发射
+            QMetaObject.invokeMethod(
+                self, "_emit_component_loaded",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, 'funasr_engine'),
+                Q_ARG(object, engine)
+            )
             
             # 批量更新模型缓存和路径，避免重复保存
             if engine.is_ready:
@@ -146,9 +152,15 @@ class AppLoader(QObject):
             
             if manager:
                 self.components['hotkey_manager'] = manager
-                self.component_loaded.emit('hotkey_manager', manager)
+                # 确保信号在主线程中发射
+                QMetaObject.invokeMethod(
+                    self, "_emit_component_loaded",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(str, 'hotkey_manager'),
+                    Q_ARG(object, manager)
+                )
                 import logging
-                logging.info(f"热键管理器加载成功，使用方案: {scheme}")
+                logging.debug(f"热键管理器加载成功，使用方案: {scheme}")
             else:
                 import logging
                 logging.error(f"热键管理器创建失败，方案: {scheme}")
@@ -167,7 +179,13 @@ class AppLoader(QObject):
             debug_mode = self.settings_manager.get_setting('clipboard_debug', True)  # 默认启用调试
             manager = ClipboardManager(debug_mode=debug_mode)
             self.components['clipboard_manager'] = manager
-            self.component_loaded.emit('clipboard_manager', manager)
+            # 确保信号在主线程中发射
+            QMetaObject.invokeMethod(
+                self, "_emit_component_loaded",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, 'clipboard_manager'),
+                Q_ARG(object, manager)
+            )
             pass  # 剪贴板管理器已加载
         except Exception as e:
             import logging
@@ -181,24 +199,47 @@ class AppLoader(QObject):
             from src.context_manager import Context
             context = Context()
             self.components['context_manager'] = context
-            self.component_loaded.emit('context_manager', context)
+            # 确保信号在主线程中发射
+            QMetaObject.invokeMethod(
+                self, "_emit_component_loaded",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, 'context_manager'),
+                Q_ARG(object, context)
+            )
             
             # 音频管理器 - 不传入parent避免线程问题
             from src.audio_manager import AudioManager
             audio_manager = AudioManager()
             self.components['audio_manager'] = audio_manager
-            self.component_loaded.emit('audio_manager', audio_manager)
+            # 确保信号在主线程中发射
+            QMetaObject.invokeMethod(
+                self, "_emit_component_loaded",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, 'audio_manager'),
+                Q_ARG(object, audio_manager)
+            )
             
             # 音频捕获线程
             from src.audio_threads import AudioCaptureThread
             audio_capture_thread = AudioCaptureThread(self.app_instance.audio_capture)
             self.components['audio_capture_thread'] = audio_capture_thread
-            self.component_loaded.emit('audio_capture_thread', audio_capture_thread)
+            # 确保信号在主线程中发射
+            QMetaObject.invokeMethod(
+                self, "_emit_component_loaded",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, 'audio_capture_thread'),
+                Q_ARG(object, audio_capture_thread)
+            )
             
         except Exception as e:
             import logging
             logging.error(f"其他组件加载失败: {e}")
             
+    @pyqtSlot(str, object)
+    def _emit_component_loaded(self, name, component):
+        """在主线程中发射组件加载信号"""
+        self.component_loaded.emit(name, component)
+        
     def get_component(self, name):
         """获取已加载的组件"""
         return self.components.get(name)
@@ -220,9 +261,9 @@ class LoadingSplash(QSplashScreen):
     """启动加载界面"""
     
     def __init__(self):
-        # 创建一个简单的启动图片或使用纯色背景
+        # 创建一个简单的启动图片，使用深色背景避免白色闪烁
         pixmap = QPixmap(400, 300)
-        pixmap.fill(Qt.GlobalColor.white)
+        pixmap.fill(QColor(45, 45, 45))  # 深灰色背景，与主题一致
         super().__init__(pixmap)
         
         self.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
@@ -253,17 +294,23 @@ class LoadingSplash(QSplashScreen):
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
         
-        # 设置样式
+        # 设置样式 - 使用深色主题避免白色闪烁
         self.setStyleSheet("""
             QWidget {
-                background-color: white;
-                color: #333;
+                background-color: #2d2d2d;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+                font-size: 14px;
             }
             QProgressBar {
-                border: 2px solid #ddd;
+                border: 2px solid #555;
                 border-radius: 5px;
                 text-align: center;
                 height: 20px;
+                background-color: #404040;
+                color: #ffffff;
             }
             QProgressBar::chunk {
                 background-color: #4CAF50;

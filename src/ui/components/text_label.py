@@ -65,15 +65,14 @@ class TextLabel(QLabel):
         text_color = style_config.get_color('text')
         text_padding = int(style_config.get_spacing('text_padding'))
         text_margin = int(style_config.get_spacing('text_margin'))
-        line_height = style_config.get_spacing('line_height')
         font_weight = style_config.get_font_weight()
         
+        # 注意：Qt StyleSheet中不支持line-height属性，改用padding来控制行间距
         self.setStyleSheet(f"""
             QLabel {{
                 color: {text_color};
                 padding: {text_padding}px;
                 margin: {text_margin}px;
-                line-height: {line_height};
                 font-weight: {font_weight};
             }}
         """)

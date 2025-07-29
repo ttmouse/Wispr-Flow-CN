@@ -98,7 +98,7 @@ class SettingsManager:
             # 清理旧的历史文件
             self._cleanup_old_history()
             
-            self.logger.info(f"设置历史已保存: {history_file}")
+            self.logger.debug(f"设置历史已保存: {history_file}")
             return True
             
         except Exception as e:
@@ -126,7 +126,7 @@ class SettingsManager:
             for filepath, _ in history_files[self.max_history_files:]:
                 try:
                     os.remove(filepath)
-                    self.logger.info(f"已删除旧的历史文件: {filepath}")
+                    self.logger.debug(f"已删除旧的历史文件: {filepath}")
                 except Exception as e:
                     self.logger.error(f"删除历史文件失败 {filepath}: {e}")
                     
@@ -165,7 +165,7 @@ class SettingsManager:
                     os.remove(self.settings_file)
                 os.rename(temp_file, self.settings_file)
                 
-                self.logger.info("设置保存成功")
+                self.logger.debug("设置保存成功")
                 return True
                 
             except Exception as e:

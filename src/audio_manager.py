@@ -3,8 +3,9 @@ import objc
 import AppKit
 import subprocess
 from PyQt6.QtCore import QObject, QThread
+from utils.cleanup_mixin import CleanupMixin
 
-class AudioManager(QObject):
+class AudioManager(QObject, CleanupMixin):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.paused_apps = set()
@@ -118,8 +119,8 @@ class AudioManager(QObject):
             import logging
             logging.error(f"恢复其他应用失败: {e}")
             
-    def cleanup(self):
-        """清理资源"""
+    def _cleanup_resources(self):
+        """实现CleanupMixin的抽象方法"""
         try:
             self.resume_other_apps()
         except Exception as e:

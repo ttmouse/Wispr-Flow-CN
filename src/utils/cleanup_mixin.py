@@ -1,21 +1,20 @@
 """清理资源的基础接口"""
 
-from abc import ABC, abstractmethod
 import logging
 
-class CleanupMixin(ABC):
+class CleanupMixin:
     """清理资源的基础混入类
     
     提供统一的资源清理接口，所有需要清理资源的类都应该继承此类
     """
     
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._is_cleaned_up = False
         self._cleanup_callbacks = []
     
-    @abstractmethod
     def _cleanup_resources(self):
-        """子类必须实现的资源清理方法"""
+        """子类应该重写的资源清理方法"""
         pass
     
     def add_cleanup_callback(self, callback):

@@ -21,7 +21,7 @@ class AudioCaptureThread(QThread):
         audio_buffer = []
         last_emit_time = time.time()
         
-        while self.is_recording and not self._stop_event.is_set():
+        while self.is_recording and not self._stop_event.is_set() and not self.isInterruptionRequested():
             try:
                 data = self.audio_capture.read_audio()
                 if data is None:  # 检测到需要停止录音
@@ -39,6 +39,11 @@ class AudioCaptureThread(QThread):
                             self.audio_captured.emit(combined_data)
                             audio_buffer.clear()
                             last_emit_time = current_time
+                
+                # 检查中断请求
+                if self.isInterruptionRequested():
+                    self.is_recording = False
+                    break
                             
             except Exception as e:
                 import logging
@@ -84,7 +89,16 @@ class TranscriptionThread(QThread):
 
     def run(self):
         try:
+            # 检查是否被中断
+            if self.isInterruptionRequested():
+                return
+                
             result = self.funasr_engine.transcribe(self.audio_data)
+            
+            # 再次检查是否被中断
+            if self.isInterruptionRequested():
+                return
+                
             # 处理 FunASR 返回的结果
             if isinstance(result, list) and len(result) > 0:
                 text = result[0].get('text', '')
@@ -92,8 +106,12 @@ class TranscriptionThread(QThread):
                 text = result.get('text', '')
             else:
                 text = str(result)
-            self.transcription_done.emit(text)
+                
+            # 最后检查是否被中断
+            if not self.isInterruptionRequested():
+                self.transcription_done.emit(text)
         except Exception as e:
             import logging
             logging.error(f"转写失败: {e}")
-            self.transcription_done.emit("转写失败，请重试")
+            if not self.isInterruptionRequested():
+                self.transcription_done.emit("转写失败，请重试")

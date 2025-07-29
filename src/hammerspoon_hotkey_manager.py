@@ -4,7 +4,18 @@ import time
 import subprocess
 import threading
 from typing import Dict, Any, Optional
-from .hotkey_manager_base import HotkeyManagerBase
+
+# 尝试不同的导入方式以适应不同的运行环境
+try:
+    # 最后尝试直接导入（当在同一目录时）
+    from hotkey_manager_base import HotkeyManagerBase
+except ImportError:
+    try:
+        # 然后尝试从src包导入
+        from src.hotkey_manager_base import HotkeyManagerBase
+    except ImportError:
+        # 首先尝试相对导入（当作为模块导入时）
+        from .hotkey_manager_base import HotkeyManagerBase
 
 class HammerspoonHotkeyManager(HotkeyManagerBase):
     """基于Hammerspoon的热键管理器"""

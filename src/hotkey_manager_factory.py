@@ -1,8 +1,23 @@
 import logging
 from typing import Optional
-from .hotkey_manager_base import HotkeyManagerBase
-from .hotkey_manager import PythonHotkeyManager
-from .hammerspoon_hotkey_manager import HammerspoonHotkeyManager
+
+# 尝试不同的导入方式以适应不同的运行环境
+try:
+    # 最后尝试直接导入（当在同一目录时）
+    from hotkey_manager_base import HotkeyManagerBase
+    from hotkey_manager import PythonHotkeyManager
+    from hammerspoon_hotkey_manager import HammerspoonHotkeyManager
+except ImportError:
+    try:
+        # 然后尝试从src包导入
+        from src.hotkey_manager_base import HotkeyManagerBase
+        from src.hotkey_manager import PythonHotkeyManager
+        from src.hammerspoon_hotkey_manager import HammerspoonHotkeyManager
+    except ImportError:
+        # 首先尝试相对导入（当作为模块导入时）
+        from .hotkey_manager_base import HotkeyManagerBase
+        from .hotkey_manager import PythonHotkeyManager
+        from .hammerspoon_hotkey_manager import HammerspoonHotkeyManager
 
 class HotkeyManagerFactory:
     """热键管理器工厂类"""
@@ -25,7 +40,7 @@ class HotkeyManagerFactory:
                 # 检查Hammerspoon是否可用
                 manager = HammerspoonHotkeyManager(settings_manager)
                 if manager._check_hammerspoon_available():
-                    logger.info("创建Hammerspoon热键管理器成功")
+                    logger.debug("创建Hammerspoon热键管理器成功")
                     return manager
                 else:
                     logger.warning("Hammerspoon不可用，回退到Python方案")
@@ -35,20 +50,20 @@ class HotkeyManagerFactory:
                     return PythonHotkeyManager(settings_manager)
                     
             elif scheme == 'python':
-                logger.info("创建Python热键管理器成功")
+                logger.debug("创建Python热键管理器成功")
                 return PythonHotkeyManager(settings_manager)
                 
             else:
                 logger.error(f"未知的热键方案: {scheme}")
                 # 默认使用Python方案
-                logger.info("使用默认的Python热键管理器")
+                logger.debug("使用默认的Python热键管理器")
                 return PythonHotkeyManager(settings_manager)
                 
         except Exception as e:
             logger.error(f"创建热键管理器失败: {e}")
             # 出错时回退到Python方案
             try:
-                logger.info("回退到Python热键管理器")
+                logger.debug("回退到Python热键管理器")
                 return PythonHotkeyManager(settings_manager)
             except Exception as fallback_error:
                 logger.error(f"回退方案也失败: {fallback_error}")

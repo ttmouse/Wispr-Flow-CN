@@ -3,12 +3,13 @@ from PyQt6.QtMultimedia import QSoundEffect
 from PyQt6.QtWidgets import QApplication
 import os
 import logging
+from utils.cleanup_mixin import CleanupMixin
 
 # 配置日志记录
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class StateManager(QObject):
+class StateManager(QObject, CleanupMixin):
     status_changed = pyqtSignal(str)
     
     def __init__(self):
@@ -120,8 +121,8 @@ class StateManager(QObject):
             return getattr(self.funasr_engine, 'hotwords', [])
         return []
     
-    def cleanup(self):
-        """清理资源"""
+    def _cleanup_resources(self):
+        """实现CleanupMixin的抽象方法"""
         try:
             # 停止并清理音效资源
             if hasattr(self, 'start_sound') and self.start_sound:

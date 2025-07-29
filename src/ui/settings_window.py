@@ -1,12 +1,27 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QComboBox, QPushButton, QGroupBox,
-                            QCheckBox, QSlider, QTabWidget,
-                            QLineEdit, QFileDialog, QTextEdit, QMessageBox, QDialog)
+                            QCheckBox, QSlider, QListWidget, QListWidgetItem,
+                            QLineEdit, QFileDialog, QTextEdit, QMessageBox, QDialog,
+                            QStackedWidget, QFrame, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QPalette, QColor
 from pathlib import Path
 import pyaudio
 
-class SettingsWindow(QDialog):
+# 导入依赖管理组件
+try:
+    from .components.dependency_tab import DependencyTab
+except ImportError:
+    # 如果导入失败，创建一个占位符组件
+    class DependencyTab(QWidget):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            layout = QVBoxLayout()
+            layout.addWidget(QLabel("依赖管理功能暂不可用"))
+            self.setLayout(layout)
+
+class MacOSSettingsWindow(QDialog):
+    """macOS风格的设置窗口"""
     # 定义信号
     settings_changed = pyqtSignal(str, object)  # 当任何设置改变时发出信号
     settings_saved = pyqtSignal()  # 当设置保存时发出信号
@@ -14,300 +29,808 @@ class SettingsWindow(QDialog):
     def __init__(self, parent=None, settings_manager=None, audio_capture=None):
         super().__init__(parent)
         self.settings_manager = settings_manager
-        self.audio_capture = audio_capture  # 添加对 AudioCapture 实例的引用
-        self.audio = None  # PyAudio 实例
+        self.audio_capture = audio_capture
+        self.audio = None
+        
+        # 设置窗口基本属性
         self.setWindowTitle("设置")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(400)
+        self.setMinimumSize(800, 600)
+        self.setModal(True)
+        
+        # 初始化UI
+        self._setup_ui()
+    
+    def _load_settings(self):
+        """从设置管理器加载设置到UI控件"""
+        try:
+            settings = self.settings_manager
+            
+            # 加载热键方案 - 修复属性名称错误
+            if hasattr(self, 'hotkey_scheme_combo'):
+                hotkey_scheme = settings.get_setting('hotkey_scheme', 'hammerspoon')
+                index = self.hotkey_scheme_combo.findText(hotkey_scheme)
+                if index >= 0:
+                    self.hotkey_scheme_combo.setCurrentIndex(index)
+            
+            # 加载快捷键
+            if hasattr(self, 'hotkey_combo'):
+                shortcut = settings.get_setting('hotkey', 'fn')
+                index = self.hotkey_combo.findText(shortcut)
+                if index >= 0:
+                    self.hotkey_combo.setCurrentIndex(index)
+            
+            # 加载音频设备
+            input_device = settings.get_setting('input_device', '系统默认')
+            index = self.input_device.findText(input_device)
+            if index >= 0:
+                self.input_device.setCurrentIndex(index)
+            else:
+                # 如果找不到设备，尝试部分匹配
+                for i in range(self.input_device.count()):
+                    if input_device in self.input_device.itemText(i):
+                        self.input_device.setCurrentIndex(i)
+                        break
+            
+            # 加载音量阈值
+            volume_threshold = settings.get_setting('volume_threshold', 0.01)
+            self.volume_threshold.setValue(volume_threshold)
+            
+            # 加载最大录音时长
+            max_record_time = settings.get_setting('max_record_time', 60)
+            self.max_record_time.setValue(max_record_time)
+            
+            # 加载ASR模型路径
+            asr_model_path = settings.get_setting('asr_model_path', '')
+            self.asr_model_path.setText(asr_model_path)
+            
+            # 加载标点模型路径
+            punc_model_path = settings.get_setting('punc_model_path', '')
+            self.punc_model_path.setText(punc_model_path)
+            
+            # 加载自动标点设置
+            auto_punctuation = settings.get_setting('auto_punctuation', True)
+            self.auto_punctuation.setChecked(auto_punctuation)
+            
+            # 加载实时显示设置
+            real_time_display = settings.get_setting('real_time_display', True)
+            self.real_time_display.setChecked(real_time_display)
+            
+            # 加载粘贴延迟设置
+            paste_delay = settings.get_setting('paste_delay', 0.1)
+            self.paste_delay.setValue(paste_delay)
+            
+            history_paste_delay = settings.get_setting('history_paste_delay', 0.0)
+            self.history_paste_delay.setValue(history_paste_delay)
+            
+            # 加载热词权重
+            hotword_weight = settings.get_setting('hotword_weight', 10.0)
+            self.hotword_weight.setValue(hotword_weight)
+            
+            # 加载发音校正设置
+            pronunciation_correction = settings.get_setting('pronunciation_correction', True)
+            self.pronunciation_correction.setChecked(pronunciation_correction)
+            
+        except Exception as e:
+            import logging
+            logging.error(f"加载设置失败: {e}")
+    
+    def save_settings(self):
+        """保存所有设置"""
+        try:
+            settings = self.settings_manager
+            
+            # 保存热键方案
+            if hasattr(self, 'hotkey_scheme_combo'):
+                settings.set_setting('hotkey_scheme', self.hotkey_scheme_combo.currentText())
+            
+            # 保存快捷键
+            if hasattr(self, 'hotkey_combo'):
+                settings.set_setting('hotkey', self.hotkey_combo.currentText())
+            
+            # 保存音频设备
+            settings.set_setting('input_device', self.input_device.currentText())
+            
+            # 保存音量阈值
+            settings.set_setting('volume_threshold', self.volume_threshold.value())
+            
+            # 保存最大录音时长
+            settings.set_setting('max_record_time', self.max_record_time.value())
+            
+            # 保存ASR模型路径
+            settings.set_setting('asr_model_path', self.asr_model_path.text())
+            
+            # 保存标点模型路径
+            settings.set_setting('punc_model_path', self.punc_model_path.text())
+            
+            # 保存自动标点设置
+            settings.set_setting('auto_punctuation', self.auto_punctuation.isChecked())
+            
+            # 保存实时显示设置
+            settings.set_setting('real_time_display', self.real_time_display.isChecked())
+            
+            # 保存粘贴延迟设置
+            settings.set_setting('paste_delay', self.paste_delay.value())
+            settings.set_setting('history_paste_delay', self.history_paste_delay.value())
+            
+            # 保存热词权重
+            settings.set_setting('hotword_weight', self.hotword_weight.value())
+            
+            # 保存发音校正设置
+            settings.set_setting('pronunciation_correction', self.pronunciation_correction.isChecked())
+            
+            # 保存设置到文件
+            settings.save_settings()
+            
+            # 通知用户保存成功
+            QMessageBox.information(self, "成功", "设置已保存成功！")
+            
+            # 关闭窗口
+            self.accept()
+            
+        except Exception as e:
+            import logging
+            logging.error(f"保存设置失败: {e}")
+            QMessageBox.critical(self, "错误", f"保存设置失败: {e}")
+    
+    def reset_to_defaults(self):
+        """重置所有设置为默认值"""
+        reply = QMessageBox.question(
+            self, 
+            "确认重置", 
+            "确定要将所有设置重置为默认值吗？\n\n此操作不可撤销。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # 重置热键方案
+                self.hotkey_scheme_combo.setCurrentText('python')
+                
+                # 重置快捷键
+                self.shortcut_edit.setText('F1')
+                
+                # 重置快捷键延迟
+                self.shortcut_delay.setValue(0.1)
+                
+                # 重置音频设备为第一个（通常是系统默认）
+                if self.input_device.count() > 0:
+                    self.input_device.setCurrentIndex(0)
+                
+                # 重置音量阈值
+                self.volume_threshold.setValue(0.01)
+                
+                # 重置最大录音时长
+                self.max_record_time.setValue(60)
+                
+                # 重置模型路径
+                self.asr_model_path.setText('')
+                self.punc_model_path.setText('')
+                
+                # 重置自动标点
+                self.auto_punctuation.setChecked(True)
+                
+                # 重置实时显示
+                self.real_time_display.setChecked(True)
+                
+                # 重置粘贴延迟
+                self.paste_delay.setValue(0.1)
+                self.history_paste_delay.setValue(0.0)
+                
+                # 重置热词权重
+                self.hotword_weight.setValue(10.0)
+                
+                # 重置发音校正
+                self.pronunciation_correction.setChecked(True)
+                
+                QMessageBox.information(self, "成功", "设置已重置为默认值！")
+                
+            except Exception as e:
+                import logging
+                logging.error(f"重置设置失败: {e}")
+                QMessageBox.critical(self, "错误", f"重置设置失败: {e}")
+    
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        # 清理音频资源
+        self._cleanup_audio()
+        super().closeEvent(event)  # PyAudio 实例
+        
+        # 设置窗口属性
+        self.setWindowTitle("设置")
+        self.setMinimumSize(800, 600)
+        self.resize(900, 700)
         
         # 设置窗口标志
         self.setWindowFlags(
-            Qt.WindowType.Window |  # 独立窗口
-            Qt.WindowType.WindowStaysOnTopHint  # 保持在最前
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowStaysOnTopHint
         )
         
+        # 初始化UI
+        self._setup_ui()
+        self._setup_styles()
+        self._load_settings()
+        
+    def _setup_ui(self):
+        """设置UI布局"""
         # 创建主布局
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        self.setLayout(main_layout)
         
-        # 创建标签页
-        tab_widget = QTabWidget()
-        layout.addWidget(tab_widget)
+        # 创建左侧菜单
+        self._create_sidebar()
+        main_layout.addWidget(self.sidebar)
         
-        # 添加各个设置页
-        tab_widget.addTab(self._create_general_tab(), "常规")
-        tab_widget.addTab(self._create_audio_tab(), "音频")
-        tab_widget.addTab(self._create_asr_tab(), "语音识别")
-        tab_widget.addTab(self._create_paste_tab(), "粘贴设置")
-        tab_widget.addTab(self._create_hotwords_settings_tab(), "热词设置")
-        tab_widget.addTab(self._create_hotwords_edit_tab(), "热词编辑")
+        # 创建右侧内容区域
+        self._create_content_area()
+        main_layout.addWidget(self.content_area)
         
-        # 创建按钮布局
+        # 创建底部按钮区域
+        self._create_bottom_buttons()
+        
+        # 设置样式
+        self._setup_styles()
+        
+        # 加载设置
+        self._load_settings()
+        
+    def _setup_styles(self):
+        """设置macOS深色主题样式"""
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+            
+            QFrame#sidebar {
+                background-color: #2b2b2b;
+                border-right: 1px solid #3d3d3d;
+            }
+            
+            QListWidget#menuList {
+                background-color: transparent;
+                border: none;
+                outline: none;
+                font-size: 14px;
+                padding: 8px 0px;
+            }
+            
+            QListWidget#menuList::item {
+                padding: 14px 20px;
+                border: none;
+                color: #e0e0e0;
+                font-weight: 500;
+            }
+            
+            QListWidget#menuList::item:selected {
+                background-color: #007AFF;
+                color: #ffffff;
+                border-radius: 8px;
+                margin: 2px 8px;
+                font-weight: 600;
+            }
+            
+            QListWidget#menuList::item:hover {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                border-radius: 8px;
+                margin: 2px 8px;
+            }
+            
+            QFrame#contentArea {
+                background-color: #2b2b2b;
+                border-radius: 10px;
+                border: 1px solid #3d3d3d;
+            }
+            
+            QLabel#titleLabel {
+                font-size: 22px;
+                font-weight: 700;
+                color: #ffffff;
+                margin-bottom: 16px;
+                padding: 0px 4px;
+            }
+            
+            QLabel {
+                color: #ffffff;
+                font-size: 14px;
+                font-weight: 500;
+                line-height: 1.5;
+            }
+            
+            QLabel[class="help-text"] {
+                color: #b0b0b0;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            
+            QGroupBox {
+                font-size: 16px;
+                font-weight: 700;
+                color: #ffffff;
+                border: 1.5px solid #3d3d3d;
+                border-radius: 12px;
+                margin-top: 16px;
+                padding-top: 16px;
+                background-color: #262626;
+            }
+            
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 20px;
+                padding: 4px 16px;
+                background-color: #2b2b2b;
+                color: #ffffff;
+                border-radius: 6px;
+                font-weight: 700;
+            }
+            
+            QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {
+                padding: 12px 16px;
+                border: 1.5px solid #3d3d3d;
+                border-radius: 8px;
+                background-color: #333333;
+                color: #ffffff;
+                font-size: 14px;
+                font-weight: 500;
+                min-height: 22px;
+            }
+            
+            QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+                border-color: #007AFF;
+                background-color: #3a3a3a;
+                outline: none;
+            }
+            
+            QComboBox:hover, QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover {
+                border-color: #5a5a5a;
+                background-color: #3a3a3a;
+            }
+            
+            QSpinBox::up-button, QDoubleSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 20px;
+                border-left: 1px solid #3d3d3d;
+                border-bottom: 1px solid #3d3d3d;
+                border-top-right-radius: 8px;
+                background-color: #3a3a3a;
+            }
+            
+            QSpinBox::down-button, QDoubleSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 20px;
+                border-left: 1px solid #3d3d3d;
+                border-top: 1px solid #3d3d3d;
+                border-bottom-right-radius: 8px;
+                background-color: #3a3a3a;
+            }
+            
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-bottom: 4px solid #e0e0e0;
+                width: 0;
+                height: 0;
+            }
+            
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid #e0e0e0;
+                width: 0;
+                height: 0;
+            }
+            
+            QComboBox::drop-down {
+                border: none;
+                background-color: transparent;
+                width: 30px;
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                border-top-right-radius: 8px;
+                border-bottom-right-radius: 8px;
+            }
+            
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #8C8C8C;
+                width: 0;
+                height: 0;
+                margin-right: 8px;
+                margin-top: 2px;
+            }
+            
+            QComboBox:hover::down-arrow {
+                border-top-color: #ffffff;
+            }
+            
+            QComboBox:focus::down-arrow {
+                border-top-color: #007AFF;
+            }
+            
+            QComboBox QAbstractItemView {
+                background-color: #2c2c2c;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 8px;
+                selection-background-color: #007AFF;
+                selection-color: #ffffff;
+                padding: 4px;
+                outline: none;
+            }
+            
+            QComboBox QAbstractItemView::item {
+                padding: 10px 12px;
+                border-radius: 4px;
+                margin: 1px;
+                color: #ffffff;
+            }
+            
+            QComboBox QAbstractItemView::item:hover {
+                background-color: #404040;
+            }
+            
+            QComboBox QAbstractItemView::item:selected {
+                background-color: #007AFF;
+                color: #ffffff;
+            }
+            
+            QSlider::groove:horizontal {
+                border: none;
+                height: 6px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #404040, stop:1 #2a2a2a);
+                border-radius: 3px;
+                margin: 8px 0;
+            }
+            
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #007AFF, stop:1 #0056CC);
+                border-radius: 3px;
+                margin: 0px;
+            }
+            
+            QSlider::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffffff, stop:1 #f8f8f8);
+                border: 2px solid #e0e0e0;
+                width: 20px;
+                height: 20px;
+                border-radius: 12px;
+                margin: -8px 0;
+            }
+            
+            QSlider::handle:horizontal:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffffff, stop:1 #f0f0f0);
+                border: 2px solid #007AFF;
+                transform: scale(1.1);
+            }
+            
+            QSlider::handle:horizontal:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f8f8, stop:1 #e8e8e8);
+                border: 2px solid #0056CC;
+            }
+            
+            QSlider::tick-mark:horizontal {
+                background: #666666;
+                width: 1px;
+                height: 4px;
+            }
+            
+            QCheckBox {
+                font-size: 14px;
+                color: #ffffff;
+                spacing: 10px;
+                padding: 4px 2px;
+                font-weight: 500;
+            }
+            
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #5a5a5a;
+                border-radius: 4px;
+                background-color: #2c2c2c;
+            }
+            
+            QCheckBox::indicator:hover {
+                border-color: #007AFF;
+                background-color: #353535;
+            }
+            
+            QCheckBox::indicator:checked {
+                background-color: #007AFF;
+                border-color: #007AFF;
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTAiIHZpZXdCb3g9IjAgMCAxMiAxMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEuNSA0LjVMNC41IDcuNUwxMC41IDEuNSIgc3Ryb2tlPSIjRkZGRkZGIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
+            }
+            
+            QCheckBox::indicator:checked:hover {
+                background-color: #0056CC;
+                border-color: #0056CC;
+            }
+            
+            QCheckBox::indicator:disabled {
+                border-color: #404040;
+                background-color: #1a1a1a;
+            }
+            
+            QCheckBox:disabled {
+                color: #666666;
+            }
+            
+            QTextEdit {
+                border: 1px solid #3d3d3d;
+                border-radius: 8px;
+                background-color: #333333;
+                color: #ffffff;
+                font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+                font-size: 13px;
+                padding: 12px;
+                line-height: 1.4;
+            }
+            
+            QTextEdit:focus {
+                border-color: #007AFF;
+                background-color: #3a3a3a;
+                outline: none;
+            }
+            
+            QPushButton {
+                background-color: #333333;
+                color: #ffffff;
+                border: 1.5px solid #3d3d3d;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-size: 14px;
+                font-weight: 600;
+                min-height: 18px;
+            }
+            
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                border-color: #5a5a5a;
+                color: #ffffff;
+            }
+            
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+                border-color: #007AFF;
+            }
+            
+            QPushButton#saveButton {
+                background-color: #007AFF;
+                border-color: #007AFF;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            
+            QPushButton#saveButton:hover {
+                background-color: #0056CC;
+                border-color: #0056CC;
+            }
+            
+            QPushButton#resetButton {
+                background-color: #333333;
+                border-color: #3d3d3d;
+                color: #e0e0e0;
+            }
+            
+            QPushButton#resetButton:hover {
+                background-color: #3a3a3a;
+                border-color: #4d4d4d;
+                color: #ffffff;
+            }
+            
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            
+            QScrollArea > QWidget > QWidget {
+                background-color: transparent;
+            }
+            
+            QScrollBar:vertical {
+                background-color: transparent;
+                width: 10px;
+                border-radius: 5px;
+                margin: 0px;
+            }
+            
+            QScrollBar::handle:vertical {
+                background-color: #4d4d4d;
+                border-radius: 5px;
+                min-height: 30px;
+                margin: 2px;
+            }
+            
+            QScrollBar::handle:vertical:hover {
+                background-color: #5d5d5d;
+            }
+            
+            QScrollBar::handle:vertical:pressed {
+                background-color: #6d6d6d;
+            }
+            
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        """)
+        
+    def _create_sidebar(self):
+        """创建左侧菜单栏"""
+        self.sidebar = QFrame()
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setObjectName("sidebar")
+        
+        sidebar_layout = QVBoxLayout()
+        sidebar_layout.setContentsMargins(0, 20, 0, 20)
+        sidebar_layout.setSpacing(0)
+        self.sidebar.setLayout(sidebar_layout)
+        
+        # 创建菜单列表
+        self.menu_list = QListWidget()
+        self.menu_list.setObjectName("menuList")
+        
+        # 添加菜单项
+        menu_items = [
+            ("常规", "general"),
+            ("音频", "audio"),
+            ("语音识别", "asr"),
+            ("粘贴设置", "paste"),
+            ("热词设置", "hotwords"),
+            ("热词编辑", "hotwords_edit"),
+            ("依赖管理", "dependency")
+        ]
+        
+        for text, key in menu_items:
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            self.menu_list.addItem(item)
+        
+        # 设置默认选中第一项
+        self.menu_list.setCurrentRow(0)
+        
+        # 连接选择变化信号
+        self.menu_list.currentRowChanged.connect(self._on_menu_changed)
+        
+        sidebar_layout.addWidget(self.menu_list)
+        
+    def _on_menu_changed(self, index):
+        """处理菜单选择变化"""
+        if index >= 0:
+            # 更新右侧内容区域
+            self.stacked_widget.setCurrentIndex(index)
+            
+            # 更新标题
+            menu_titles = ["常规", "音频", "语音识别", "粘贴设置", "热词设置", "热词编辑", "依赖管理"]
+            if index < len(menu_titles):
+                self.title_label.setText(menu_titles[index])
+        
+    def _create_content_area(self):
+        """创建右侧内容区域"""
+        self.content_area = QFrame()
+        self.content_area.setObjectName("contentArea")
+        
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(30, 30, 30, 30)
+        content_layout.setSpacing(20)
+        self.content_area.setLayout(content_layout)
+        
+        # 创建标题标签
+        self.title_label = QLabel("常规")
+        self.title_label.setObjectName("titleLabel")
+        content_layout.addWidget(self.title_label)
+        
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setObjectName("scrollArea")
+        
+        # 创建堆叠窗口部件
+        self.stacked_widget = QStackedWidget()
+        
+        # 创建各个设置页面
+        self._create_settings_pages()
+        
+        scroll_area.setWidget(self.stacked_widget)
+        content_layout.addWidget(scroll_area)
+        
+    def _create_settings_pages(self):
+        """创建各个设置页面"""
+        # 常规设置页面
+        general_page = self._create_general_page()
+        self.stacked_widget.addWidget(general_page)
+        
+        # 音频设置页面
+        audio_page = self._create_audio_page()
+        self.stacked_widget.addWidget(audio_page)
+        
+        # 语音识别页面
+        asr_page = self._create_asr_page()
+        self.stacked_widget.addWidget(asr_page)
+        
+        # 粘贴设置页面
+        paste_page = self._create_paste_page()
+        self.stacked_widget.addWidget(paste_page)
+        
+        # 热词设置页面
+        hotwords_page = self._create_hotwords_page()
+        self.stacked_widget.addWidget(hotwords_page)
+        
+        # 热词编辑页面
+        hotwords_edit_page = self._create_hotwords_edit_page()
+        self.stacked_widget.addWidget(hotwords_edit_page)
+        
+        # 依赖管理页面
+        dependency_page = self._create_dependency_page()
+        self.stacked_widget.addWidget(dependency_page)
+        
+    def _create_bottom_buttons(self):
+        """创建底部按钮区域"""
+        # 在内容区域底部添加按钮
+        content_layout = self.content_area.layout()
+        
+        # 创建按钮框架
+        button_frame = QFrame()
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 20, 0, 0)
+        button_layout.setSpacing(10)
         
-        # 添加重置按钮
+        # 重置按钮
         reset_button = QPushButton("重置为默认")
-        reset_button.clicked.connect(self._reset_settings)
-        button_layout.addWidget(reset_button)
+        reset_button.setObjectName("resetButton")
+        reset_button.clicked.connect(self.reset_to_defaults)
         
-        # 添加保存按钮
-        button_layout.addStretch()
+        # 保存按钮
         save_button = QPushButton("保存")
+        save_button.setObjectName("saveButton")
         save_button.clicked.connect(self.save_settings)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(reset_button)
         button_layout.addWidget(save_button)
         
-        layout.addLayout(button_layout)
-
-    def save_settings(self):
-        """保存设置"""
-        try:
-            # 收集所有设置到字典中
-            settings_to_save = {}
-            
-            # 检查热键方案是否发生变化
-            old_scheme = self.settings_manager.get_hotkey_scheme()
-            new_scheme = None
-            scheme_changed = False
-            
-            # 收集热键方案设置
-            try:
-                scheme_value = self.hotkey_scheme_combo.currentText()
-                new_scheme = scheme_value
-                scheme_changed = (old_scheme != new_scheme)
-                settings_to_save['hotkey_scheme'] = scheme_value
-            except Exception as e:
-                import logging
-                logging.error(f"收集热键方案设置失败: {e}")
-                raise
-            
-            # 收集快捷键设置
-            try:
-                hotkey_value = self.hotkey_combo.currentText()
-                settings_to_save['hotkey'] = hotkey_value
-            except Exception as e:
-                import logging
-                logging.error(f"收集快捷键设置失败: {e}")
-                raise
-            
-            # 收集音频设备设置
-            try:
-                device_text = self.input_device.currentText()
-                
-                # 如果是系统默认设备，提取实际的设备名称
-                if device_text.startswith("系统默认 ("):
-                    device_name = None  # 使用 None 表示系统默认设备
-                else:
-                    device_name = device_text
-                
-                settings_to_save['audio.input_device'] = device_name
-            except Exception as e:
-                import logging
-                logging.error(f"收集音频设备设置失败: {e}")
-                # 不抛出异常，继续收集其他设置
-            
-            # 收集音频控制设置
-            try:
-                # 将0-20的值转换为0-1000范围后保存
-                volume_value = int(self.volume_threshold.value() * 1000 / 20)
-                settings_to_save['audio.volume_threshold'] = volume_value
-                
-                # 收集录音时长设置
-                duration_value = self.recording_duration.value()
-                settings_to_save['audio.max_recording_duration'] = duration_value
-            except Exception as e:
-                import logging
-                logging.error(f"收集音频控制设置失败: {e}")
-                raise
-            
-            # 收集ASR设置
-            try:
-                asr_model_path = self.asr_model_path.text()
-                punc_model_path = self.punc_model_path.text()
-                auto_punctuation = self.auto_punctuation.isChecked()
-                
-                settings_to_save['asr.model_path'] = asr_model_path
-                settings_to_save['asr.punc_model_path'] = punc_model_path
-                settings_to_save['asr.auto_punctuation'] = auto_punctuation
-            except Exception as e:
-                import logging
-                logging.error(f"收集ASR设置失败: {e}")
-                raise
-            
-            # 收集热词设置
-            try:
-                hotword_weight = self.hotword_weight.value()  # 保持为int类型
-                pronunciation_correction = self.enable_pronunciation_correction.isChecked()
-                
-                # 确保热词权重是有效的整数值
-                if not isinstance(hotword_weight, int) or hotword_weight < 10 or hotword_weight > 100:
-                    raise ValueError(f"热词权重值无效: {hotword_weight}，应该是10-100之间的整数")
-                
-                settings_to_save['asr.hotword_weight'] = hotword_weight
-                settings_to_save['asr.enable_pronunciation_correction'] = pronunciation_correction
-            except Exception as e:
-                import logging
-                logging.error(f"收集热词设置失败: {e}")
-                import traceback
-                logging.error(f"热词设置错误详情: {traceback.format_exc()}")
-                raise
-            
-            # 收集粘贴延迟设置
-            try:
-                transcription_delay = self.transcription_delay.value()
-                history_delay = self.history_delay.value()
-                
-                settings_to_save['paste.transcription_delay'] = transcription_delay
-                settings_to_save['paste.history_click_delay'] = history_delay
-            except Exception as e:
-                import logging
-                logging.error(f"收集粘贴延迟设置失败: {e}")
-                raise
-            
-            # 收集快捷键延迟设置
-            try:
-                recording_start_delay = self.recording_start_delay.value()
-                settings_to_save['hotkey_settings.recording_start_delay'] = recording_start_delay
-            except Exception as e:
-                import logging
-                logging.error(f"收集快捷键延迟设置失败: {e}")
-                raise
-            
-            # 批量保存所有设置
-            if not self.settings_manager.set_multiple_settings(settings_to_save):
-                raise Exception("批量保存设置失败")
-            
-            # 应用音频设备设置
-            try:
-                device_text = self.input_device.currentText()
-                if device_text.startswith("系统默认 ("):
-                    device_name = None
-                else:
-                    device_name = device_text
-                
-                if self.audio_capture:
-                    success = self.audio_capture.set_device(device_name)
-                    if not success:
-                        import logging
-                        logging.warning("音频设备设置失败，但设置已保存")
-                else:
-                    import logging
-                    logging.warning("audio_capture 实例不存在")
-            except Exception as e:
-                import logging
-                logging.error(f"应用音频设备设置失败: {e}")
-                # 不抛出异常，因为设置已经保存成功
-            
-            # 如果热键方案发生变化，应用新的热键管理器
-            if scheme_changed:
-                try:
-                    # 获取主应用实例并应用新的热键方案
-                    parent_window = self.parent()
-                    if parent_window and hasattr(parent_window, 'app_instance'):
-                        app_instance = parent_window.app_instance
-                        if app_instance and hasattr(app_instance, 'apply_settings'):
-                            # 使用apply_settings方法来应用新的热键方案
-                            app_instance.apply_settings()
-                            import logging
-                            logging.info(f"热键方案已从 {old_scheme} 切换到 {new_scheme}，新方案已立即应用")
-                        else:
-                            import logging
-                            logging.info(f"热键方案已从 {old_scheme} 切换到 {new_scheme}，将在下次启动时生效")
-                    else:
-                        import logging
-                        logging.info(f"热键方案已从 {old_scheme} 切换到 {new_scheme}，将在下次启动时生效")
-                except Exception as e:
-                    import logging
-                    logging.error(f"应用新热键方案失败: {e}")
-                    # 不抛出异常，因为设置已经保存成功
-            
-            # 发出保存完成信号（使用线程安全的方式）
-            try:
-                # 使用 QTimer.singleShot 确保信号在主线程中发射
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(0, self._emit_settings_saved_signal)
-            except Exception as e:
-                import logging
-                logging.error(f"发出保存信号失败: {e}")
-                # 不抛出异常，因为设置已经保存成功
-            
-            # 直接关闭设置窗口，不显示成功提示
-            try:
-                self.close()
-            except Exception as e:
-                import logging
-                logging.error(f"关闭窗口失败: {e}")
-                # 不抛出异常
-            
-        except Exception as e:
-            import traceback
-            import logging
-            error_msg = f"保存设置失败: {e}\n{traceback.format_exc()}"
-            logging.error(error_msg)
-            
-            # 显示错误对话框
-            try:
-                QMessageBox.critical(self, "保存失败", f"保存设置时发生错误:\n\n{str(e)}\n\n请检查控制台输出获取详细信息。")
-            except Exception as dialog_error:
-                logging.error(f"显示错误对话框失败: {dialog_error}")
-
-    def _emit_settings_saved_signal(self):
-        """发出设置保存完成信号"""
-        try:
-            self.settings_saved.emit()
-        except Exception as e:
-            import logging
-            logging.error(f"发出设置保存信号失败: {e}")
-
-    def closeEvent(self, event):
-        """窗口关闭事件"""
-        try:
-            # 清理音频资源
-            self._cleanup_audio()
-            
-            # 断开所有信号连接，防止悬空指针
-            try:
-                self.settings_changed.disconnect()
-            except:
-                pass
-            try:
-                self.settings_saved.disconnect()
-            except:
-                pass
-            
-        except Exception as e:
-            import logging
-            logging.error(f"关闭设置窗口时出错: {e}")
-        finally:
-            event.accept()
-
-    def _cleanup_audio(self):
-        """清理音频资源"""
-        if self.audio:
-            try:
-                self.audio.terminate()
-            except Exception as e:
-                import logging
-                logging.error(f"清理音频资源失败: {e}")
-            finally:
-                self.audio = None
-
-    def _create_general_tab(self):
-        """创建常规设置标签页"""
-        tab = QWidget()
+        button_frame.setLayout(button_layout)
+        content_layout.addWidget(button_frame)
+    
+    def _create_general_page(self):
+        """创建常规设置页面"""
+        page = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         
         # 热键方案设置组
         scheme_group = QGroupBox("热键方案设置")
         scheme_layout = QVBoxLayout()
+        scheme_layout.setContentsMargins(16, 16, 16, 16)
+        scheme_layout.setSpacing(8)
         
         scheme_description = QLabel("选择热键监听方案：")
         self.hotkey_scheme_combo = QComboBox()
         self.hotkey_scheme_combo.addItems(['hammerspoon', 'python'])
-        current_scheme = self.settings_manager.get_hotkey_scheme()
+        current_scheme = self.settings_manager.get_hotkey_scheme() if self.settings_manager else 'python'
         self.hotkey_scheme_combo.setCurrentText(current_scheme)
         
         scheme_help_text = QLabel("Hammerspoon方案：更稳定，需要安装Hammerspoon\nPython方案：原生实现，可能在某些情况下不稳定")
-        scheme_help_text.setStyleSheet("color: gray; font-size: 12px;")
+        scheme_help_text.setProperty("class", "help-text")
         scheme_help_text.setWordWrap(True)
         
         scheme_layout.addWidget(scheme_description)
@@ -318,15 +841,17 @@ class SettingsWindow(QDialog):
         # 快捷键设置组
         hotkey_group = QGroupBox("快捷键设置")
         hotkey_layout = QVBoxLayout()
+        hotkey_layout.setContentsMargins(16, 16, 16, 16)
+        hotkey_layout.setSpacing(8)
         
         description = QLabel("选择录音快捷键：")
         self.hotkey_combo = QComboBox()
         self.hotkey_combo.addItems(['fn', 'ctrl', 'alt'])
-        current_hotkey = self.settings_manager.get_hotkey()
+        current_hotkey = self.settings_manager.get_hotkey() if self.settings_manager else 'fn'
         self.hotkey_combo.setCurrentText(current_hotkey)
         
         help_text = QLabel("按住所选按键开始录音，释放按键结束录音")
-        help_text.setStyleSheet("color: gray;")
+        help_text.setProperty("class", "help-text")
         
         hotkey_layout.addWidget(description)
         hotkey_layout.addWidget(self.hotkey_combo)
@@ -336,34 +861,33 @@ class SettingsWindow(QDialog):
         # 快捷键延迟设置组
         delay_group = QGroupBox("快捷键延迟设置")
         delay_layout = QVBoxLayout()
+        delay_layout.setContentsMargins(16, 16, 16, 16)
+        delay_layout.setSpacing(8)
         
         # 录制启动延迟设置
         start_delay_layout = QHBoxLayout()
         start_delay_label = QLabel("录制启动延迟：")
-        self.start_delay_value_label = QLabel("50ms")  # 显示当前值的标签
-        self.start_delay_value_label.setMinimumWidth(50)  # 设置最小宽度确保对齐
+        self.start_delay_value_label = QLabel("50ms")
+        self.start_delay_value_label.setMinimumWidth(50)
         
-        # 创建滑块
         self.recording_start_delay = QSlider(Qt.Orientation.Horizontal)
-        self.recording_start_delay.setRange(50, 500)  # 50-500ms
-        self.recording_start_delay.setValue(self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 50))
+        self.recording_start_delay.setRange(50, 500)
+        delay_value = self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 50) if self.settings_manager else 50
+        self.recording_start_delay.setValue(delay_value)
         self.recording_start_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.recording_start_delay.setTickInterval(50)  # 每50ms一个刻度
+        self.recording_start_delay.setTickInterval(50)
         
-        # 连接滑块值变化信号
         self.recording_start_delay.valueChanged.connect(
             lambda value: self.start_delay_value_label.setText(f"{value}ms")
         )
         
-        # 添加控件到布局
         start_delay_layout.addWidget(start_delay_label)
         start_delay_layout.addWidget(self.recording_start_delay)
         start_delay_layout.addWidget(self.start_delay_value_label)
         
-        # 添加帮助文本
         delay_help_text = QLabel("按下快捷键后等待多长时间才开始录制，用于避免组合快捷键误触发。\n数值越小启动越快，但可能误触发；数值越大越安全，但启动较慢。建议值：50-150ms")
-        delay_help_text.setStyleSheet("color: gray; font-size: 12px;")
-        delay_help_text.setWordWrap(True)  # 允许文本换行
+        delay_help_text.setProperty("class", "help-text")
+        delay_help_text.setWordWrap(True)
         
         delay_layout.addLayout(start_delay_layout)
         delay_layout.addWidget(delay_help_text)
@@ -373,22 +897,25 @@ class SettingsWindow(QDialog):
         layout.addWidget(hotkey_group)
         layout.addWidget(delay_group)
         layout.addStretch()
-        tab.setLayout(layout)
-        return tab
-
-    def _create_audio_tab(self):
-        """创建音频设置标签页"""
-        tab = QWidget()
+        page.setLayout(layout)
+        return page
+    
+    def _create_audio_page(self):
+        """创建音频设置页面"""
+        page = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         
         # 音频设备设置
         device_group = QGroupBox("音频设备")
         device_layout = QVBoxLayout()
+        device_layout.setContentsMargins(16, 16, 16, 16)
+        device_layout.setSpacing(8)
         
         self.input_device = QComboBox()
-        self._update_audio_devices()  # 加载可用的音频设备列表
+        self._update_audio_devices()
         
-        # 添加刷新按钮
         device_header_layout = QHBoxLayout()
         device_header_layout.addWidget(QLabel("输入设备："))
         refresh_button = QPushButton("刷新")
@@ -399,9 +926,8 @@ class SettingsWindow(QDialog):
         device_layout.addLayout(device_header_layout)
         device_layout.addWidget(self.input_device)
         
-        # 添加设备说明
         device_help = QLabel("选择要使用的麦克风设备，设备更改后需要重新开始录音")
-        device_help.setStyleSheet("color: gray; font-size: 12px;")
+        device_help.setProperty("class", "help-text")
         device_help.setWordWrap(True)
         device_layout.addWidget(device_help)
         
@@ -410,40 +936,35 @@ class SettingsWindow(QDialog):
         # 音频控制设置
         control_group = QGroupBox("音频控制")
         control_layout = QVBoxLayout()
+        control_layout.setContentsMargins(16, 16, 16, 16)
+        control_layout.setSpacing(8)
         
-        # 创建音量阈值滑块和标签的水平布局
+        # 音量阈值设置
         volume_layout = QHBoxLayout()
         volume_label = QLabel("音量阈值：")
-        self.volume_value_label = QLabel("3")  # 显示当前值的标签
-        self.volume_value_label.setMinimumWidth(30)  # 设置最小宽度确保对齐
+        self.volume_value_label = QLabel("3")
+        self.volume_value_label.setMinimumWidth(30)
         
-        # 创建滑块
         self.volume_threshold = QSlider(Qt.Orientation.Horizontal)
-        self.volume_threshold.setRange(0, 20)  # 0-20 对应 0-0.02
-        # 修复音量阈值初始化：正确的计算公式
-        current_threshold = self.settings_manager.get_setting('audio.volume_threshold', 150)
+        self.volume_threshold.setRange(0, 20)
+        current_threshold = self.settings_manager.get_setting('audio.volume_threshold', 150) if self.settings_manager else 150
         slider_value = int(current_threshold * 20 / 1000)
         self.volume_threshold.setValue(slider_value)
-        # 更新显示标签
         self.volume_value_label.setText(str(slider_value))
         self.volume_threshold.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.volume_threshold.setTickInterval(1)  # 每0.001一个刻度
+        self.volume_threshold.setTickInterval(1)
         
-        # 连接滑块值变化信号
         self.volume_threshold.valueChanged.connect(
             lambda value: self.volume_value_label.setText(str(value))
         )
         
-        # 添加控件到布局
         volume_layout.addWidget(volume_label)
         volume_layout.addWidget(self.volume_threshold)
         volume_layout.addWidget(self.volume_value_label)
         
-        # 添加帮助文本
-        help_text = QLabel("数值越小，麦克风越灵敏。建议值：2-4\n"
-                          "当音量低于阈值时会被视为静音。默认值：3")
-        help_text.setStyleSheet("color: gray; font-size: 12px;")
-        help_text.setWordWrap(True)  # 允许文本换行
+        help_text = QLabel("数值越小，麦克风越灵敏。建议值：2-4\n当音量低于阈值时会被视为静音。默认值：3")
+        help_text.setProperty("class", "help-text")
+        help_text.setWordWrap(True)
         
         control_layout.addLayout(volume_layout)
         control_layout.addWidget(help_text)
@@ -451,30 +972,27 @@ class SettingsWindow(QDialog):
         # 录音时长设置
         duration_layout = QHBoxLayout()
         duration_label = QLabel("最大录音时长：")
-        self.duration_value_label = QLabel("10秒")  # 显示当前值的标签
-        self.duration_value_label.setMinimumWidth(50)  # 设置最小宽度确保对齐
+        self.duration_value_label = QLabel("10秒")
+        self.duration_value_label.setMinimumWidth(50)
         
-        # 创建滑块
         self.recording_duration = QSlider(Qt.Orientation.Horizontal)
-        self.recording_duration.setRange(5, 60)  # 5-60秒
-        self.recording_duration.setValue(self.settings_manager.get_setting('audio.max_recording_duration', 10))
+        self.recording_duration.setRange(5, 60)
+        duration_value = self.settings_manager.get_setting('audio.max_recording_duration', 10) if self.settings_manager else 10
+        self.recording_duration.setValue(duration_value)
         self.recording_duration.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.recording_duration.setTickInterval(5)  # 每5秒一个刻度
+        self.recording_duration.setTickInterval(5)
         
-        # 连接滑块值变化信号
         self.recording_duration.valueChanged.connect(
             lambda value: self.duration_value_label.setText(f"{value}秒")
         )
         
-        # 添加控件到布局
         duration_layout.addWidget(duration_label)
         duration_layout.addWidget(self.recording_duration)
         duration_layout.addWidget(self.duration_value_label)
         
-        # 添加帮助文本
         duration_help_text = QLabel("设置录音的最大时长，超过此时长将自动停止录音。建议值：10-30秒")
-        duration_help_text.setStyleSheet("color: gray; font-size: 12px;")
-        duration_help_text.setWordWrap(True)  # 允许文本换行
+        duration_help_text.setProperty("class", "help-text")
+        duration_help_text.setWordWrap(True)
         
         control_layout.addLayout(duration_layout)
         control_layout.addWidget(duration_help_text)
@@ -483,22 +1001,27 @@ class SettingsWindow(QDialog):
         layout.addWidget(device_group)
         layout.addWidget(control_group)
         layout.addStretch()
-        tab.setLayout(layout)
-        return tab
-
-    def _create_asr_tab(self):
-        """创建语音识别设置标签页"""
-        tab = QWidget()
+        page.setLayout(layout)
+        return page
+    
+    def _create_asr_page(self):
+        """创建语音识别设置页面"""
+        page = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         
         # 模型设置
         model_group = QGroupBox("模型设置")
         model_layout = QVBoxLayout()
+        model_layout.setContentsMargins(16, 16, 16, 16)
+        model_layout.setSpacing(8)
         
         # ASR模型路径
         asr_layout = QHBoxLayout()
         self.asr_model_path = QLineEdit()
-        self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path'))
+        asr_path = self.settings_manager.get_setting('asr.model_path') if self.settings_manager else ''
+        self.asr_model_path.setText(asr_path)
         asr_browse = QPushButton("浏览...")
         asr_browse.clicked.connect(lambda: self._browse_model('asr'))
         asr_layout.addWidget(QLabel("ASR模型路径："))
@@ -508,7 +1031,8 @@ class SettingsWindow(QDialog):
         # 标点符号模型路径
         punc_layout = QHBoxLayout()
         self.punc_model_path = QLineEdit()
-        self.punc_model_path.setText(self.settings_manager.get_setting('asr.punc_model_path'))
+        punc_path = self.settings_manager.get_setting('asr.punc_model_path') if self.settings_manager else ''
+        self.punc_model_path.setText(punc_path)
         punc_browse = QPushButton("浏览...")
         punc_browse.clicked.connect(lambda: self._browse_model('punc'))
         punc_layout.addWidget(QLabel("标点模型路径："))
@@ -522,12 +1046,16 @@ class SettingsWindow(QDialog):
         # 识别设置
         recognition_group = QGroupBox("识别设置")
         recognition_layout = QVBoxLayout()
+        recognition_layout.setContentsMargins(16, 16, 16, 16)
+        recognition_layout.setSpacing(8)
         
         self.auto_punctuation = QCheckBox("自动添加标点")
-        self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation', True))
+        auto_punc = self.settings_manager.get_setting('asr.auto_punctuation', True) if self.settings_manager else True
+        self.auto_punctuation.setChecked(auto_punc)
         
         self.real_time_display = QCheckBox("实时显示识别结果")
-        self.real_time_display.setChecked(self.settings_manager.get_setting('asr.real_time_display', True))
+        real_time = self.settings_manager.get_setting('asr.real_time_display', True) if self.settings_manager else True
+        self.real_time_display.setChecked(real_time)
         
         recognition_layout.addWidget(self.auto_punctuation)
         recognition_layout.addWidget(self.real_time_display)
@@ -536,17 +1064,21 @@ class SettingsWindow(QDialog):
         layout.addWidget(model_group)
         layout.addWidget(recognition_group)
         layout.addStretch()
-        tab.setLayout(layout)
-        return tab
-
-    def _create_paste_tab(self):
-        """创建粘贴设置标签页"""
-        tab = QWidget()
+        page.setLayout(layout)
+        return page
+    
+    def _create_paste_page(self):
+        """创建粘贴设置页面"""
+        page = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         
         # 粘贴延迟设置组
         paste_group = QGroupBox("粘贴延迟设置")
         paste_layout = QVBoxLayout()
+        paste_layout.setContentsMargins(16, 16, 16, 16)
+        paste_layout.setSpacing(8)
         
         # 转录完成后粘贴延迟
         transcription_layout = QHBoxLayout()
@@ -555,12 +1087,12 @@ class SettingsWindow(QDialog):
         self.transcription_delay_value_label.setMinimumWidth(50)
         
         self.transcription_delay = QSlider(Qt.Orientation.Horizontal)
-        self.transcription_delay.setRange(0, 200)  # 0-200毫秒
-        self.transcription_delay.setValue(self.settings_manager.get_setting('paste.transcription_delay', 0))
+        self.transcription_delay.setRange(0, 200)
+        trans_delay = self.settings_manager.get_setting('paste.transcription_delay', 0) if self.settings_manager else 0
+        self.transcription_delay.setValue(trans_delay)
         self.transcription_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.transcription_delay.setTickInterval(20)
         
-        # 连接滑块值变化信号
         self.transcription_delay.valueChanged.connect(
             lambda value: self.transcription_delay_value_label.setText(f"{value}ms")
         )
@@ -569,9 +1101,8 @@ class SettingsWindow(QDialog):
         transcription_layout.addWidget(self.transcription_delay)
         transcription_layout.addWidget(self.transcription_delay_value_label)
         
-        # 添加帮助文本
         transcription_help = QLabel("转录完成后等待多长时间再执行粘贴操作。数值越大，粘贴越稳定，但响应稍慢。建议值：20-50ms")
-        transcription_help.setStyleSheet("color: gray; font-size: 12px;")
+        transcription_help.setProperty("class", "help-text")
         transcription_help.setWordWrap(True)
         
         paste_layout.addLayout(transcription_layout)
@@ -584,12 +1115,12 @@ class SettingsWindow(QDialog):
         self.history_delay_value_label.setMinimumWidth(50)
         
         self.history_delay = QSlider(Qt.Orientation.Horizontal)
-        self.history_delay.setRange(0, 200)  # 0-200毫秒
-        self.history_delay.setValue(self.settings_manager.get_setting('paste.history_click_delay', 0))
+        self.history_delay.setRange(0, 200)
+        hist_delay = self.settings_manager.get_setting('paste.history_click_delay', 0) if self.settings_manager else 0
+        self.history_delay.setValue(hist_delay)
         self.history_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.history_delay.setTickInterval(20)
         
-        # 连接滑块值变化信号
         self.history_delay.valueChanged.connect(
             lambda value: self.history_delay_value_label.setText(f"{value}ms")
         )
@@ -598,9 +1129,8 @@ class SettingsWindow(QDialog):
         history_layout.addWidget(self.history_delay)
         history_layout.addWidget(self.history_delay_value_label)
         
-        # 添加帮助文本
         history_help = QLabel("点击历史记录项后等待多长时间再执行粘贴操作。数值越大，粘贴越稳定，但响应稍慢。建议值：30-80ms")
-        history_help.setStyleSheet("color: gray; font-size: 12px;")
+        history_help.setProperty("class", "help-text")
         history_help.setWordWrap(True)
         
         paste_layout.addLayout(history_layout)
@@ -610,17 +1140,21 @@ class SettingsWindow(QDialog):
         
         layout.addWidget(paste_group)
         layout.addStretch()
-        tab.setLayout(layout)
-        return tab
-
-    def _create_hotwords_settings_tab(self):
-        """创建热词设置标签页"""
-        tab = QWidget()
+        page.setLayout(layout)
+        return page
+    
+    def _create_hotwords_page(self):
+        """创建热词设置页面"""
+        page = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         
         # 热词权重设置
         weight_group = QGroupBox("热词权重")
         weight_layout = QVBoxLayout()
+        weight_layout.setContentsMargins(16, 16, 16, 16)
+        weight_layout.setSpacing(8)
         
         weight_slider_layout = QHBoxLayout()
         weight_label = QLabel("热词权重：")
@@ -628,12 +1162,12 @@ class SettingsWindow(QDialog):
         self.hotword_weight_value_label.setMinimumWidth(30)
         
         self.hotword_weight = QSlider(Qt.Orientation.Horizontal)
-        self.hotword_weight.setRange(10, 100)  # 10-100
-        self.hotword_weight.setValue(int(self.settings_manager.get_setting('asr.hotword_weight', 80)))
+        self.hotword_weight.setRange(10, 100)
+        weight_value = int(self.settings_manager.get_setting('asr.hotword_weight', 80)) if self.settings_manager else 80
+        self.hotword_weight.setValue(weight_value)
         self.hotword_weight.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.hotword_weight.setTickInterval(10)
         
-        # 连接滑块值变化信号
         self.hotword_weight.valueChanged.connect(
             lambda value: self.hotword_weight_value_label.setText(str(value))
         )
@@ -642,9 +1176,8 @@ class SettingsWindow(QDialog):
         weight_slider_layout.addWidget(self.hotword_weight)
         weight_slider_layout.addWidget(self.hotword_weight_value_label)
         
-        # 添加帮助文本
         weight_help = QLabel("数值越大，热词识别优先级越高。建议值：60-90")
-        weight_help.setStyleSheet("color: gray; font-size: 12px;")
+        weight_help.setProperty("class", "help-text")
         weight_help.setWordWrap(True)
         
         weight_layout.addLayout(weight_slider_layout)
@@ -654,14 +1187,15 @@ class SettingsWindow(QDialog):
         # 发音纠错设置
         correction_group = QGroupBox("发音纠错")
         correction_layout = QVBoxLayout()
+        correction_layout.setContentsMargins(16, 16, 16, 16)
+        correction_layout.setSpacing(8)
         
         self.enable_pronunciation_correction = QCheckBox("启用发音相似词纠错")
-        self.enable_pronunciation_correction.setChecked(
-            self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
-        )
+        correction_enabled = self.settings_manager.get_setting('asr.enable_pronunciation_correction', True) if self.settings_manager else True
+        self.enable_pronunciation_correction.setChecked(correction_enabled)
         
         correction_help = QLabel("自动将发音相似的词纠正为热词（如：含高→行高）")
-        correction_help.setStyleSheet("color: gray; font-size: 12px;")
+        correction_help.setProperty("class", "help-text")
         correction_help.setWordWrap(True)
         
         correction_layout.addWidget(self.enable_pronunciation_correction)
@@ -671,17 +1205,21 @@ class SettingsWindow(QDialog):
         layout.addWidget(weight_group)
         layout.addWidget(correction_group)
         layout.addStretch()
-        tab.setLayout(layout)
-        return tab
-
-    def _create_hotwords_edit_tab(self):
-        """创建热词编辑标签页"""
-        tab = QWidget()
+        page.setLayout(layout)
+        return page
+    
+    def _create_hotwords_edit_page(self):
+        """创建热词编辑页面"""
+        page = QWidget()
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         
         # 热词编辑区域
         hotword_edit_group = QGroupBox("热词列表")
         hotword_edit_layout = QVBoxLayout()
+        hotword_edit_layout.setContentsMargins(16, 16, 16, 16)
+        hotword_edit_layout.setSpacing(8)
         
         self.hotword_text_edit = QTextEdit()
         self.hotword_text_edit.setPlaceholderText("每行输入一个热词，以#开头的行为注释")
@@ -705,7 +1243,7 @@ class SettingsWindow(QDialog):
         hotword_button_layout.addStretch()
         
         hotword_edit_help = QLabel("修改后请点击'保存热词'按钮保存更改，重新开始录音后生效")
-        hotword_edit_help.setStyleSheet("color: gray; font-size: 12px;")
+        hotword_edit_help.setProperty("class", "help-text")
         hotword_edit_help.setWordWrap(True)
         
         hotword_edit_layout.addWidget(self.hotword_text_edit)
@@ -715,13 +1253,40 @@ class SettingsWindow(QDialog):
         
         layout.addWidget(hotword_edit_group)
         layout.addStretch()
-        tab.setLayout(layout)
+        page.setLayout(layout)
         
         # 自动加载热词
         self._load_hotwords()
         
-        return tab
-
+        return page
+    
+    def _create_dependency_page(self):
+        """创建依赖管理页面"""
+        try:
+            dependency_tab = DependencyTab(self)
+            return dependency_tab
+        except Exception as e:
+            import logging
+            logging.error(f"创建依赖管理标签页失败: {e}")
+            
+            # 创建错误提示页面
+            error_page = QWidget()
+            layout = QVBoxLayout()
+            
+            error_label = QLabel(f"依赖管理功能暂不可用\n\n错误信息: {e}")
+            error_label.setWordWrap(True)
+            error_label.setStyleSheet("color: #666; padding: 20px;")
+            layout.addWidget(error_label)
+            
+            retry_btn = QPushButton("重试")
+            retry_btn.clicked.connect(lambda: self._create_dependency_page())
+            layout.addWidget(retry_btn)
+            
+            layout.addStretch()
+            error_page.setLayout(layout)
+            
+            return error_page
+    
     def _browse_model(self, model_type):
         """浏览选择模型文件"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -735,60 +1300,7 @@ class SettingsWindow(QDialog):
                 self.asr_model_path.setText(file_path)
             else:
                 self.punc_model_path.setText(file_path)
-
-    def _reset_settings(self):
-        """重置所有设置为默认值"""
-        if self.settings_manager.reset_to_defaults():
-            self._load_settings()
-
-    def _load_settings(self):
-        """从设置管理器加载设置到UI"""
-        # 更新所有UI控件的值
-        self.hotkey_combo.setCurrentText(self.settings_manager.get_hotkey())
-        
-        # 更新热键方案设置
-        current_scheme = self.settings_manager.get_hotkey_scheme()
-        self.hotkey_scheme_combo.setCurrentText(current_scheme)
-        
-        # 更新音频设置
-        current_device = self.settings_manager.get_setting('audio.input_device')
-        if current_device:
-            self.input_device.setCurrentText(current_device)
-        # 将0-1000的值转换为0-20范围
-        saved_value = self.settings_manager.get_setting('audio.volume_threshold')
-        slider_value = int(saved_value * 20 / 1000)
-        self.volume_threshold.setValue(slider_value)
-        
-        # 更新录音时长设置
-        duration_value = self.settings_manager.get_setting('audio.max_recording_duration', 10)
-        self.recording_duration.setValue(duration_value)
-        self.duration_value_label.setText(f"{duration_value}秒")
-        
-        # 更新ASR设置
-        self.asr_model_path.setText(self.settings_manager.get_setting('asr.model_path', ''))
-        self.punc_model_path.setText(self.settings_manager.get_setting('asr.punc_model_path', ''))
-        self.auto_punctuation.setChecked(self.settings_manager.get_setting('asr.auto_punctuation', True))
-        self.real_time_display.setChecked(self.settings_manager.get_setting('asr.real_time_display', True))
-        
-        # 更新热词设置
-        hotword_weight = int(self.settings_manager.get_setting('asr.hotword_weight', 80))
-        self.hotword_weight.setValue(hotword_weight)
-        self.hotword_weight_value_label.setText(str(hotword_weight))
-        self.enable_pronunciation_correction.setChecked(
-            self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
-        )
-        
-        # 更新粘贴延迟设置
-        transcription_delay = self.settings_manager.get_setting('paste.transcription_delay', 30)
-        history_delay = self.settings_manager.get_setting('paste.history_click_delay', 50)
-        self.transcription_delay.setValue(transcription_delay)
-        self.history_delay.setValue(history_delay)
-        self.transcription_delay_value_label.setText(f"{transcription_delay}ms")
-        self.history_delay_value_label.setText(f"{history_delay}ms")
-        
-        # 加载热词内容
-        self._load_hotwords()
-
+    
     def _get_audio_devices(self):
         """获取系统中所有可用的音频输入设备"""
         devices = []
@@ -832,12 +1344,12 @@ class SettingsWindow(QDialog):
                 devices = ["系统默认"]
             
         return devices
-
+    
     def _update_audio_devices(self):
         """更新音频设备列表"""
         try:
             # 保存当前选择的设备
-            current_device = self.input_device.currentText()
+            current_device = self.input_device.currentText() if hasattr(self, 'input_device') else ""
             
             # 清空并重新加载设备列表
             self.input_device.clear()
@@ -856,7 +1368,7 @@ class SettingsWindow(QDialog):
                     break
             
             # 如果没找到，尝试部分匹配（去除"系统默认"前缀后的名称）
-            if not device_found:
+            if not device_found and current_device:
                 current_device_name = current_device.replace("系统默认 (", "").replace(")", "")
                 for i in range(self.input_device.count()):
                     device_name = self.input_device.itemText(i)
@@ -910,3 +1422,14 @@ class SettingsWindow(QDialog):
             import logging
             logging.error(f"保存热词失败: {e}")
             QMessageBox.critical(self, "错误", f"保存热词失败: {e}")
+    
+    def _cleanup_audio(self):
+        """清理音频资源"""
+        if self.audio:
+            try:
+                self.audio.terminate()
+            except Exception as e:
+                import logging
+                logging.error(f"清理音频资源失败: {e}")
+            finally:
+                self.audio = None

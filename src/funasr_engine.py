@@ -9,11 +9,12 @@ import io
 import time
 from concurrent.futures import ThreadPoolExecutor
 import math
+from utils.cleanup_mixin import CleanupMixin
 
 # 设置 modelscope 日志级别为 WARNING，减少不必要的信息
 logging.getLogger('modelscope').setLevel(logging.WARNING)
 
-class FunASREngine:
+class FunASREngine(CleanupMixin):
     def __init__(self, settings_manager=None):
         try:
             # 保存设置管理器引用
@@ -27,8 +28,12 @@ class FunASREngine:
                 application_path = os.path.dirname(os.path.abspath(__file__))
             
             # 设置 MODELSCOPE_CACHE 环境变量
-            cache_dir = os.path.join(application_path, 'modelscope', 'hub')
-            os.environ['MODELSCOPE_CACHE'] = cache_dir
+            # 如果环境变量已经设置（比如在启动脚本中设置），则优先使用
+            if 'MODELSCOPE_CACHE' not in os.environ:
+                cache_dir = os.path.join(application_path, 'modelscope', 'hub')
+                os.environ['MODELSCOPE_CACHE'] = cache_dir
+            
+            cache_dir = os.environ['MODELSCOPE_CACHE']
             
             # 初始化热词列表
             self.hotwords = []
@@ -38,7 +43,7 @@ class FunASREngine:
                     self.hotwords = [line.strip() for line in f 
                                    if line.strip() and not line.strip().startswith('#')]
                 import logging
-                logging.info(f"热词加载成功: 共加载 {len(self.hotwords)} 个热词")
+                logging.debug(f"热词加载成功: 共加载 {len(self.hotwords)} 个热词")
             else:
                 import logging
                 logging.warning(f"热词文件不存在: {hotwords_file}")
@@ -355,7 +360,7 @@ class FunASREngine:
                 with open(hotwords_file, "r", encoding="utf-8") as f:
                     self.hotwords = [line.strip() for line in f if line.strip() and not line.startswith("#")]
                 import logging
-                logging.info(f"热词重新加载成功: 共加载 {len(self.hotwords)} 个热词")
+                logging.debug(f"热词重新加载成功: 共加载 {len(self.hotwords)} 个热词")
             else:
                 import logging
                 logging.warning(f"热词文件不存在: {hotwords_file}")
@@ -442,8 +447,8 @@ class FunASREngine:
             'punc_model_path': punc_model_dir if os.path.exists(punc_model_dir) else '未找到标点模型'
         }
     
-    def cleanup(self):
-        """清理FunASR引擎资源"""
+    def _cleanup_resources(self):
+        """实现CleanupMixin的抽象方法"""
         try:
             # 重置就绪状态
             self.is_ready = False
@@ -465,8 +470,12 @@ class FunASREngine:
                 
         except Exception as e:
             import logging
-            logging.error(f"清理FunASR引擎资源失败: {e}")
+            logging.error(f"清理FunASR引擎失败: {e}")
     
     def __del__(self):
         """析构函数，确保资源被释放"""
-        self.cleanup()
+        try:
+            self.cleanup()
+        except Exception as e:
+            import logging
+            logging.error(f"析构时清理资源失败: {e}")

@@ -2,8 +2,9 @@ import pyaudio
 import numpy as np
 import time
 import collections
+from utils.cleanup_mixin import CleanupMixin
 
-class AudioCapture:
+class AudioCapture(CleanupMixin):
     def __init__(self):
         # 使用deque限制缓冲区大小，避免内存累积
         self.frames = collections.deque(maxlen=1000)  # 限制最大帧数
@@ -193,8 +194,8 @@ class AudioCapture:
         import gc
         gc.collect()
 
-    def cleanup(self):
-        """公共清理方法，供外部调用"""
+    def _cleanup_resources(self):
+        """实现CleanupMixin的抽象方法"""
         try:
             self._cleanup()
         except Exception as e:

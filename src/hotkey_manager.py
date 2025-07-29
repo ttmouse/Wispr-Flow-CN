@@ -4,11 +4,27 @@ import logging
 import Quartz
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from .hotkey_manager_base import HotkeyManagerBase
 
-class PythonHotkeyManager(HotkeyManagerBase):
+# 尝试不同的导入方式以适应不同的运行环境
+try:
+    # 最后尝试直接导入（当在同一目录时）
+    from hotkey_manager_base import HotkeyManagerBase
+    from utils.cleanup_mixin import CleanupMixin
+except ImportError:
+    try:
+        # 然后尝试从src包导入
+        from src.hotkey_manager_base import HotkeyManagerBase
+        from src.utils.cleanup_mixin import CleanupMixin
+    except ImportError:
+        # 首先尝试相对导入（当作为模块导入时）
+        from .hotkey_manager_base import HotkeyManagerBase
+        from .utils.cleanup_mixin import CleanupMixin
+
+class PythonHotkeyManager(HotkeyManagerBase, CleanupMixin):
     def __init__(self, settings_manager=None):
-        super().__init__(settings_manager)
+        # 正确的多重继承初始化
+        HotkeyManagerBase.__init__(self, settings_manager)
+        CleanupMixin.__init__(self)
         # 保留原有的属性初始化
         self.keyboard_listener = None
         self.fn_listener_thread = None
@@ -21,7 +37,6 @@ class PythonHotkeyManager(HotkeyManagerBase):
         
         # 简化的状态检查变量
         self.last_state_check = 0       # 上次状态检查时间
-        self.delayed_threads = []       # 延迟线程池（减少使用）
         
         # 线程池用于优化性能
         self.thread_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="HotkeyManager")
@@ -43,6 +58,21 @@ class PythonHotkeyManager(HotkeyManagerBase):
         
         # 线程安全保护 - 使用可重入锁避免死锁
         self._state_lock = threading.RLock()  # 使用可重入锁避免死锁问题
+
+    def _check_component_status(self):
+        """统一的组件状态检查方法"""
+        # 检查键盘监听器状态
+        listener_running = (self.keyboard_listener is not None and
+                          hasattr(self.keyboard_listener, 'running') and
+                          self.keyboard_listener.running)
+
+        # 检查fn监听线程状态
+        fn_thread_running = False
+        if self.fn_listener_thread is not None:
+            fn_thread_running = (self.fn_listener_thread.is_alive() and
+                               not self.should_stop)
+
+        return listener_running, fn_thread_running
 
     def set_press_callback(self, callback):
         self.press_callback = callback
@@ -76,8 +106,7 @@ class PythonHotkeyManager(HotkeyManagerBase):
             self.last_state_check = 0
             self.hotkey_press_time = 0  # 重置热键按下时间
             
-            # 简化线程清理逻辑
-            self.delayed_threads.clear()
+            # 线程状态已重置
         
         pass  # 热键状态已重置
 
@@ -88,10 +117,14 @@ class PythonHotkeyManager(HotkeyManagerBase):
         self.start_listening()
         pass  # 热键管理器已强制重置
 
-    def update_hotkey(self, hotkey_type='fn'):
+    def update_hotkey(self, hotkey_type='fn') -> bool:
         """更新快捷键设置"""
-        self.hotkey_type = hotkey_type
-        pass  # 快捷键设置已更新
+        try:
+            self.hotkey_type = hotkey_type
+            return True  # 快捷键设置已更新
+        except Exception as e:
+            self.logger.error(f"更新热键设置失败: {e}")
+            return False
     
     def update_delay_settings(self):
         """更新延迟设置"""
@@ -257,7 +290,7 @@ class PythonHotkeyManager(HotkeyManagerBase):
         error_count = 0
         max_errors = 10  # 最大连续错误次数
         
-        self.logger.info("Fn键监听线程已启动")
+        self.logger.debug("Fn键监听线程已启动")
         
         try:
             while not self.should_stop:
@@ -318,7 +351,7 @@ class PythonHotkeyManager(HotkeyManagerBase):
             import traceback
             self.logger.error(f"详细错误信息: {traceback.format_exc()}")
         finally:
-            self.logger.info("Fn键监听线程已退出")
+            self.logger.debug("Fn键监听线程已退出")
             # 确保状态被重置
             with self._state_lock:
                 self.hotkey_pressed = False
@@ -403,7 +436,8 @@ class PythonHotkeyManager(HotkeyManagerBase):
     def start_listening(self):
         """启动热键监听"""
         try:
-            if not self.keyboard_listener or not self.keyboard_listener.is_alive():
+            listener_running, _ = self._check_component_status()
+            if not listener_running:
                 self.reset_state()  # 启动监听时重置状态
                 
                 # 启动键盘监听器（用于其他键）
@@ -421,7 +455,7 @@ class PythonHotkeyManager(HotkeyManagerBase):
                 self.fn_listener_thread.daemon = True
                 self.fn_listener_thread.start()
                 
-                self.logger.info("热键监听器已启动")
+                self.logger.debug("热键监听器已启动")
         except Exception as e:
             self.logger.error(f"启动热键监听器失败: {e}")
             import traceback
@@ -434,7 +468,8 @@ class PythonHotkeyManager(HotkeyManagerBase):
         try:
             # 停止 fn 键监听线程
             self.should_stop = True
-            if self.fn_listener_thread and self.fn_listener_thread.is_alive():
+            _, fn_thread_running = self._check_component_status()
+            if fn_thread_running and self.fn_listener_thread:
                 # 使用更合理的超时时间，避免死锁
                 self.fn_listener_thread.join(timeout=1.0)  # 增加到1秒超时
                 if self.fn_listener_thread.is_alive():
@@ -447,7 +482,7 @@ class PythonHotkeyManager(HotkeyManagerBase):
                 self.keyboard_listener.stop()
                 self.keyboard_listener = None
             
-            self.logger.info("热键监听器已停止")
+            self.logger.debug("热键监听器已停止")
         except Exception as e:
             self.logger.error(f"停止热键监听器失败: {e}")
             import traceback
@@ -455,62 +490,45 @@ class PythonHotkeyManager(HotkeyManagerBase):
         finally:
             self.reset_state()  # 确保状态被重置
     
-    def cleanup(self):
-        """清理所有资源"""
-        if self._cleanup_done:
-            return
-            
-        try:
-            # 停止监听
-            self.stop_listening()
-            
-            # 关闭线程池
-            if hasattr(self, 'thread_pool') and self.thread_pool:
-                try:
+    def _cleanup_resources(self):
+        """实现CleanupMixin要求的资源清理方法"""
+        # 停止监听
+        self.stop_listening()
+
+        # 关闭线程池
+        if hasattr(self, 'thread_pool') and self.thread_pool:
+            try:
+                # 兼容不同Python版本的shutdown方法
+                import sys
+                if sys.version_info >= (3, 9):
                     self.thread_pool.shutdown(wait=True, timeout=2.0)
-                    self.logger.info("线程池已关闭")
-                except Exception as e:
-                    self.logger.warning(f"关闭线程池时出现异常: {e}")
-            
-            # 等待并清理所有延迟线程（保留作为备用）
-            active_threads = [t for t in self.delayed_threads if t.is_alive()]
-            
-            for i, thread in enumerate(active_threads):
-                # 使用合理的超时时间，避免死锁
-                thread.join(timeout=0.5)  # 500ms超时
-                if thread.is_alive():
-                    self.logger.warning(f"延迟线程 {i+1} 超时未结束，但继续清理流程")
-                    
-            self.delayed_threads.clear()
-            
-            # 清理回调
-            self.press_callback = None
-            self.release_callback = None
-            
-            self._cleanup_done = True
-            
-        except Exception as e:
-            self.logger.error(f"清理热键管理器资源失败: {e}")
+                else:
+                    self.thread_pool.shutdown(wait=True)
+                self.logger.info("线程池已关闭")
+            except Exception as e:
+                self.logger.warning(f"关闭线程池时出现异常: {e}")
+
+        # 清理回调
+        self.press_callback = None
+        self.release_callback = None
+
+    def cleanup(self) -> None:
+        """实现HotkeyManagerBase要求的cleanup抽象方法"""
+        # 调用CleanupMixin的cleanup方法
+        CleanupMixin.cleanup(self)
     
-    def get_status(self):
+    def get_status(self) -> dict:
         """获取热键管理器当前状态"""
         try:
-            # 检查键盘监听器状态
-            listener_running = (self.keyboard_listener is not None and 
-                              hasattr(self.keyboard_listener, 'running') and 
-                              self.keyboard_listener.running)
-            
-            # 更严格地检查fn监听线程状态
-            fn_thread_running = False
-            if self.fn_listener_thread is not None:
-                # 检查线程是否真正在运行且没有被标记停止
-                fn_thread_running = (self.fn_listener_thread.is_alive() and 
-                                   not self.should_stop)
-                
-                # 额外检查：如果线程已死但should_stop为False，说明线程意外退出
-                if not self.fn_listener_thread.is_alive() and not self.should_stop:
-                    self.logger.warning("检测到Fn监听线程意外退出")
-                    fn_thread_running = False
+            # 使用统一的状态检查方法
+            listener_running, fn_thread_running = self._check_component_status()
+
+            # 额外检查：如果线程已死但should_stop为False，说明线程意外退出
+            if (self.fn_listener_thread is not None and
+                not self.fn_listener_thread.is_alive() and
+                not self.should_stop):
+                self.logger.warning("检测到Fn监听线程意外退出")
+                fn_thread_running = False
             
             # 根据热键类型确定整体状态
             if self.hotkey_type == 'fn':
@@ -553,9 +571,3 @@ class PythonHotkeyManager(HotkeyManagerBase):
                 'is_recording': False
             }
     
-    def __del__(self):
-        """析构函数，确保资源被释放"""
-        try:
-            self.cleanup()
-        except:
-            pass

@@ -37,7 +37,7 @@ class TextLabel(QLabel):
             QLabel {
                 color: #1D1D1F;  /* 深灰色文本 */
                 padding: 0px;
-                line-height: 150%;  /* 行高1.4倍，提高可读性 */
+                /* line-height 不被Qt StyleSheet支持，改用padding控制间距 */
                 font-weight: 100;  /* CSS样式设置为最细 */
             }
         """)
@@ -213,4 +213,4 @@ class ModernListWidget(QListWidget):
     def clear(self):
         """清空列表"""
         super().clear()
-        self.updateEmptyState()  # 更新空状态显示 
+        self.updateEmptyState()  # 更新空状态显示

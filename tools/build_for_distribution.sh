@@ -55,11 +55,39 @@ python tools/version_manager.py
 print_info "创建应用包结构..."
 mkdir -p "${APP_PATH}/Contents/"{MacOS,Resources,Frameworks}
 
-# 复制源代码
+# 复制源代码（排除大文件目录）
 print_info "复制源代码..."
-cp -r src "${APP_PATH}/Contents/Resources/"
+mkdir -p "${APP_PATH}/Contents/Resources/src"
+
+# 复制Python源文件，排除大文件目录
+# 使用rsync来保持目录结构
+rsync -av --include='*.py' --include='*/' --exclude='*' src/ "${APP_PATH}/Contents/Resources/src/"
+
+# 复制UI目录
+if [[ -d "src/ui" ]]; then
+    cp -r src/ui "${APP_PATH}/Contents/Resources/src/"
+fi
+
+# 复制utils目录
+if [[ -d "src/utils" ]]; then
+    cp -r src/utils "${APP_PATH}/Contents/Resources/src/"
+fi
+
+# 复制hammerspoon_scripts目录
+if [[ -d "src/hammerspoon_scripts" ]]; then
+    cp -r src/hammerspoon_scripts "${APP_PATH}/Contents/Resources/src/"
+fi
+
+# 复制必要的配置文件
+if [[ -f "src/settings.json" ]]; then
+    cp src/settings.json "${APP_PATH}/Contents/Resources/src/"
+fi
+
+# 复制resources目录
 cp -r resources "${APP_PATH}/Contents/Resources/"
 cp requirements.txt "${APP_PATH}/Contents/Resources/"
+
+print_info "已排除以下大文件目录：cache, logs, modelscope, src/src"
 
 # 复制图标
 if [[ -f "app_icon.icns" ]]; then
@@ -146,10 +174,8 @@ print_info "创建智能启动脚本..."
 cat > "${APP_PATH}/Contents/MacOS/Dou-flow" << 'EOL'
 #!/bin/bash
 
-# Dou-flow 智能启动脚本
-# 自动检测和安装运行环境
-
-set -e
+# Dou-flow 启动脚本
+# 优先使用现有Python环境，必要时安装
 
 # 获取应用路径
 APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -175,6 +201,64 @@ show_dialog() {
 show_progress() {
     local message="$1"
     osascript -e "display notification \"$message\" with title \"Dou-flow\" subtitle \"正在处理...\""
+}
+
+# 尝试直接启动应用
+try_start_app() {
+    log "尝试启动应用..."
+    
+    # 检查是否有可用的Python环境
+    local python_cmd=""
+    
+    # 优先使用conda环境
+    if command -v conda >/dev/null 2>&1; then
+        # 检查是否有douflow_env环境
+        if conda env list | grep -q "douflow_env"; then
+            log "使用conda环境: douflow_env"
+            eval "$(conda shell.bash hook)"
+            conda activate douflow_env
+            python_cmd="python"
+        elif conda env list | grep -q "funasr_env"; then
+            log "使用conda环境: funasr_env"
+            eval "$(conda shell.bash hook)"
+            conda activate funasr_env
+            python_cmd="python"
+        fi
+    fi
+    
+    # 如果没有conda环境，尝试系统Python
+    if [[ -z "$python_cmd" ]]; then
+        if command -v python3 >/dev/null 2>&1; then
+            local python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+            # 使用shell内置的版本比较，不依赖bc命令
+            local major=$(echo "$python_version" | cut -d. -f1)
+            local minor=$(echo "$python_version" | cut -d. -f2)
+            if [[ $major -gt 3 ]] || [[ $major -eq 3 && $minor -ge 8 ]]; then
+                log "使用系统Python: $python_version"
+                python_cmd="python3"
+            fi
+        fi
+    fi
+    
+    # 如果找到可用的Python，直接启动
+    if [[ -n "$python_cmd" ]]; then
+        log "启动Dou-flow应用"
+        
+        # 设置模型缓存路径为用户主目录下的原始项目位置
+        # 这样可以使用用户已下载的模型文件
+        ORIGINAL_PROJECT_PATH="$HOME/Downloads/GPT插件/ASR-FunASR"
+        if [[ -d "$ORIGINAL_PROJECT_PATH/src/modelscope" ]]; then
+            export MODELSCOPE_CACHE="$ORIGINAL_PROJECT_PATH/src/modelscope/hub"
+            log "使用原始项目模型路径: $MODELSCOPE_CACHE"
+        else
+            log "警告: 未找到原始项目模型文件，使用应用包内路径"
+        fi
+        
+        exec "$python_cmd" src/main.py
+    else
+        log "未找到可用的Python环境，需要安装"
+        return 1
+    fi
 }
 
 # 检查系统要求
@@ -289,6 +373,41 @@ setup_python_environment() {
     log "依赖安装完成"
 }
 
+# 检查依赖完整性
+check_dependencies() {
+    log "检查应用依赖..."
+    
+    # 检查关键Python包
+    local missing_packages=()
+    
+    # 检查PyQt6
+    if ! python -c "import PyQt6" 2>/dev/null; then
+        missing_packages+=("PyQt6")
+    fi
+    
+    # 检查其他关键包
+    if ! python -c "import numpy" 2>/dev/null; then
+        missing_packages+=("numpy")
+    fi
+    
+    if ! python -c "import torch" 2>/dev/null; then
+        missing_packages+=("torch")
+    fi
+    
+    # 如果有缺失的包，尝试安装
+    if [[ ${#missing_packages[@]} -gt 0 ]]; then
+        show_progress "正在安装缺失的依赖包..."
+        log "缺失的包: ${missing_packages[*]}"
+        
+        for package in "${missing_packages[@]}"; do
+            log "安装 $package..."
+            if ! pip install "$package"; then
+                log "安装 $package 失败"
+            fi
+        done
+    fi
+}
+
 # 启动应用
 start_application() {
     log "启动Dou-flow应用..."
@@ -296,6 +415,9 @@ start_application() {
     # 确保在正确的环境中
     eval "$(conda shell.bash hook)"
     conda activate douflow_env
+    
+    # 检查依赖完整性
+    check_dependencies
 
     # 启动应用
     python src/main.py 2>&1 | tee -a "$LOG_FILE"
@@ -307,6 +429,15 @@ main() {
 
     # 检查系统要求
     check_system_requirements
+
+    # 优先尝试直接启动应用
+    if try_start_app; then
+        # 启动成功，退出
+        exit 0
+    fi
+
+    # 如果直接启动失败，显示安装对话框
+    show_dialog "首次运行需要安装Python环境（Miniconda）。\n这是一个一次性过程，大约需要5-10分钟。\n点击确定开始安装..." "caution"
 
     # 安装Miniconda（如果需要）
     install_miniconda
@@ -463,6 +594,9 @@ chmod +x "$DIST_DIR/安装.command"
 
 # 移除扩展属性
 print_info "清理扩展属性..."
+find "$DIST_DIR" -name "*.DS_Store" -delete 2>/dev/null || true
+# 修复git对象文件权限
+find "$DIST_DIR" -path "*/.git/objects/*" -type f -exec chmod 644 {} \; 2>/dev/null || true
 xattr -cr "${APP_PATH}"
 
 # 代码签名（如果有开发者证书）
@@ -504,11 +638,11 @@ create_dmg() {
     print_success "DMG镜像创建完成：$DIST_DIR/$dmg_name"
 }
 
-# 询问是否创建DMG
-read -p "是否创建DMG安装镜像？(y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+# 默认不创建DMG（可通过环境变量控制）
+if [[ "$CREATE_DMG" == "true" ]]; then
     create_dmg
+else
+    print_info "跳过DMG创建（设置 CREATE_DMG=true 来启用）"
 fi
 
 # 完成

@@ -1,7 +1,7 @@
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings, QEvent
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu, QApplication, QDialog, QMenuBar, QGraphicsOpacityEffect
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSettings, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QIcon, QFont, QAction, QKeySequence, QShortcut
-from .settings_window import SettingsWindow
+from .settings_window import MacOSSettingsWindow
 from .components.modern_button import ModernButton
 from .components.modern_list_widget import ModernListWidget
 from .components.history_manager import HistoryManager
@@ -49,10 +49,10 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # 设置窗口样式
+        # 设置窗口样式 - 使用深色背景避免白色闪烁
         self.setStyleSheet("""
             QMainWindow {
-                background-color: white;
+                background-color: #FFFFFF;
             }
         """)
         
@@ -89,23 +89,13 @@ class MainWindow(QMainWindow):
         # 设置快捷键
         self.setup_shortcuts()
         
-        # 初始化热键状态更新定时器
-        self.hotkey_status_timer = QTimer()
-        self.hotkey_status_timer.timeout.connect(self.update_hotkey_status)
-        self.hotkey_status_timer.start(2000)  # 每2秒检查一次
+        # 移除热键监控系统 - 不再需要定时器和状态稳定器
         
-        # 初始化状态稳定器
-        try:
-            import sys
-            import os
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            from hotkey_status_stabilizer import create_status_stabilizer
-            self.status_stabilizer = create_status_stabilizer()
-        except Exception as e:
-            import logging
-            logging.error(f"初始化状态稳定器失败: {e}")
-            self.status_stabilizer = None
-        
+        # 初始化透明度效果
+        self.opacity_effect = QGraphicsOpacityEffect()
+        self.setGraphicsEffect(self.opacity_effect)
+        self.opacity_effect.setOpacity(0.0)  # 初始完全透明
+
         # 标记初始化完成
         self._initialization_complete = True
     
@@ -179,10 +169,13 @@ class MainWindow(QMainWindow):
     
     def open_settings(self):
         """打开设置窗口"""
+        print("MainWindow: open_settings 方法被调用")
         if self.app_instance and hasattr(self.app_instance, 'show_settings'):
+            print("MainWindow: 调用 app_instance.show_settings()")
             self.app_instance.show_settings()
         else:
             import logging
+            print("MainWindow: 应用程序实例不可用")
             logging.error("无法打开设置窗口：应用程序实例不可用")
     
     def open_settings_panel(self):
@@ -196,7 +189,7 @@ class MainWindow(QMainWindow):
                 settings_manager = getattr(self.app_instance, 'settings_manager', None)
                 audio_capture = getattr(self.app_instance, 'audio_capture', None)
             
-            settings_window = SettingsWindow(self, settings_manager, audio_capture)
+            settings_window = MacOSSettingsWindow(self, settings_manager, audio_capture)
             settings_window.exec()
         except Exception as e:
             import logging
@@ -233,11 +226,7 @@ class MainWindow(QMainWindow):
         version_label.setStyleSheet("color: #666666; font-size: 12px;")
         title_layout.addWidget(version_label)
         
-        # 热键状态指示器
-        self.hotkey_status_label = QLabel("●")
-        self.hotkey_status_label.setStyleSheet("color: #999999; font-size: 10px; margin-left: 8px;")
-        self.hotkey_status_label.setToolTip("热键状态：检查中...")
-        title_layout.addWidget(self.hotkey_status_label)
+        # 移除热键状态指示器 - 不再需要状态监控
         
         layout.addWidget(title_container)
         
@@ -320,7 +309,7 @@ class MainWindow(QMainWindow):
         """设置底部按钮区域"""
         bottom_bar = QWidget()
         bottom_bar.setFixedHeight(100)
-        bottom_bar.setStyleSheet("background-color: white;")
+        bottom_bar.setStyleSheet("background-color: #FFFFFF;")
         
         layout = QHBoxLayout(bottom_bar)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -337,17 +326,18 @@ class MainWindow(QMainWindow):
         try:
             # 检查是否是标题栏的事件
             if obj.property("is_title_bar"):
-                # 如果初始化未完成，阻止鼠标事件
-                if not self._initialization_complete:
+                # 缓存初始化状态，避免重复检查
+                if not getattr(self, '_initialization_complete', False):
                     if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.MouseButtonRelease]:
                         return True
                 
                 # 处理鼠标事件
-                if event.type() == QEvent.Type.MouseButtonPress:
+                event_type = event.type()
+                if event_type == QEvent.Type.MouseButtonPress:
                     return self._handle_title_bar_mouse_press(event)
-                elif event.type() == QEvent.Type.MouseMove:
+                elif event_type == QEvent.Type.MouseMove:
                     return self._handle_title_bar_mouse_move(event)
-                elif event.type() == QEvent.Type.MouseButtonRelease:
+                elif event_type == QEvent.Type.MouseButtonRelease:
                     return self._handle_title_bar_mouse_release(event)
             
             return super().eventFilter(obj, event)
@@ -371,8 +361,14 @@ class MainWindow(QMainWindow):
     
     def _handle_title_bar_mouse_release(self, event):
         """处理标题栏的鼠标释放事件"""
+        was_dragging = self._is_dragging
         self._is_dragging = False
         self._drag_start_pos = None
+        
+        # 拖动结束时保存位置
+        if was_dragging and getattr(self, '_initialization_complete', False):
+            self._schedule_position_save()
+        
         return True
     
     def mouseReleaseEvent(self, event):
@@ -579,11 +575,27 @@ class MainWindow(QMainWindow):
 
     
     def moveEvent(self, event):
-        """处理窗口移动事件，保存新位置"""
+        """处理窗口移动事件，延迟保存新位置"""
         super().moveEvent(event)
-        # 只有在初始化完成后才保存窗口位置，避免初始化期间的移动事件导致崩溃
-        if hasattr(self, '_initialization_complete') and self._initialization_complete:
-            self.save_window_position()
+        # 只有在初始化完成后且不在拖动过程中才保存窗口位置
+        # 拖动过程中的位置保存由拖动结束事件处理
+        if (getattr(self, '_initialization_complete', False) and 
+            not getattr(self, '_is_dragging', False)):
+            self._schedule_position_save()
+    
+    def _schedule_position_save(self):
+        """延迟保存窗口位置，避免频繁I/O操作"""
+        # 如果已有定时器在运行，重新启动定时器
+        if hasattr(self, '_position_save_timer'):
+            self._position_save_timer.stop()
+        else:
+            from PyQt6.QtCore import QTimer
+            self._position_save_timer = QTimer()
+            self._position_save_timer.setSingleShot(True)
+            self._position_save_timer.timeout.connect(self.save_window_position)
+        
+        # 延迟500ms保存，避免拖动过程中频繁写入
+        self._position_save_timer.start(500)
     
     def save_window_position(self):
         """保存窗口位置"""
@@ -611,33 +623,54 @@ class MainWindow(QMainWindow):
             self.center_on_screen()
     
     def _show_window_internal(self):
-        """在主线程中显示窗口"""
+        """在主线程中显示窗口，带渐进式显示效果"""
         try:
             if sys.platform == 'darwin':
                 try:
                     from AppKit import NSApplication
                     app = NSApplication.sharedApplication()
-                    
+
                     # 显示并激活窗口
                     if not self.isVisible():
                         self.show()
-                    
+
                     # 强制激活应用和窗口
                     app.activateIgnoringOtherApps_(True)
                     self.raise_()
                     self.activateWindow()
                     self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-                    
+
                 except Exception as e:
                     import logging
                     logging.error(f"显示窗口时出错: {e}")
                     self._fallback_show_window()
             else:
                 self._fallback_show_window()
-            
+
+            # 添加渐进式显示效果
+            self._fade_in_window()
+
         except Exception as e:
             import logging
             logging.error(f"显示窗口失败: {e}")
+
+    def _fade_in_window(self):
+        """窗口渐进式显示效果"""
+        try:
+            if hasattr(self, 'opacity_effect'):
+                # 创建透明度动画
+                self.fade_animation = QPropertyAnimation(self.opacity_effect, b"opacity")
+                self.fade_animation.setDuration(300)  # 300ms 渐入效果
+                self.fade_animation.setStartValue(0.0)
+                self.fade_animation.setEndValue(1.0)
+                self.fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+                self.fade_animation.start()
+        except Exception as e:
+            import logging
+            logging.error(f"渐进式显示效果失败: {e}")
+            # 如果动画失败，直接设置为完全不透明
+            if hasattr(self, 'opacity_effect'):
+                self.opacity_effect.setOpacity(1.0)
     
     def _fallback_show_window(self):
         """后备的窗口显示方法"""
@@ -741,111 +774,13 @@ class MainWindow(QMainWindow):
             logging.error(f"应用热词高亮失败: {e}")
             return text
     
-    def update_hotkey_status(self):
-        """更新热键状态显示（使用状态稳定器）"""
-        try:
-            if not hasattr(self, 'hotkey_status_label') or not self.app_instance:
-                return
-            
-            # 从应用程序实例获取热键管理器
-            hotkey_manager = getattr(self.app_instance, 'hotkey_manager', None)
-            
-            # 使用状态稳定器获取稳定的状态
-            if hasattr(self, 'status_stabilizer') and self.status_stabilizer:
-                status = self.status_stabilizer.get_stable_status(hotkey_manager)
-            else:
-                # 回退到原始状态检测
-                if not hotkey_manager:
-                    status = {
-                        'active': False,
-                        'scheme': 'unknown',
-                        'hotkey_type': 'unknown',
-                        'is_recording': False,
-                        'last_error': '热键管理器不存在'
-                    }
-                else:
-                    status = hotkey_manager.get_status()
-            
-            # 根据稳定状态更新UI
-            self._update_status_ui(status)
-                
-        except Exception as e:
-            # 状态检查出错
-            if hasattr(self, 'hotkey_status_label'):
-                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
-                self.hotkey_status_label.setToolTip(f"热键状态：检查出错 - {str(e)}")
+    # 移除热键状态更新方法 - 不再需要状态监控
     
-    def _update_status_ui(self, status):
-        """根据状态更新UI显示"""
-        try:
-            if not hasattr(self, 'hotkey_status_label'):
-                return
-            
-            # 获取状态信息
-            is_active = status.get('active', False)
-            is_recording = status.get('is_recording', False)
-            hotkey_type = status.get('hotkey_type', 'unknown')
-            scheme = status.get('scheme', 'unknown')
-            stability = status.get('stability', '')
-            active_ratio = status.get('active_ratio', 0)
-            
-            # 构建工具提示
-            tooltip_parts = []
-            
-            if is_active:
-                if is_recording:
-                    # 正在录音
-                    self.hotkey_status_label.setStyleSheet("color: #ff6b35; font-size: 10px; margin-left: 8px;")
-                    tooltip_parts.append(f"热键状态：录音中 ({hotkey_type})")
-                else:
-                    # 正常待机
-                    self.hotkey_status_label.setStyleSheet("color: #00cc66; font-size: 10px; margin-left: 8px;")
-                    tooltip_parts.append(f"热键状态：正常 ({hotkey_type})")
-            else:
-                # 热键失效
-                self.hotkey_status_label.setStyleSheet("color: #ff4444; font-size: 10px; margin-left: 8px;")
-                
-                # 分析失效原因
-                if scheme == 'hammerspoon' and not status.get('hammerspoon_running', True):
-                    tooltip_parts.append("Hammerspoon进程未运行")
-                elif not status.get('listener_running', True):
-                    tooltip_parts.append("监听器未运行")
-                if hotkey_type == 'fn' and not status.get('fn_thread_running', True):
-                    tooltip_parts.append("Fn监听线程未运行")
-                if status.get('last_error'):
-                    tooltip_parts.append(f"错误: {status['last_error']}")
-                
-                if not tooltip_parts:
-                    tooltip_parts.append(f"热键状态：失效 ({hotkey_type})")
-                else:
-                    tooltip_parts.insert(0, f"热键状态：失效 ({hotkey_type})")
-            
-            # 添加稳定性信息（调试用）
-            if stability:
-                if stability == 'stable_active':
-                    tooltip_parts.append(f"稳定性：良好 ({active_ratio:.1%})")
-                elif stability == 'stable_inactive':
-                    tooltip_parts.append(f"稳定性：稳定失效 ({active_ratio:.1%})")
-                elif stability == 'unstable_using_last':
-                    tooltip_parts.append(f"稳定性：不稳定，使用上次状态 ({active_ratio:.1%})")
-                elif stability == 'unstable_no_history':
-                    tooltip_parts.append(f"稳定性：不稳定，无历史记录 ({active_ratio:.1%})")
-            
-            # 添加方案信息
-            tooltip_parts.append(f"方案: {scheme}")
-            
-            # 设置工具提示
-            self.hotkey_status_label.setToolTip("\n".join(tooltip_parts))
-            
-        except Exception as e:
-            import logging
-            logging.error(f"更新状态UI失败: {e}")
+    # 移除_update_status_ui方法 - 不再需要状态UI更新
     
     def quit_application(self):
         """退出应用程序"""
-        # 停止状态更新定时器
-        if hasattr(self, 'hotkey_status_timer'):
-            self.hotkey_status_timer.stop()
+        # 移除热键状态定时器停止代码 - 不再需要
         
         self.save_history()  # 退出前保存历史记录
         if self.app_instance:

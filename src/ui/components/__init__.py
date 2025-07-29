@@ -1,14 +1,10 @@
-from .modern_button import ModernButton
-from .modern_list_widget import ModernListWidget
-from .history_item import HistoryItem, HistoryItemWidget
-from .text_label import TextLabel
-from .list_styles import ListStyleManager
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+UI组件包
+包含各种可重用的UI组件
+"""
 
-__all__ = [
-    'ModernButton', 
-    'ModernListWidget', 
-    'HistoryItem', 
-    'HistoryItemWidget',
-    'TextLabel',
-    'ListStyleManager'
-]
+from .dependency_tab import DependencyTab
+
+__all__ = ['DependencyTab']
