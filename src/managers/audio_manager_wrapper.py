@@ -120,6 +120,126 @@ class AudioManagerWrapper:
             return getattr(self._original_capture, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     
+    def set_system_volume(self, volume):
+        """设置系统音量 - 从Application类移过来
+        volume: 0-100 的整数，或者 None 表示静音"""
+        import subprocess
+        import logging
+        try:
+            if volume is None:
+                # 直接静音，不检查当前状态以减少延迟
+                subprocess.run([
+                    'osascript',
+                    '-e', 'set volume output muted true'
+                ], check=True)
+            else:
+                # 设置音量并取消静音
+                volume = max(0, min(100, volume))  # 确保音量在 0-100 范围内
+                subprocess.run([
+                    'osascript',
+                    '-e', f'set volume output volume {volume}',
+                    '-e', 'set volume output muted false'
+                ], check=True)
+        except subprocess.CalledProcessError as e:
+            logging.error(f"设置系统音量失败: {e}")
+        except Exception as e:
+            logging.error(f"设置系统音量时发生错误: {e}")
+
+    def get_system_volume(self):
+        """获取当前系统音量 - 从Application类移过来"""
+        import subprocess
+        import logging
+        try:
+            # 获取完整的音量设置
+            result = subprocess.run([
+                'osascript',
+                '-e', 'get volume settings'
+            ], capture_output=True, text=True, check=True)
+
+            settings = result.stdout.strip()
+            # 解析输出，格式类似：output volume:50, input volume:75, alert volume:75, output muted:false
+            volume_str = settings.split(',')[0].split(':')[1].strip()
+            muted = "output muted:true" in settings
+
+            if muted:
+                return 0
+
+            volume = int(volume_str)
+            return volume
+        except subprocess.CalledProcessError as e:
+            logging.error(f"获取系统音量失败: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"获取系统音量时发生错误: {e}")
+            return None
+
+    def restore_volume_async(self, volume):
+        """异步恢复音量 - 从Application类移过来"""
+        import logging
+        try:
+            self.set_system_volume(volume)
+        except Exception as e:
+            logging.error(f"异步恢复音量失败: {e}")
+
+    def start_recording_process(self, state_manager, audio_capture_thread, settings_manager, recording_timer_callback):
+        """开始录音流程 - 从Application类移过来"""
+        import logging
+        try:
+            # 先播放音效，让用户立即听到反馈
+            state_manager.start_recording()
+
+            # 然后保存当前音量并静音系统
+            previous_volume = self.get_system_volume()
+            if previous_volume is not None:
+                self.set_system_volume(None)  # 静音
+
+            # 初始化或重新初始化录音线程
+            if audio_capture_thread is None or audio_capture_thread.isFinished():
+                from audio_threads import AudioCaptureThread
+                audio_capture_thread = AudioCaptureThread(self._original_capture)
+                # 返回新线程，让外部重新连接信号
+
+            # 启动录音线程
+            audio_capture_thread.start()
+
+            # 设置录音定时器
+            max_duration = settings_manager.get_setting('audio.max_recording_duration', 10)
+            recording_timer_callback(max_duration * 1000)  # 转换为毫秒
+
+            return previous_volume, audio_capture_thread
+
+        except Exception as e:
+            error_msg = f"开始录音时出错: {str(e)}"
+            logging.error(error_msg)
+            raise Exception(error_msg)
+
+    def stop_recording_process(self, state_manager, audio_capture_thread, previous_volume, volume_timer_callback):
+        """停止录音流程 - 从Application类移过来"""
+        import logging
+        try:
+            # 检查录音线程是否存在
+            if audio_capture_thread:
+                audio_capture_thread.stop()
+                audio_capture_thread.wait()
+
+            # 播放停止音效（先播放音效，再恢复音量）
+            state_manager.stop_recording()
+
+            # 异步恢复音量，避免阻塞主线程
+            if previous_volume is not None:
+                # 使用回调延迟恢复音量，确保音效播放完成
+                volume_timer_callback(previous_volume, 150)  # 150ms后恢复音量
+
+            # 获取录音数据
+            self._ensure_initialized()
+            audio_data = self._original_capture.get_audio_data()
+            return audio_data
+
+        except Exception as e:
+            logging.error(f"停止录音失败: {e}")
+            # 返回空数据而不是抛出异常
+            return []
+
     def get_status(self):
         """获取管理器状态"""
         return {

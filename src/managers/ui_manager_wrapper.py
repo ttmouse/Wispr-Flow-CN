@@ -141,6 +141,86 @@ class UIManagerWrapper:
             return getattr(self._original_window, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     
+    def show_window_safe(self):
+        """显示主窗口（可以从其他线程调用）- 从Application类移过来"""
+        from PyQt6.QtCore import QThread
+        from PyQt6.QtWidgets import QApplication
+
+        # 如果在主线程中，直接调用
+        if QThread.currentThread() == QApplication.instance().thread():
+            self.show_window_internal()
+        else:
+            # 在其他线程中，需要通过信号机制
+            # 这里需要外部提供信号发射机制
+            if hasattr(self, '_show_window_signal'):
+                self._show_window_signal.emit()
+
+    def set_show_window_signal(self, signal):
+        """设置显示窗口的信号"""
+        self._show_window_signal = signal
+
+    def show_window_internal(self):
+        """在主线程中显示窗口 - 从Application类移过来"""
+        import sys
+        import logging
+        from PyQt6.QtCore import Qt
+
+        try:
+            # 在 macOS 上使用 NSWindow 来激活窗口
+            if sys.platform == 'darwin':
+                try:
+                    from AppKit import NSApplication, NSWindow
+                    from PyQt6.QtGui import QWindow
+
+                    # 获取应用
+                    app = NSApplication.sharedApplication()
+
+                    # 显示窗口
+                    self._ensure_initialized()
+                    if not self._original_window.isVisible():
+                        self._original_window.show()
+
+                    # 获取窗口句柄
+                    window_handle = self._original_window.windowHandle()
+                    if window_handle:
+                        # 在PyQt6中使用winId()获取原生窗口ID
+                        window_id = self._original_window.winId()
+                        if window_id:
+                            # 激活应用程序
+                            app.activateIgnoringOtherApps_(True)
+
+                            # 使用Qt方法激活窗口
+                            self._original_window.raise_()
+                            self._original_window.activateWindow()
+                            self._original_window.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+                        else:
+                            # 如果无法获取窗口ID，使用基本方法
+                            app.activateIgnoringOtherApps_(True)
+                            self._original_window.raise_()
+                            self._original_window.activateWindow()
+                    else:
+                        # 如果无法获取窗口句柄，使用基本方法
+                        app.activateIgnoringOtherApps_(True)
+                        self._original_window.raise_()
+                        self._original_window.activateWindow()
+
+                except Exception as e:
+                    logging.error(f"激活窗口时出错: {e}")
+                    # 如果原生方法失败，使用 Qt 方法
+                    self._original_window.show()
+                    self._original_window.raise_()
+                    self._original_window.activateWindow()
+            else:
+                # 非 macOS 系统的处理
+                self._ensure_initialized()
+                if not self._original_window.isVisible():
+                    self._original_window.show()
+                self._original_window.raise_()
+                self._original_window.activateWindow()
+
+        except Exception as e:
+            logging.error(f"显示窗口失败: {e}")
+
     def get_status(self):
         """获取管理器状态"""
         return {

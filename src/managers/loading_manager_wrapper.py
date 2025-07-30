@@ -20,28 +20,22 @@ class LoadingManagerWrapper:
         self._initialize()
     
     def _initialize(self):
-        """初始化原始加载器 - 延迟初始化避免焦点问题"""
+        """初始化原始加载器 - 立即初始化splash避免启动问题"""
         try:
-            # 延迟初始化，避免在包装器创建时立即初始化加载器
-            self._original_loader = None
-            self._original_splash = None
-            self._initialized = False
-            self.logger.info("加载管理器包装器创建成功（延迟初始化）")
+            # 立即初始化splash，因为启动时就需要显示
+            self._original_loader = OriginalAppLoader(self._app_instance, self._settings_manager)
+            self._original_splash = OriginalLoadingSplash()
+            self._initialized = True
+            self.logger.info("加载管理器包装器初始化成功")
         except Exception as e:
-            self.logger.error(f"加载管理器包装器创建失败: {e}")
+            self.logger.error(f"加载管理器包装器初始化失败: {e}")
             raise
     
     def _ensure_initialized(self):
         """确保原始加载器已初始化"""
+        # 已经在_initialize中初始化了，这里只是检查
         if not self._initialized:
-            try:
-                self._original_loader = OriginalAppLoader(self._app_instance, self._settings_manager)
-                self._original_splash = OriginalLoadingSplash()
-                self._initialized = True
-                self.logger.info("加载管理器延迟初始化成功")
-            except Exception as e:
-                self.logger.error(f"加载管理器延迟初始化失败: {e}")
-                raise
+            raise RuntimeError("加载管理器未正确初始化")
     
     # AppLoader方法委托
     def start_loading(self):

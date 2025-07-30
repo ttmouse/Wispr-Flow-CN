@@ -238,10 +238,12 @@ class Application(QObject):
             if not self.tray_icon.isVisible():
                 pass  # 静默处理托盘图标设置失败
             
-            # 初始化基础组件（第三步模块化替换）
+            # 初始化基础组件（第三步模块化替换 - 真正的减法重构）
             self.state_manager = StateManagerWrapper()
             self.main_window = UIManagerWrapper(app_instance=self)
             self.main_window.set_state_manager(self.state_manager)
+            # 设置UI管理器的信号连接
+            self.main_window.set_show_window_signal(self.show_window_signal)
             
 
             
@@ -261,17 +263,21 @@ class Application(QObject):
             # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
             
-            # 创建并显示启动加载界面（第五步模块化替换）
-            from managers.loading_manager_wrapper import LoadingManagerWrapper
-            self.loading_manager = LoadingManagerWrapper(self, self.settings_manager)
-            self.splash = self.loading_manager.splash
+            # 创建并显示启动加载界面
+            try:
+                from src.app_loader import LoadingSplash, AppLoader
+            except ImportError:
+                from app_loader import LoadingSplash, AppLoader
+            self.splash = LoadingSplash()
             self.splash.show()
+
+            # 创建异步加载器
+            self.app_loader = AppLoader(self, self.settings_manager)
 
             # 确保主窗口在初始化完成前不显示
             self.main_window.hide()
 
-            # 创建异步加载器
-            self.app_loader = self.loading_manager.app_loader
+            # 连接加载器信号
             self.app_loader.progress_updated.connect(self.splash.update_progress)
             self.app_loader.component_loaded.connect(self.on_component_loaded)
             self.app_loader.loading_completed.connect(self.on_loading_completed)
@@ -287,6 +293,10 @@ class Application(QObject):
             logging.error(traceback.format_exc())
             sys.exit(1)
     
+
+
+
+
     def _setup_mac_event_handling(self):
         """设置macOS事件处理"""
         try:
@@ -397,34 +407,34 @@ class Application(QObject):
         """当所有组件加载完成时的回调"""
         try:
             # 隐藏启动界面
-            if hasattr(self, 'splash'):
+            if hasattr(self, 'splash') and self.splash:
                 self.splash.close()
-                
+
             # 显示主窗口并置顶
             self.main_window._show_window_internal()
-            
+
             # 完成最终初始化
             self._finalize_initialization()
-            
+
             # 标记初始化完成
             self._mark_initialization_complete()
-            
+
             pass  # 应用程序启动完成
-            
+
         except Exception as e:
             logging.error(f"加载完成处理失败: {e}")
     
     def on_loading_failed(self, error_message):
         """当加载失败时的回调"""
         logging.error(f"组件加载失败: {error_message}")
-        
+
         # 隐藏启动界面
-        if hasattr(self, 'splash'):
+        if hasattr(self, 'splash') and self.splash:
             self.splash.close()
-            
+
         # 显示主窗口并置顶（即使部分组件失败）
         self.main_window._show_window_internal()
-        
+
         # 显示错误信息
         self.update_ui_signal.emit("⚠️ 部分组件初始化失败", error_message)
     
@@ -836,110 +846,58 @@ class Application(QObject):
     # 窗口关闭事件应该在MainWindow中处理
 
     def _set_system_volume(self, volume):
-        """设置系统音量
-        volume: 0-100 的整数，或者 None 表示静音"""
-        try:
-            if volume is None:
-                # 直接静音，不检查当前状态以减少延迟
-                subprocess.run([
-                    'osascript',
-                    '-e', 'set volume output muted true'
-                ], check=True)
-                pass
-            else:
-                # 设置音量并取消静音
-                volume = max(0, min(100, volume))  # 确保音量在 0-100 范围内
-                subprocess.run([
-                    'osascript',
-                    '-e', f'set volume output volume {volume}',
-                    '-e', 'set volume output muted false'
-                ], check=True)
-        except subprocess.CalledProcessError as e:
-            logging.error(f"设置系统音量失败: {e}")
-        except Exception as e:
-            logging.error(f"设置系统音量时发生错误: {e}")
+        """设置系统音量 - 委托给音频管理器"""
+        self.audio_capture.set_system_volume(volume)
 
     def _get_system_volume(self):
-        """获取当前系统音量"""
-        try:
-            # 获取完整的音量设置
-            result = subprocess.run([
-                'osascript',
-                '-e', 'get volume settings'
-            ], capture_output=True, text=True, check=True)
-            
-            settings = result.stdout.strip()
-            # 解析输出，格式类似：output volume:50, input volume:75, alert volume:75, output muted:false
-            volume_str = settings.split(',')[0].split(':')[1].strip()
-            muted = "output muted:true" in settings
-            
-            if muted:
-                return 0
-            
-            volume = int(volume_str)
-            return volume
-        except subprocess.CalledProcessError as e:
-            logging.error(f"获取系统音量失败: {e}")
-            return None
-        except Exception as e:
-            logging.error(f"获取系统音量时发生错误: {e}")
-            return None
-    
+        """获取当前系统音量 - 委托给音频管理器"""
+        return self.audio_capture.get_system_volume()
+
     def _restore_volume_async(self, volume):
-        """异步恢复音量"""
-        try:
-            self._set_system_volume(volume)
-        except Exception as e:
-            logging.error(f"异步恢复音量失败: {e}")
+        """异步恢复音量 - 委托给音频管理器"""
+        self.audio_capture.restore_volume_async(volume)
 
     @handle_common_exceptions(show_error=True)
     def start_recording(self):
-        """开始录音"""
+        """开始录音 - 委托给音频管理器"""
         with self._app_lock:
             try:
                 # 使用统一的状态检查方法
                 if not self.is_ready_for_recording():
                     return
-                    
+
                 if not self.recording:
                     self.recording = True
-                    
+
                     try:
-                        # 先播放音效，让用户立即听到反馈
-                        self.state_manager.start_recording()
-                        
-                        # 然后保存当前音量并静音系统
-                        self.previous_volume = self._get_system_volume()
-                        if self.previous_volume is not None:
-                            self._set_system_volume(None)  # 静音
-                        
-                        # 重新初始化录音线程（如果之前已经使用过）
-                        if self.audio_capture_thread.isFinished():
-                            self.audio_capture_thread = AudioCaptureThread(self.audio_capture)
+                        # 设置录音定时器回调
+                        def setup_timer(duration_ms):
+                            if hasattr(self, 'recording_timer'):
+                                self.recording_timer.stop()
+                                self.recording_timer.deleteLater()
+                            self.recording_timer = QTimer(self)
+                            self.recording_timer.setSingleShot(True)
+                            self.recording_timer.timeout.connect(self._auto_stop_recording)
+                            self.recording_timer.start(duration_ms)
+
+                        # 委托给音频管理器处理录音流程
+                        self.previous_volume, self.audio_capture_thread = self.audio_capture.start_recording_process(
+                            self.state_manager,
+                            self.audio_capture_thread,
+                            self.settings_manager,
+                            setup_timer
+                        )
+
+                        # 重新连接信号（如果线程被重新创建）
+                        if self.audio_capture_thread:
                             self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
                             self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
-                        
-                        # 启动录音线程
-                        self.audio_capture_thread.start()
-                        
-                        # 从设置中获取录音时长并设置定时器，自动停止录音
-                        if hasattr(self, 'recording_timer'):
-                            self.recording_timer.stop()
-                            self.recording_timer.deleteLater()
-                        
-                        # 确保定时器在主线程中创建，设置parent为self
-                        max_duration = self.settings_manager.get_setting('audio.max_recording_duration', 10)
-                        self.recording_timer = QTimer(self)
-                        self.recording_timer.setSingleShot(True)
-                        self.recording_timer.timeout.connect(self._auto_stop_recording)
-                        self.recording_timer.start(max_duration * 1000)  # 转换为毫秒
-                        # 录音已开始
-                        
+
                     except Exception as e:
                         error_msg = f"开始录音时出错: {str(e)}"
                         logging.error(error_msg)
                         self.update_ui_signal.emit(f"❌ {error_msg}", "")
-                        
+
             except Exception as e:
                 import traceback
                 error_msg = f"start_recording线程安全异常: {str(e)}"
@@ -949,49 +907,42 @@ class Application(QObject):
                 self.update_ui_signal.emit(f"❌ {error_msg}", "")
 
     def stop_recording(self):
-        """停止录音"""
+        """停止录音 - 委托给音频管理器"""
         if self._can_stop_recording():
             self.recording = False
-            
+
             # 停止定时器
             if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
                 self.recording_timer.stop()
-            
-            # 检查录音线程是否存在
-            if self.audio_capture_thread:
-                self.audio_capture_thread.stop()
-                self.audio_capture_thread.wait()
-            
-            # 播放停止音效（先播放音效，再恢复音量）
-            self.state_manager.stop_recording()
-            
-            # 异步恢复音量，避免阻塞主线程
-            if self.previous_volume is not None:
-                # 使用QTimer延迟恢复音量，确保音效播放完成
-                # 将定时器保存为实例变量，避免被垃圾回收
-                if hasattr(self, 'volume_timer'):
-                    self.volume_timer.stop()
-                    self.volume_timer.deleteLater()
-                
-                # 保存音量值，避免在定时器回调前被重置
-                volume_to_restore = self.previous_volume
-                self.volume_timer = QTimer(self)
-                self.volume_timer.setSingleShot(True)
-                self.volume_timer.timeout.connect(lambda: self._restore_volume_async(volume_to_restore))
-                self.volume_timer.start(150)  # 150ms后恢复音量
-                
+
+            try:
+                # 设置音量恢复回调
+                def setup_volume_timer(volume, delay_ms):
+                    if hasattr(self, 'volume_timer'):
+                        self.volume_timer.stop()
+                        self.volume_timer.deleteLater()
+                    self.volume_timer = QTimer(self)
+                    self.volume_timer.setSingleShot(True)
+                    self.volume_timer.timeout.connect(lambda: self._restore_volume_async(volume))
+                    self.volume_timer.start(delay_ms)
+
+                # 委托给音频管理器处理停止录音流程
+                audio_data = self.audio_capture.stop_recording_process(
+                    self.state_manager,
+                    self.audio_capture_thread,
+                    self.previous_volume,
+                    setup_volume_timer
+                )
+
                 # 重置 previous_volume
                 self.previous_volume = None
-            
-            try:
-                audio_data = self.audio_capture.get_audio_data()
-                
+
                 if len(audio_data) > 0:
                     # 使用统一的状态检查方法
                     if not self.is_component_ready('funasr_engine', 'is_ready'):
                         self.update_ui_signal.emit("⚠️ 语音识别引擎尚未就绪，无法处理录音", "")
                         return
-                        
+
                     self.transcription_thread = TranscriptionThread(audio_data, self.funasr_engine)
                     self.transcription_thread.transcription_done.connect(self.on_transcription_done)
                     self.transcription_thread.start()
@@ -1052,13 +1003,8 @@ class Application(QObject):
 
     @pyqtSlot()
     def show_window(self):
-        """显示主窗口（可以从其他线程调用）"""
-        # 如果在主线程中，直接调用
-        if QThread.currentThread() == QApplication.instance().thread():
-            self._show_window_internal()
-        else:
-            # 在其他线程中，使用信号
-            self.show_window_signal.emit()
+        """显示主窗口（可以从其他线程调用）- 委托给UI管理器"""
+        self.main_window.show_window_safe()
 
     def setup_connections(self):
         """设置信号连接"""
@@ -1147,61 +1093,8 @@ class Application(QObject):
             logging.error(f"恢复窗口级别时出错: {e}")
     
     def _show_window_internal(self):
-        """在主线程中显示窗口"""
-        try:
-            # 在 macOS 上使用 NSWindow 来激活窗口
-            if sys.platform == 'darwin':
-                try:
-                    from AppKit import NSApplication, NSWindow
-                    from PyQt6.QtGui import QWindow
-                    
-                    # 获取应用
-                    app = NSApplication.sharedApplication()
-                    
-                    # 显示窗口
-                    if not self.main_window.isVisible():
-                        self.main_window.show()
-                    
-                    # 获取窗口句柄
-                    window_handle = self.main_window.windowHandle()
-                    if window_handle:
-                        # 在PyQt6中使用winId()获取原生窗口ID
-                        window_id = self.main_window.winId()
-                        if window_id:
-                            # 激活应用程序
-                            app.activateIgnoringOtherApps_(True)
-                            
-                            # 使用Qt方法激活窗口
-                            self.main_window.raise_()
-                            self.main_window.activateWindow()
-                            self.main_window.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-                        else:
-                            # 如果无法获取窗口ID，使用基本方法
-                            app.activateIgnoringOtherApps_(True)
-                            self.main_window.raise_()
-                            self.main_window.activateWindow()
-                    else:
-                        # 如果无法获取窗口句柄，使用基本方法
-                        app.activateIgnoringOtherApps_(True)
-                        self.main_window.raise_()
-                        self.main_window.activateWindow()
-                    
-                except Exception as e:
-                    logging.error(f"激活窗口时出错: {e}")
-                    # 如果原生方法失败，使用 Qt 方法
-                    self.main_window.show()
-                    self.main_window.raise_()
-                    self.main_window.activateWindow()
-            else:
-                # 非 macOS 系统的处理
-                if not self.main_window.isVisible():
-                    self.main_window.show()
-                self.main_window.raise_()
-                self.main_window.activateWindow()
-            
-            pass  # 窗口已显示
-        except Exception as e:
-            logging.error(f"显示窗口失败: {e}")
+        """在主线程中显示窗口 - 委托给UI管理器"""
+        self.main_window.show_window_internal()
     
     # _delayed_paste 方法已移除，现在使用 lambda 函数直接处理延迟粘贴
     
@@ -1547,7 +1440,7 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统
     print("🔥 [减法重构] 开始真正的模块化 - 移除Application类冗余代码...")
-    logging.info("🔥 [减法重构] 第二步：状态管理器方法已移除，累计减少60行代码")
+    logging.info("🔥 [减法重构] 第四步：音频管理器方法已移除，累计减少174行代码")
 
     # 检查环境
     check_environment()
