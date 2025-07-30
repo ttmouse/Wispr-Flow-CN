@@ -50,6 +50,14 @@ class UIManager(QObject):
         self._quit_callback: Optional[Callable] = None
 
     # 委托ComponentManager的方法
+    def initialize_sync(self):
+        """同步初始化UI管理器"""
+        try:
+            return self._initialize_internal_sync()
+        except Exception as e:
+            self.logger.error(f"UI管理器同步初始化失败: {e}")
+            return False
+
     async def initialize(self):
         # 设置内部初始化方法
         self.component_manager._initialize_internal = self._initialize_internal
@@ -92,7 +100,37 @@ class UIManager(QObject):
         self._check_permissions_callback = check_permissions
         self._restart_hotkey_callback = restart_hotkey
         self._quit_callback = quit_app
-    
+
+    def _initialize_internal_sync(self) -> bool:
+        """同步初始化UI组件"""
+        try:
+            # 1. 加载应用图标
+            if not self._load_app_icon():
+                self.logger.warning("应用图标加载失败，使用默认图标")
+
+            # 2. 创建主窗口
+            if not self._create_main_window():
+                return False
+
+            # 3. 系统托盘由SystemManager负责创建，这里不再创建
+            # 避免重复创建托盘图标
+            self.logger.debug("系统托盘由SystemManager负责创建")
+
+            # 4. 创建启动界面
+            if not self._create_splash_screen():
+                self.logger.warning("启动界面创建失败")
+
+            # 5. 设置macOS特定功能
+            if sys.platform == 'darwin':
+                self._setup_macos_features()
+
+            self.logger.info("UI组件同步初始化完成")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"UI组件同步初始化失败: {e}")
+            return False
+
     async def _initialize_internal(self) -> bool:
         """初始化UI组件"""
         try:
@@ -104,9 +142,9 @@ class UIManager(QObject):
             if not self._create_main_window():
                 return False
             
-            # 3. 创建系统托盘
-            if not self._create_system_tray():
-                self.logger.warning("系统托盘创建失败")
+            # 3. 系统托盘由SystemManager负责创建，这里不再创建
+            # 避免重复创建托盘图标
+            self.logger.debug("系统托盘由SystemManager负责创建")
             
             # 4. 创建启动界面
             if not self._create_splash_screen():
@@ -168,63 +206,16 @@ class UIManager(QObject):
             return False
     
     def _create_system_tray(self) -> bool:
-        """创建系统托盘"""
-        try:
-            if not QSystemTrayIcon.isSystemTrayAvailable():
-                self.logger.warning("系统托盘不可用")
-                return False
-            
-            # 创建托盘图标
-            icon = self.app_icon if self.app_icon else QIcon()
-            self.tray_icon = QSystemTrayIcon(icon)
-            self.tray_icon.setToolTip("Dou-flow")
-            
-            # 创建托盘菜单
-            self._create_tray_menu()
-            
-            # 显示托盘图标
-            self.tray_icon.show()
-            
-            if not self.tray_icon.isVisible():
-                self.logger.warning("托盘图标显示失败")
-                return False
-            
-            self.logger.debug("系统托盘创建成功")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"创建系统托盘失败: {e}")
-            return False
+        """创建系统托盘 - 已移至SystemManager，避免重复创建"""
+        # 系统托盘现在由SystemManager统一管理
+        # 这里保留方法以保持兼容性，但不执行任何操作
+        self.logger.debug("系统托盘创建已委托给SystemManager")
+        return True
     
     def _create_tray_menu(self):
-        """创建托盘菜单"""
-        tray_menu = QMenu()
-        
-        # 显示窗口
-        show_action = tray_menu.addAction("显示窗口")
-        show_action.triggered.connect(self._on_show_window)
-        
-        # 设置
-        settings_action = tray_menu.addAction("快捷键设置...")
-        settings_action.triggered.connect(self._on_show_settings)
-        
-        # 重启热键功能
-        restart_hotkey_action = tray_menu.addAction("重启热键功能")
-        restart_hotkey_action.triggered.connect(self._on_restart_hotkey)
-        
-        # 检查权限
-        check_permissions_action = tray_menu.addAction("检查权限")
-        check_permissions_action.triggered.connect(self._on_check_permissions)
-        
-        # 分隔线
-        tray_menu.addSeparator()
-        
-        # 退出
-        quit_action = tray_menu.addAction("退出")
-        quit_action.triggered.connect(self._on_quit)
-        
-        # 设置菜单
-        self.tray_icon.setContextMenu(tray_menu)
+        """创建托盘菜单 - 已移至SystemManager"""
+        # 托盘菜单现在由SystemManager统一管理
+        self.logger.debug("托盘菜单创建已委托给SystemManager")
     
     def _create_splash_screen(self) -> bool:
         """创建启动界面"""
@@ -342,10 +333,9 @@ class UIManager(QObject):
                 self.settings_window.close()
                 self.settings_window = None
             
-            # 清理托盘图标
-            if self.tray_icon:
-                self.tray_icon.hide()
-                self.tray_icon = None
+            # 托盘图标由SystemManager负责清理
+            # 这里不再处理托盘图标
+            self.logger.debug("托盘图标清理已委托给SystemManager")
             
             # 清理主窗口
             if self.main_window:

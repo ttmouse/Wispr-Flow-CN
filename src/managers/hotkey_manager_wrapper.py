@@ -42,6 +42,43 @@ class HotkeyManagerWrapper(QObject):
         self._listening = False
 
     # 委托ComponentManager的方法
+    def initialize_sync(self):
+        """同步初始化热键管理器"""
+        try:
+            # 通过ComponentManager确保状态正确设置
+            if self.component_manager.is_initialized:
+                self.logger.warning("热键管理器已经初始化，跳过重复初始化")
+                return True
+
+            # 设置初始化状态
+            from .component_manager import ComponentState
+            self.component_manager._set_state(ComponentState.INITIALIZING)
+
+            import time
+            init_start_time = time.time()
+
+            # 执行同步初始化
+            success = self._initialize_internal_sync()
+
+            if success:
+                # 设置成功状态
+                init_duration = time.time() - init_start_time
+                self.component_manager._init_duration = init_duration
+                self.component_manager._set_state(ComponentState.INITIALIZED)
+                self.logger.info(f"热键管理器同步初始化成功，耗时 {init_duration:.2f}s")
+                return True
+            else:
+                # 设置错误状态
+                self.component_manager._set_state(ComponentState.ERROR, "同步初始化失败")
+                self.logger.error("热键管理器同步初始化失败")
+                return False
+
+        except Exception as e:
+            # 设置异常状态
+            self.component_manager._set_state(ComponentState.ERROR, str(e))
+            self.logger.error(f"热键管理器同步初始化异常: {e}")
+            return False
+
     async def initialize(self):
         # 设置内部初始化方法
         self.component_manager._initialize_internal = self._initialize_internal
@@ -82,7 +119,30 @@ class HotkeyManagerWrapper(QObject):
         self._press_callback = press_callback
         self._release_callback = release_callback
         self._permission_error_callback = permission_error_callback
-    
+
+    def _initialize_internal_sync(self) -> bool:
+        """同步初始化热键管理器"""
+        try:
+            # 获取设置管理器
+            settings_manager = None
+            if (self.app_context and
+                hasattr(self.app_context, 'settings_manager')):
+                settings_manager = self.app_context.settings_manager
+
+            # 创建热键管理器实例
+            if not self._create_hotkey_manager(settings_manager):
+                return False
+
+            # 设置回调
+            self._setup_hotkey_callbacks()
+
+            self.logger.info("热键管理器同步初始化完成")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"热键管理器同步初始化失败: {e}")
+            return False
+
     async def _initialize_internal(self) -> bool:
         """初始化热键管理器"""
         try:
@@ -107,15 +167,28 @@ class HotkeyManagerWrapper(QObject):
             return False
     
     def _create_hotkey_manager(self, settings_manager) -> bool:
-        """创建热键管理器实例"""
+        """创建热键管理器实例（与原始代码一致）"""
         try:
-            from hotkey_manager import PythonHotkeyManager
-            
-            self.hotkey_manager = PythonHotkeyManager(settings_manager)
-            
-            self.logger.debug("热键管理器实例创建成功")
-            return True
-            
+            # 使用工厂模式创建热键管理器（与原始代码一致）
+            try:
+                from src.hotkey_manager_factory import HotkeyManagerFactory
+            except ImportError:
+                from hotkey_manager_factory import HotkeyManagerFactory
+
+            if not settings_manager:
+                self.logger.error("设置管理器未提供，无法创建热键管理器")
+                return False
+
+            scheme = settings_manager.get_hotkey_scheme()
+            self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(scheme, settings_manager)
+
+            if self.hotkey_manager:
+                self.logger.debug(f"热键管理器实例创建成功，使用方案: {scheme}")
+                return True
+            else:
+                self.logger.error("热键管理器创建失败")
+                return False
+
         except Exception as e:
             self.logger.error(f"创建热键管理器实例失败: {e}")
             return False

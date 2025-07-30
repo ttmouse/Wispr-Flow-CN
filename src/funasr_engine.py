@@ -198,13 +198,46 @@ class FunASREngine(CleanupMixin):
                     import logging
                     logging.debug(f"单块处理使用热词: {len(self.hotwords)} 个热词，权重: 50.0")
             
+            # 添加调试信息（避免输出音频数据）
+            import logging
+            logging.debug(f"FunASR返回结果类型: {type(result)}")
+            if isinstance(result, list):
+                logging.debug(f"结果列表长度: {len(result)}")
+                if len(result) > 0:
+                    logging.debug(f"第一个元素类型: {type(result[0])}")
+                    # 避免直接输出可能包含音频数据的内容
+                    first_result = result[0]
+                    if isinstance(first_result, dict):
+                        logging.debug(f"第一个元素是字典，包含键: {list(first_result.keys())}")
+                    elif isinstance(first_result, str):
+                        logging.debug(f"第一个元素是字符串，长度: {len(first_result)}")
+                    else:
+                        logging.debug(f"第一个元素是其他类型: {type(first_result)}")
+
             if isinstance(result, list) and len(result) > 0:
-                text = result[0].get('text', '')
+                # 检查第一个元素的类型
+                first_result = result[0]
+                if isinstance(first_result, dict):
+                    text = first_result.get('text', '')
+                elif isinstance(first_result, str):
+                    text = first_result
+                else:
+                    # 如果是其他类型，尝试转换为字符串
+                    text = str(first_result)
+                    logging.warning(f"FunASR返回了意外的数据类型: {type(first_result)}")
+
+                logging.debug(f"提取的文本: '{text}'")
                 return text
+
+            logging.warning(f"FunASR返回了空结果或非列表类型: {result}")
             return ''
         except Exception as e:
             import logging
-            logging.error(f"单块处理失败: {e}")
+            # 避免在日志中输出音频数据
+            error_msg = str(e)
+            if len(error_msg) > 200:
+                error_msg = f"{type(e).__name__}: {error_msg[:100]}... (消息过长已截断)"
+            logging.error(f"单块处理失败: {error_msg}")
             return ''
 
     def _merge_results(self, chunk_results):
@@ -244,21 +277,44 @@ class FunASREngine(CleanupMixin):
                 )
 
             if isinstance(result, list) and len(result) > 0:
-                return result[0].get('text', text)
+                # 检查第一个元素的类型
+                first_result = result[0]
+                if isinstance(first_result, dict):
+                    return first_result.get('text', text)
+                elif isinstance(first_result, str):
+                    return first_result
+                else:
+                    # 如果是其他类型，尝试转换为字符串
+                    return str(first_result)
             return text
         except Exception as e:
-            print(f"❌ 标点处理失败: {e}")
+            import logging
+            logging.error(f"❌ 标点处理失败: {e}")
             return text
 
     def transcribe(self, audio_data):
         """转写音频数据"""
         try:
-            # 安全地检查数据类型，避免NumPy数组比较错误
-            if hasattr(audio_data, 'dtype') and audio_data.dtype != np.float32:
+            # 处理不同类型的音频数据
+            if isinstance(audio_data, bytes):
+                # bytes数据需要先转换为int16，再转换为float32
+                try:
+                    # 假设是16位PCM数据
+                    audio_data = np.frombuffer(audio_data, dtype=np.int16)
+                    # 转换为float32并归一化到[-1, 1]
+                    audio_data = audio_data.astype(np.float32) / 32768.0
+                except Exception as e:
+                    logging.error(f"bytes音频数据转换失败: {e}")
+                    return ""
+            elif hasattr(audio_data, 'dtype') and audio_data.dtype != np.float32:
                 audio_data = audio_data.astype(np.float32)
             elif not hasattr(audio_data, 'dtype'):
                 # 如果不是NumPy数组，转换为NumPy数组
-                audio_data = np.array(audio_data, dtype=np.float32)
+                try:
+                    audio_data = np.array(audio_data, dtype=np.float32)
+                except Exception as e:
+                    logging.error(f"音频数据转换失败: {e}")
+                    return ""
             
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 # 1. 语音识别
@@ -278,7 +334,15 @@ class FunASREngine(CleanupMixin):
                     logging.debug(f"主转写使用热词: {len(self.hotwords)} 个热词，权重: 50.0")
             
             if isinstance(result, list) and len(result) > 0:
-                text = result[0].get('text', '')
+                # 检查第一个元素的类型
+                first_result = result[0]
+                if isinstance(first_result, dict):
+                    text = first_result.get('text', '')
+                elif isinstance(first_result, str):
+                    text = first_result
+                else:
+                    # 如果是其他类型，尝试转换为字符串
+                    text = str(first_result)
                 
             # 2. 添加标点
             text = self._add_punctuation(text)
@@ -296,7 +360,11 @@ class FunASREngine(CleanupMixin):
             
         except Exception as e:
             import logging
-            logging.error(f"转写失败: {e}")
+            # 避免在日志中输出音频数据，只记录错误类型和消息
+            error_msg = str(e)
+            if len(error_msg) > 200:  # 如果错误消息太长（可能包含二进制数据）
+                error_msg = f"{type(e).__name__}: {error_msg[:100]}... (消息过长已截断)"
+            logging.error(f"转写失败: {error_msg}")
             raise
 
     def _process_text(self, text):

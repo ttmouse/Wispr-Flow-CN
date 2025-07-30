@@ -16,7 +16,8 @@ from ui.main_window import MainWindow
 from audio_capture import AudioCapture
 from funasr_engine import FunASREngine
 from clipboard_manager import ClipboardManager
-from state_manager import StateManager
+# 第二步模块化替换：使用状态管理器包装器
+from managers.state_manager_wrapper import StateManagerWrapper
 from context_manager import Context
 from audio_threads import AudioCaptureThread, TranscriptionThread
 from global_hotkey import GlobalHotkeyManager
@@ -33,7 +34,8 @@ import multiprocessing
 import logging
 from datetime import datetime
 from ui.settings_window import MacOSSettingsWindow
-from settings_manager import SettingsManager
+# 第一步模块化替换：使用设置管理器包装器
+from managers.settings_manager_wrapper import SettingsManagerWrapper
 
 # 在文件开头添加日志配置
 def setup_logging():
@@ -169,8 +171,8 @@ class Application(QObject):
             # 设置Qt应用程序的异常处理
             self.app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
             
-            # 初始化设置管理器
-            self.settings_manager = SettingsManager()
+            # 初始化设置管理器（第一步模块化替换）
+            self.settings_manager = SettingsManagerWrapper()
             
             # 设置应用程序属性
             if sys.platform == 'darwin':
@@ -233,8 +235,8 @@ class Application(QObject):
             if not self.tray_icon.isVisible():
                 pass  # 静默处理托盘图标设置失败
             
-            # 初始化基础组件
-            self.state_manager = StateManager()
+            # 初始化基础组件（第二步模块化替换）
+            self.state_manager = StateManagerWrapper()
             self.main_window = MainWindow(app_instance=self)
             self.main_window.set_state_manager(self.state_manager)
             
@@ -1603,7 +1605,8 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统
-    logging.info("应用程序启动")
+    print("🔥 [第二步替换-焦点修复版] 原始Application类 + 延迟初始化包装器 正在启动...")
+    logging.info("🔥 [第二步替换-焦点修复版] 使用延迟初始化避免焦点问题")
 
     # 检查环境
     check_environment()
