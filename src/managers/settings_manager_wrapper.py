@@ -106,6 +106,58 @@ class SettingsManagerWrapper:
             return getattr(self._original_manager, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     
+    def show_settings(self, audio_capture=None):
+        """显示设置窗口 - 从Application类移过来的方法"""
+        self._ensure_initialized()
+        try:
+            from ui.macos_settings_window import MacOSSettingsWindow
+            from PyQt6.QtCore import Qt
+            import logging
+            import traceback
+
+            # 检查现有窗口是否存在且可见
+            if hasattr(self, 'settings_window') and self.settings_window is not None:
+                if self.settings_window.isVisible():
+                    # 如果窗口已经打开，只需要激活它
+                    self.settings_window.raise_()
+                    self.settings_window.activateWindow()
+                    return
+                else:
+                    # 如果窗口存在但不可见（已关闭），清理旧实例
+                    self.settings_window = None
+
+            # 创建新的设置窗口
+            self.settings_window = MacOSSettingsWindow(
+                settings_manager=self._original_manager,
+                audio_capture=audio_capture
+            )
+
+            # 连接信号 - 需要外部提供apply_settings回调
+            if hasattr(self, '_apply_settings_callback'):
+                self.settings_window.settings_saved.connect(
+                    self._apply_settings_callback,
+                    Qt.ConnectionType.QueuedConnection
+                )
+
+            # 连接窗口关闭信号，确保实例被清理
+            self.settings_window.finished.connect(
+                lambda: setattr(self, 'settings_window', None)
+            )
+
+            self.settings_window.show()
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
+
+        except Exception as e:
+            logging.error(f"显示设置窗口失败: {e}")
+            logging.error(traceback.format_exc())
+            # 如果出错，确保清理窗口实例
+            self.settings_window = None
+
+    def set_apply_settings_callback(self, callback):
+        """设置应用设置的回调函数"""
+        self._apply_settings_callback = callback
+
     def get_status(self):
         """获取管理器状态"""
         return {

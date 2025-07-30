@@ -11,9 +11,11 @@ from functools import wraps
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QDialog
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QMetaObject, Qt, Q_ARG, QObject, pyqtSlot
 from PyQt6.QtGui import QIcon
-from ui.main_window import MainWindow
+# 第三步模块化替换：使用UI管理器包装器
+from managers.ui_manager_wrapper import UIManagerWrapper
 
-from audio_capture import AudioCapture
+# 第四步模块化替换：使用音频管理器包装器
+from managers.audio_manager_wrapper import AudioManagerWrapper
 from funasr_engine import FunASREngine
 from clipboard_manager import ClipboardManager
 # 第二步模块化替换：使用状态管理器包装器
@@ -171,8 +173,9 @@ class Application(QObject):
             # 设置Qt应用程序的异常处理
             self.app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
             
-            # 初始化设置管理器（第一步模块化替换）
+            # 初始化设置管理器（第一步模块化替换 - 真正的减法重构）
             self.settings_manager = SettingsManagerWrapper()
+            self.settings_manager.set_apply_settings_callback(self.apply_settings)
             
             # 设置应用程序属性
             if sys.platform == 'darwin':
@@ -235,15 +238,15 @@ class Application(QObject):
             if not self.tray_icon.isVisible():
                 pass  # 静默处理托盘图标设置失败
             
-            # 初始化基础组件（第二步模块化替换）
+            # 初始化基础组件（第三步模块化替换）
             self.state_manager = StateManagerWrapper()
-            self.main_window = MainWindow(app_instance=self)
+            self.main_window = UIManagerWrapper(app_instance=self)
             self.main_window.set_state_manager(self.state_manager)
             
 
             
-            # 初始化基础音频组件
-            self.audio_capture = AudioCapture()
+            # 初始化基础音频组件（第四步模块化替换）
+            self.audio_capture = AudioManagerWrapper()
             
             # 初始化状态变量
             self.recording = False
@@ -258,20 +261,17 @@ class Application(QObject):
             # 连接信号
             self.show_window_signal.connect(self._show_window_internal)
             
-            # 创建并显示启动加载界面
-            try:
-                from src.app_loader import LoadingSplash, AppLoader
-            except ImportError:
-                # 如果在src目录下运行，使用相对导入
-                from app_loader import LoadingSplash, AppLoader
-            self.splash = LoadingSplash()
+            # 创建并显示启动加载界面（第五步模块化替换）
+            from managers.loading_manager_wrapper import LoadingManagerWrapper
+            self.loading_manager = LoadingManagerWrapper(self, self.settings_manager)
+            self.splash = self.loading_manager.splash
             self.splash.show()
 
             # 确保主窗口在初始化完成前不显示
             self.main_window.hide()
-            
+
             # 创建异步加载器
-            self.app_loader = AppLoader(self, self.settings_manager)
+            self.app_loader = self.loading_manager.app_loader
             self.app_loader.progress_updated.connect(self.splash.update_progress)
             self.app_loader.component_loaded.connect(self.on_component_loaded)
             self.app_loader.loading_completed.connect(self.on_loading_completed)
@@ -1078,19 +1078,20 @@ class Application(QObject):
         self.stop_recording_signal.connect(self.stop_recording)
 
     def _can_start_recording(self):
-        """统一的录音开始条件检查"""
-        return not self.recording
-    
+        """统一的录音开始条件检查 - 委托给状态管理器"""
+        return self.state_manager.can_start_recording(self.recording)
+
     def _can_stop_recording(self):
-        """统一的录音停止条件检查"""
-        return self.recording
-    
+        """统一的录音停止条件检查 - 委托给状态管理器"""
+        return self.state_manager.can_stop_recording(self.recording)
+
     def toggle_recording(self):
-        """切换录音状态"""
-        if self._can_start_recording():
-            self.start_recording()
-        elif self._can_stop_recording():
-            self.stop_recording()
+        """切换录音状态 - 委托给状态管理器"""
+        self.state_manager.toggle_recording_state(
+            self.recording,
+            self.start_recording,
+            self.stop_recording
+        )
 
     def on_option_press(self):
         """处理Control键按下事件"""
@@ -1303,26 +1304,8 @@ class Application(QObject):
             self.main_window.update_status("点击处理出错")
 
     def update_ui(self, status, result):
-        """更新界面显示"""
-        self.main_window.update_status(status)
-        if result and result.strip():
-            # 只有在不是历史记录相关操作的情况下才添加到历史记录
-            history_related_statuses = [
-                "准备粘贴历史记录", 
-                "历史记录已复制", 
-                "正在处理点击...",
-                "正在处理历史记录点击...",
-                "历史记录已粘贴",
-                "粘贴失败",
-                "复制失败",
-                "点击失败",
-                "点击处理出错"
-            ]
-            if status not in history_related_statuses:
-                self.main_window.display_result(result, skip_history=False)
-            else:
-                # 对于历史记录相关操作，显示结果但不添加到历史记录
-                self.main_window.display_result(result, skip_history=True)
+        """更新界面显示 - 委托给状态管理器"""
+        self.state_manager.update_ui_display(self.main_window, status, result)
 
     def run(self):
         """运行应用程序"""
@@ -1444,50 +1427,8 @@ class Application(QObject):
     # handle_mac_events方法已被eventFilter替代
 
     def show_settings(self):
-        """显示设置窗口"""
-        print("Application: show_settings 方法被调用")
-        try:
-            # 检查现有窗口是否存在且可见
-            if hasattr(self, 'settings_window') and self.settings_window is not None:
-                if self.settings_window.isVisible():
-                    # 如果窗口已经打开，只需要激活它
-                    print("Application: 设置窗口已存在，激活窗口")
-                    self.settings_window.raise_()
-                    self.settings_window.activateWindow()
-                    return
-                else:
-                    # 如果窗口存在但不可见（已关闭），清理旧实例
-                    print("Application: 清理旧的设置窗口实例")
-                    self.settings_window = None
-            
-            # 创建新的设置窗口
-            print("Application: 开始创建新的设置窗口")
-            self.settings_window = MacOSSettingsWindow(
-                settings_manager=self.settings_manager,
-                audio_capture=self.audio_capture
-            )
-            print("Application: 设置窗口创建成功")
-            
-            # 连接信号
-            self.settings_window.settings_saved.connect(
-                self.apply_settings, 
-                Qt.ConnectionType.QueuedConnection
-            )
-            
-            # 连接窗口关闭信号，确保实例被清理
-            self.settings_window.finished.connect(
-                lambda: setattr(self, 'settings_window', None)
-            )
-            
-            self.settings_window.show()
-            self.settings_window.raise_()
-            self.settings_window.activateWindow()
-            
-        except Exception as e:
-            logging.error(f"显示设置窗口失败: {e}")
-            logging.error(traceback.format_exc())
-            # 如果出错，确保清理窗口实例
-            self.settings_window = None
+        """显示设置窗口 - 委托给设置管理器"""
+        self.settings_manager.show_settings(self.audio_capture)
     
 
 
@@ -1605,8 +1546,8 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统
-    print("🔥 [第二步替换-焦点修复版] 原始Application类 + 延迟初始化包装器 正在启动...")
-    logging.info("🔥 [第二步替换-焦点修复版] 使用延迟初始化避免焦点问题")
+    print("🔥 [减法重构] 开始真正的模块化 - 移除Application类冗余代码...")
+    logging.info("🔥 [减法重构] 第二步：状态管理器方法已移除，累计减少60行代码")
 
     # 检查环境
     check_environment()

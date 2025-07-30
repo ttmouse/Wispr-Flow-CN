@@ -112,6 +112,44 @@ class StateManagerWrapper:
             return getattr(self._original_manager, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     
+    def can_start_recording(self, recording_state):
+        """统一的录音开始条件检查 - 从Application类移过来"""
+        return not recording_state
+
+    def can_stop_recording(self, recording_state):
+        """统一的录音停止条件检查 - 从Application类移过来"""
+        return recording_state
+
+    def toggle_recording_state(self, current_recording, start_callback, stop_callback):
+        """切换录音状态 - 从Application类移过来"""
+        if self.can_start_recording(current_recording):
+            start_callback()
+        elif self.can_stop_recording(current_recording):
+            stop_callback()
+
+    def update_ui_display(self, main_window, status, result):
+        """更新界面显示 - 从Application类移过来"""
+        main_window.update_status(status)
+        if result and result.strip():
+            # 只有在不是历史记录相关操作的情况下才添加到历史记录
+            history_related_statuses = [
+                "准备粘贴历史记录",
+                "历史记录已复制",
+                "正在处理点击...",
+                "正在处理历史记录点击...",
+                "历史记录已粘贴",
+                "粘贴失败",
+                "复制失败",
+                "点击失败",
+                "点击处理出错"
+            ]
+
+            if status not in history_related_statuses:
+                main_window.display_result(result, skip_history=False)
+            else:
+                # 对于历史记录相关操作，显示结果但不添加到历史记录
+                main_window.display_result(result, skip_history=True)
+
     def get_status(self):
         """获取管理器状态"""
         return {
