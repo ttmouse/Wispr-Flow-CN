@@ -38,6 +38,12 @@ from datetime import datetime
 from ui.settings_window import MacOSSettingsWindow
 # 第一步模块化替换：使用设置管理器包装器
 from managers.settings_manager_wrapper import SettingsManagerWrapper
+# 第七步模块化替换：使用清理管理器包装器
+from managers.cleanup_manager_wrapper import CleanupManagerWrapper
+# 第八步模块化替换：使用转写管理器包装器
+from managers.transcription_manager_wrapper import TranscriptionManagerWrapper
+# 第九步模块化替换：使用权限管理器包装器
+from managers.permission_manager_wrapper import PermissionManagerWrapper
 
 # 在文件开头添加日志配置
 def setup_logging():
@@ -249,6 +255,12 @@ class Application(QObject):
             
             # 初始化基础音频组件（第四步模块化替换）
             self.audio_capture = AudioManagerWrapper()
+            # 第七步模块化替换：使用清理管理器包装器
+            self.cleanup_manager = CleanupManagerWrapper()
+            # 第八步模块化替换：使用转写管理器包装器
+            self.transcription_manager = TranscriptionManagerWrapper()
+            # 第九步模块化替换：使用权限管理器包装器
+            self.permission_manager = PermissionManagerWrapper()
             
             # 初始化状态变量
             self.recording = False
@@ -285,7 +297,7 @@ class Application(QObject):
             
             pass  # 基础界面已启动
             
-            # 启动异步加载
+            # 临时恢复原有加载方式，确保程序能启动
             self._start_async_loading()
 
         except Exception as e:
@@ -334,13 +346,13 @@ class Application(QObject):
             # 对于其他事件，直接返回，减少处理时间
             return False
         except Exception:
-            # 简化异常处理，避免日志记录阻塞
+
             return False
     
     def _start_async_loading(self):
         """启动异步加载任务"""
         from PyQt6.QtCore import QTimer
-        
+
         # 延迟启动加载，让UI先显示
         self._load_timer = QTimer()
         self._load_timer.setSingleShot(True)
@@ -348,66 +360,37 @@ class Application(QObject):
         self._load_timer.start(500)  # 500ms后开始加载
     
     def on_component_loaded(self, component_name, component):
-        """当组件加载完成时的回调 - 线程安全版本"""
+        """当组件加载完成时的回调"""
         try:
-            # 确保在主线程中执行setattr操作，避免SIGTRAP崩溃
-            if QThread.currentThread() != QApplication.instance().thread():
-                # 使用QMetaObject.invokeMethod确保在主线程中执行
-                QMetaObject.invokeMethod(
-                    self, "_set_component_in_main_thread",
-                    Qt.ConnectionType.QueuedConnection,
-                    Q_ARG(str, component_name),
-                    Q_ARG(object, component)
-                )
-                return
-            
-            # 在主线程中安全地设置组件属性
-            self._set_component_safely(component_name, component)
-            
+            # 将组件赋值给应用实例
+            setattr(self, component_name, component)
+
+            # 特殊处理某些组件
+            if component_name == 'funasr_engine' and component:
+                if hasattr(self, 'state_manager') and self.state_manager:
+                    self.state_manager.funasr_engine = component
+
+            elif component_name == 'hotkey_manager' and component:
+                component.set_press_callback(self.on_option_press)
+                component.set_release_callback(self.on_option_release)
+
+            elif component_name == 'audio_capture_thread' and component:
+                component.audio_captured.connect(self.on_audio_captured)
+                component.recording_stopped.connect(self.stop_recording)
+
         except Exception as e:
-            logging.error(f"组件 {component_name} 加载后处理失败: {e}")
+            logging.error(f"组件 {component_name} 加载失败: {e}")
     
     @pyqtSlot(str, object)
     def _set_component_in_main_thread(self, component_name, component):
         """在主线程中设置组件"""
-        try:
-            self._set_component_safely(component_name, component)
-        except Exception as e:
-            logging.error(f"主线程中设置组件 {component_name} 失败: {e}")
-    
-    def _set_component_safely(self, component_name, component):
-        """安全地设置组件属性和连接"""
-        try:
-            # 将组件赋值给应用实例
-            setattr(self, component_name, component)
-            
-            # 特殊处理某些组件
-            if component_name == 'funasr_engine' and component:
-                # 关联到状态管理器
-                if hasattr(self, 'state_manager') and self.state_manager:
-                    self.state_manager.funasr_engine = component
-                pass  # FunASR引擎已关联到状态管理器
-                
-            elif component_name == 'hotkey_manager' and component:
-                # 设置热键回调
-                component.set_press_callback(self.on_option_press)
-                component.set_release_callback(self.on_option_release)
-                
-            elif component_name == 'audio_capture_thread' and component:
-                # 连接音频捕获信号
-                component.audio_captured.connect(self.on_audio_captured)
-                component.recording_stopped.connect(self.stop_recording)
-                
-            pass  # 组件加载完成
-            
-        except Exception as e:
-            logging.error(f"安全设置组件 {component_name} 失败: {e}")
+        self.on_component_loaded(component_name, component)
     
     def on_loading_completed(self):
         """当所有组件加载完成时的回调"""
         try:
             # 隐藏启动界面
-            if hasattr(self, 'splash') and self.splash:
+            if hasattr(self, 'splash'):
                 self.splash.close()
 
             # 显示主窗口并置顶
@@ -423,7 +406,7 @@ class Application(QObject):
 
         except Exception as e:
             logging.error(f"加载完成处理失败: {e}")
-    
+
     def on_loading_failed(self, error_message):
         """当加载失败时的回调"""
         logging.error(f"组件加载失败: {error_message}")
@@ -442,97 +425,37 @@ class Application(QObject):
     # 保留权限检查方法供加载器使用
     
     def _finalize_initialization(self):
-        """完成初始化设置 - 简化版本"""
+        """完成初始化设置"""
         try:
             # 设置连接
             self.setup_connections()
-            
+
             # 应用设置
             self.apply_settings()
-            
-            # 移除自动监控启动 - 简化架构
-            # self.start_hotkey_monitor()  # 已移除
-            
+
             logging.debug("最终初始化完成")
         except Exception as e:
             logging.error(f"初始化设置失败: {e}")
-    
+
     def _mark_initialization_complete(self):
         """标记初始化完成"""
         try:
             # 标记主窗口初始化完成
             if hasattr(self.main_window, '_initialization_complete'):
                 self.main_window._initialization_complete = True
-            
+
             # 通知初始化完成
             self.update_ui_signal.emit("✓ 应用初始化完成", "")
         except Exception as e:
             logging.error(f"标记初始化完成失败: {e}")
     
-    # 旧的复杂异步初始化方法已被简化的initialize_components方法替代
+
 
 
 
     def _check_development_permissions(self):
-        """检查开发环境权限"""
-        try:
-            pass  # 检查开发环境权限
-            
-            # 检查辅助功能权限
-            accessibility_check = subprocess.run([
-                'osascript',
-                '-e', 'tell application "System Events"',
-                '-e', 'set isEnabled to UI elements enabled',
-                '-e', 'return isEnabled',
-                '-e', 'end tell'
-            ], capture_output=True, text=True)
-            
-            has_accessibility = 'true' in accessibility_check.stdout.lower()
-            
-            # 检查麦克风权限
-            mic_check = subprocess.run([
-                'osascript',
-                '-e', 'tell application "System Events"',
-                '-e', 'return "mic_check"',
-                '-e', 'end tell'
-            ], capture_output=True, text=True)
-            
-            # 如果能执行 AppleScript，说明有基本权限
-            has_mic_access = 'mic_check' in mic_check.stdout
-            
-            missing_permissions = []
-            if not has_accessibility:
-                missing_permissions.append("辅助功能")
-            
-            if missing_permissions:
-                pass  # 缺少权限
-                pass
-                pass
-                pass
-                pass  # 权限设置说明
-                
-                # 尝试打开系统设置
-                try:
-                    subprocess.run(['open', 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'], check=False)
-                    pass  # 已尝试打开系统设置页面
-                except:
-                    pass
-                
-                pass  # 提示信息
-                
-                # 给用户一些时间查看信息
-                import time
-                time.sleep(3)
-            else:
-                pass  # 权限检查通过
-            
-            # 更新权限缓存
-            self.settings_manager.update_permissions_cache(has_accessibility, has_mic_access)
-                
-        except Exception as e:
-            logging.error(f"权限检查失败: {e}")
-            # 权限检查失败时也更新缓存，避免重复检查
-            self.settings_manager.update_permissions_cache(False, False)
+        """检查开发环境权限 - 委托给权限管理器"""
+        self.permission_manager.check_development_permissions(self)
 
     @pyqtSlot()
     def _safe_restart_hotkey_manager(self):
@@ -617,91 +540,19 @@ class Application(QObject):
             logging.error(f"热键管理器重启失败: {e}")
             self.hotkey_manager = None
     
-    # 移除自动监控功能 - 根据奥卡姆剃刀原理简化架构
-    # def start_hotkey_monitor(self):
-    #     """已移除：自动热键状态监控功能"""
-    #     pass
+
     
     def is_component_ready(self, component_name, check_method=None):
-        """统一的组件状态检查方法
-        
-        Args:
-            component_name: 组件属性名
-            check_method: 可选的检查方法名，如'is_ready'、'isRunning'等
-        
-        Returns:
-            bool: 组件是否就绪
-        """
-        try:
-            component = getattr(self, component_name, None)
-            if not component:
-                return False
-            
-            # 如果指定了检查方法，调用该方法
-            if check_method and hasattr(component, check_method):
-                check_attr = getattr(component, check_method)
-                # 如果是方法，调用它；如果是属性，直接返回
-                if callable(check_attr):
-                    return check_attr()
-                else:
-                    return bool(check_attr)
-            
-            # 默认检查：组件存在且不为None
-            return True
-        except Exception as e:
-            logging.error(f"检查组件 {component_name} 状态失败: {e}")
-            return False
+        """统一的组件状态检查方法 - 委托给清理管理器"""
+        return self.cleanup_manager.is_component_ready(self, component_name, check_method)
     
     def is_ready_for_recording(self):
-        """检查是否准备好录音"""
-        return (self.audio_capture_thread is not None and 
-                self.funasr_engine is not None and 
-                hasattr(self.funasr_engine, 'is_ready') and self.funasr_engine.is_ready and
-                self.state_manager is not None and
-                not self.recording)
+        """检查是否准备好录音 - 委托给清理管理器"""
+        return self.cleanup_manager.is_ready_for_recording(self)
     
     def cleanup_component(self, component_name, cleanup_method='cleanup', timeout=200):
-        """统一的组件清理方法
-        
-        Args:
-            component_name: 组件属性名
-            cleanup_method: 清理方法名，默认为'cleanup'
-            timeout: 超时时间（毫秒），仅对线程有效
-        """
-        try:
-            component = getattr(self, component_name, None)
-            if not component:
-                return True
-                
-            # 处理线程类型的组件
-            if hasattr(component, 'isRunning'):
-                if component.isRunning():
-                    # 尝试优雅停止
-                    if hasattr(component, 'stop'):
-                        component.stop()
-                    
-                    # 等待线程结束
-                    if not component.wait(timeout):
-                        logging.warning(f"{component_name}未能及时结束，强制终止")
-                        component.terminate()
-                        component.wait(100)  # 再等100ms
-                        
-                setattr(self, component_name, None)
-                pass  # 组件已清理
-                return True
-            
-            # 处理普通组件
-            if hasattr(component, cleanup_method):
-                getattr(component, cleanup_method)()
-                pass  # 组件已清理
-                return True
-            else:
-                pass  # 组件没有清理方法
-                return False
-                
-        except Exception as e:
-            logging.error(f"清理{component_name}失败: {e}")
-            return False
+        """统一的组件清理方法 - 委托给清理管理器"""
+        return self.cleanup_manager.cleanup_component(self, component_name, cleanup_method, timeout)
     
     def cleanup_resources(self):
         """清理资源 - 使用统一的清理方法"""
@@ -711,9 +562,7 @@ class Application(QObject):
                 self._set_system_volume(self.previous_volume)
                 pass  # 系统音量已恢复
             
-            # 移除监控线程相关代码 - 简化架构
-            # if hasattr(self, '_monitor_should_stop'):
-            #     self._monitor_should_stop = True
+
             
             # 使用统一方法清理所有组件
             components_to_cleanup = [
@@ -769,9 +618,7 @@ class Application(QObject):
         """快速清理关键资源，避免长时间等待导致卡死 - 简化版本"""
         pass  # 开始快速清理资源
         try:
-            # 0. 已移除：热键状态监控线程相关逻辑
-            # if hasattr(self, '_monitor_should_stop'):
-            #     self._monitor_should_stop = True
+
             
             # 1. 立即停止录音相关操作
             self.recording = False
@@ -842,8 +689,7 @@ class Application(QObject):
             import traceback
             logging.error(traceback.format_exc())
 
-    # closeEvent方法已移除，因为Application类继承自QObject，不是QWidget
-    # 窗口关闭事件应该在MainWindow中处理
+
 
     def _set_system_volume(self, volume):
         """设置系统音量 - 委托给音频管理器"""
@@ -1059,9 +905,7 @@ class Application(QObject):
     def quit_application(self):
         """退出应用程序 - 简化版本"""
         try:
-            # 1. 已移除：热键状态监控线程相关逻辑
-            # if hasattr(self, '_monitor_should_stop'):
-            #     self._monitor_should_stop = True
+
             
             # 2. 停止热键监听，避免在清理过程中触发新的操作
             if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
@@ -1093,108 +937,79 @@ class Application(QObject):
             logging.error(f"恢复窗口级别时出错: {e}")
     
     def _show_window_internal(self):
-        """在主线程中显示窗口 - 委托给UI管理器"""
-        self.main_window.show_window_internal()
+        """在主线程中显示窗口"""
+        try:
+            # 在 macOS 上使用 NSWindow 来激活窗口
+            if sys.platform == 'darwin':
+                try:
+                    from AppKit import NSApplication, NSWindow
+                    from PyQt6.QtGui import QWindow
+
+                    # 获取应用
+                    app = NSApplication.sharedApplication()
+
+                    # 显示窗口
+                    if not self.main_window.isVisible():
+                        self.main_window.show()
+
+                    # 获取窗口句柄
+                    window_handle = self.main_window.windowHandle()
+                    if window_handle:
+                        # 在PyQt6中使用winId()获取原生窗口ID
+                        window_id = self.main_window.winId()
+                        if window_id:
+                            # 激活应用程序
+                            app.activateIgnoringOtherApps_(True)
+
+                            # 使用Qt方法激活窗口
+                            self.main_window.raise_()
+                            self.main_window.activateWindow()
+                            self.main_window.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+                        else:
+                            # 如果无法获取窗口ID，使用基本方法
+                            app.activateIgnoringOtherApps_(True)
+                            self.main_window.raise_()
+                            self.main_window.activateWindow()
+                    else:
+                        # 如果无法获取窗口句柄，使用基本方法
+                        app.activateIgnoringOtherApps_(True)
+                        self.main_window.raise_()
+                        self.main_window.activateWindow()
+
+                except Exception as e:
+                    logging.error(f"激活窗口时出错: {e}")
+                    # 如果原生方法失败，使用 Qt 方法
+                    self.main_window.show()
+                    self.main_window.raise_()
+                    self.main_window.activateWindow()
+            else:
+                # 非 macOS 系统的处理
+                if not self.main_window.isVisible():
+                    self.main_window.show()
+                self.main_window.raise_()
+                self.main_window.activateWindow()
+
+            pass  # 窗口已显示
+        except Exception as e:
+            logging.error(f"显示窗口失败: {e}")
     
-    # _delayed_paste 方法已移除，现在使用 lambda 函数直接处理延迟粘贴
+
     
     def _paste_and_reactivate(self, text):
-        """执行粘贴操作 - 确保完全替换剪贴板内容"""
-        try:
-            # 检查剪贴板管理器是否已初始化
-            if not self.clipboard_manager:
-                return
-            
-            # 使用安全的复制粘贴方法，确保完全替换剪贴板内容
-            success = self.clipboard_manager.safe_copy_and_paste(text)
-            if not success:
-                logging.warning("安全粘贴操作失败")
-            
-        except Exception as e:
-            logging.error(f"粘贴操作失败: {e}")
-            logging.error(traceback.format_exc())
+        """执行粘贴操作 - 委托给转写管理器"""
+        self.transcription_manager.paste_and_reactivate(self, text)
     
     def _paste_and_reactivate_with_feedback(self, text):
-        """执行粘贴操作并返回成功状态"""
-        try:
-            # 检查剪贴板管理器是否已初始化
-            if not self.clipboard_manager:
-                return False
-            
-            # 检查文本是否有效
-            if not text or not text.strip():
-                return False
-            
-            # 使用安全的复制粘贴方法，确保完全替换剪贴板内容
-            success = self.clipboard_manager.safe_copy_and_paste(text)
-            return success
-            
-        except Exception as e:
-            logging.error(f"粘贴操作异常: {e}")
-            logging.error(traceback.format_exc())
-            return False
+        """执行粘贴操作并返回成功状态 - 委托给转写管理器"""
+        return self.transcription_manager.paste_and_reactivate_with_feedback(self, text)
     
     def on_transcription_done(self, text):
-        """转写完成的回调 - 优化剪贴板替换逻辑"""
-        if text and text.strip():
-            # 调试模式：显示转录完成信息
-            # 调试信息已移除
-            
-            # 1. 更新UI并添加到历史记录（无论窗口是否可见）
-            self.main_window.display_result(text)  # UI显示保留HTML格式
-            
-            # 2. 使用可配置的延迟时间，用lambda函数捕获当前文本
-            delay = self.settings_manager.get_setting('paste.transcription_delay', 30)
-            QTimer.singleShot(delay, lambda: self._paste_and_reactivate(text))
-            
-            # 转录完成
+        """转写完成的回调 - 委托给转写管理器"""
+        self.transcription_manager.on_transcription_done(self, text)
     
     def on_history_item_clicked(self, text):
-        """处理历史记录点击事件"""
-        try:
-            # 检查文本是否有效
-            if not text or not text.strip():
-                # 只更新状态，不传递文本内容避免添加到历史记录
-                self.main_window.update_status("点击失败")
-                return
-            
-            # 1. 立即更新UI反馈（只更新状态，不传递文本）
-            self.main_window.update_status("正在处理历史记录点击...")
-            
-            # 2. 检查剪贴板管理器是否可用
-            if not self.clipboard_manager:
-                self.main_window.update_status("点击失败")
-                return
-            
-            # 3. 检查是否启用自动粘贴
-            auto_paste_enabled = self.settings_manager.get_setting('paste.auto_paste_enabled', True)
-            
-            if auto_paste_enabled:
-                # 使用极短延迟或立即执行粘贴（_paste_and_reactivate内部会处理复制）
-                delay = self.settings_manager.get_setting('paste.history_click_delay', 0)  # 默认无延迟
-                if delay <= 0:
-                    # 立即执行粘贴
-                    success = self._paste_and_reactivate_with_feedback(text)
-                    if success:
-                        self.main_window.update_status("历史记录已粘贴")
-                    else:
-                        self.main_window.update_status("粘贴失败")
-                else:
-                    # 使用lambda函数捕获当前文本，避免变量覆盖问题
-                    QTimer.singleShot(delay, lambda: self._paste_and_reactivate_with_feedback(text))
-            else:
-                # 如果不自动粘贴，只复制到剪贴板
-                success = self.clipboard_manager.copy_to_clipboard(text)
-                if success:
-                    self.main_window.update_status("历史记录已复制")
-                else:
-                    self.main_window.update_status("复制失败")
-            
-        except Exception as e:
-            logging.error(f"处理历史记录点击事件失败: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
-            self.main_window.update_status("点击处理出错")
+        """处理历史记录点击事件 - 委托给转写管理器"""
+        self.transcription_manager.on_history_item_clicked(self, text)
 
     def update_ui(self, status, result):
         """更新界面显示 - 委托给状态管理器"""
@@ -1213,8 +1028,6 @@ class Application(QObject):
                 try:
                     print("✓ 启动热键监听...")
                     self.hotkey_manager.start_listening()
-                    # 已移除：启动热键状态监控
-                    # self.start_hotkey_monitor()
                     logging.info("热键监听已启动")
                 except Exception as e:
                     logging.error(f"启动热键监听失败: {e}")
@@ -1225,11 +1038,11 @@ class Application(QObject):
                         self.hotkey_manager.set_press_callback(self.on_option_press)
                         self.hotkey_manager.set_release_callback(self.on_option_release)
                         self.hotkey_manager.start_listening()
-                        # 已移除：启动热键状态监控
-                        # self.start_hotkey_monitor()
                     except Exception as e2:
                         logging.error(f"重新初始化热键管理器失败: {e2}")
                         self.hotkey_manager = None
+
+
             else:
                 try:
                     print("✓ 初始化热键管理器...")
@@ -1243,8 +1056,6 @@ class Application(QObject):
                         self.hotkey_manager.set_press_callback(self.on_option_press)
                         self.hotkey_manager.set_release_callback(self.on_option_release)
                         self.hotkey_manager.start_listening()
-                        # 已移除：启动热键状态监控
-                        # self.start_hotkey_monitor()
                         logging.debug("热键管理器初始化完成")
                     else:
                         logging.error("热键管理器创建失败")
@@ -1265,57 +1076,8 @@ class Application(QObject):
             self._quick_cleanup()
 
     def check_permissions(self):
-        """检查应用权限状态"""
-        try:
-            # 检查麦克风权限
-            mic_status = subprocess.run([
-                'osascript',
-                '-e', 'tell application "System Events" to tell process "SystemUIServer"',
-                '-e', 'get value of first menu bar item of menu bar 1 whose description contains "麦克风"',
-                '-e', 'end tell'
-            ], capture_output=True, text=True)
-            
-            # 检查辅助功能权限
-            accessibility_status = subprocess.run([
-                'osascript',
-                '-e', 'tell application "System Events"',
-                '-e', 'set isEnabled to UI elements enabled',
-                '-e', 'return isEnabled',
-                '-e', 'end tell'
-            ], capture_output=True, text=True)
-            
-            # 检查自动化权限
-            automation_status = subprocess.run([
-                'osascript',
-                '-e', 'tell application "System Events"',
-                '-e', 'return "已授权"',
-                '-e', 'end tell'
-            ], capture_output=True, text=True)
-            
-            # 准备状态消息
-            status_msg = "权限状态：\n\n"
-            status_msg += f"麦克风：{'已授权' if '1' in mic_status.stdout else '未授权'}\n"
-            status_msg += f"辅助功能：{'已授权' if 'true' in accessibility_status.stdout.lower() else '未授权'}\n"
-            status_msg += f"自动化：{'已授权' if '已授权' in automation_status.stdout else '未授权'}\n\n"
-            
-            if '未授权' in status_msg:
-                status_msg += "请在系统设置中授予以下权限：\n"
-                status_msg += "1. 系统设置 > 隐私与安全性 > 麦克风\n"
-                status_msg += "2. 系统设置 > 隐私与安全性 > 辅助功能\n"
-                status_msg += "3. 系统设置 > 隐私与安全性 > 自动化"
-            
-            # 显示状态
-            msg_box = QMessageBox()
-            msg_box.setWindowTitle("权限检查")
-            msg_box.setText(status_msg)
-            msg_box.setIcon(QMessageBox.Icon.Information)
-            msg_box.exec()
-        except Exception as e:
-            msg_box = QMessageBox()
-            msg_box.setWindowTitle("权限检查失败")
-            msg_box.setText(f"检查权限时出错：{str(e)}")
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.exec()
+        """检查应用权限状态 - 委托给权限管理器"""
+        self.permission_manager.check_permissions(self)
 
     # handle_mac_events方法已被eventFilter替代
 
@@ -1440,7 +1202,7 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 if __name__ == "__main__":
     setup_logging()  # 初始化日志系统
     print("🔥 [减法重构] 开始真正的模块化 - 移除Application类冗余代码...")
-    logging.info("🔥 [减法重构] 第四步：音频管理器方法已移除，累计减少174行代码")
+    logging.info("🔥 [减法重构] 最终版：一比一还原原始逻辑，简化冗余代码")
 
     # 检查环境
     check_environment()

@@ -108,12 +108,21 @@ class SettingsManagerWrapper:
     
     def show_settings(self, audio_capture=None):
         """显示设置窗口 - 从Application类移过来的方法"""
+        import logging
+        import traceback
+
         self._ensure_initialized()
         try:
-            from ui.macos_settings_window import MacOSSettingsWindow
+            # 尝试不同的导入路径
+            try:
+                from ui.settings_window import MacOSSettingsWindow
+            except ImportError:
+                try:
+                    from src.ui.settings_window import MacOSSettingsWindow
+                except ImportError:
+                    from settings_window import MacOSSettingsWindow
+
             from PyQt6.QtCore import Qt
-            import logging
-            import traceback
 
             # 检查现有窗口是否存在且可见
             if hasattr(self, 'settings_window') and self.settings_window is not None:

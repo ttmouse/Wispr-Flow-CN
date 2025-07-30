@@ -132,7 +132,129 @@ class LoadingManagerWrapper:
             return getattr(self._original_splash, name)
         
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-    
+
+    def start_async_loading(self, app_instance):
+        """启动异步加载任务 - 从Application类移过来"""
+        from PyQt6.QtCore import QTimer
+
+        # 延迟启动加载，让UI先显示
+        self._load_timer = QTimer()
+        self._load_timer.setSingleShot(True)
+        self._load_timer.timeout.connect(self._original_loader.start_loading)
+        self._load_timer.start(500)  # 500ms后开始加载
+
+    def handle_component_loaded(self, app_instance, component_name, component):
+        """处理组件加载完成 - 从Application类移过来"""
+        from PyQt6.QtCore import QThread, QMetaObject, Qt, Q_ARG
+        from PyQt6.QtWidgets import QApplication
+        import logging
+
+        try:
+            # 确保在主线程中执行setattr操作，避免SIGTRAP崩溃
+            if QThread.currentThread() != QApplication.instance().thread():
+                # 使用QMetaObject.invokeMethod确保在主线程中执行
+                QMetaObject.invokeMethod(
+                    app_instance, "_set_component_in_main_thread",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(str, component_name),
+                    Q_ARG(object, component)
+                )
+                return
+
+            # 在主线程中安全地设置组件属性
+            self.set_component_safely(app_instance, component_name, component)
+
+        except Exception as e:
+            logging.error(f"组件 {component_name} 加载后处理失败: {e}")
+
+    def set_component_safely(self, app_instance, component_name, component):
+        """安全地设置组件属性和连接 - 从Application类移过来"""
+        import logging
+        try:
+            # 将组件赋值给应用实例
+            setattr(app_instance, component_name, component)
+
+            # 特殊处理某些组件
+            if component_name == 'funasr_engine' and component:
+                # 关联到状态管理器
+                if hasattr(app_instance, 'state_manager') and app_instance.state_manager:
+                    app_instance.state_manager.funasr_engine = component
+
+            elif component_name == 'hotkey_manager' and component:
+                # 设置热键回调
+                component.set_press_callback(app_instance.on_option_press)
+                component.set_release_callback(app_instance.on_option_release)
+
+            elif component_name == 'audio_capture_thread' and component:
+                # 连接音频捕获信号
+                component.audio_captured.connect(app_instance.on_audio_captured)
+                component.recording_stopped.connect(app_instance.stop_recording)
+
+        except Exception as e:
+            logging.error(f"安全设置组件 {component_name} 失败: {e}")
+
+    def handle_loading_completed(self, app_instance):
+        """处理加载完成 - 从Application类移过来"""
+        import logging
+        try:
+            # 隐藏启动界面
+            if hasattr(self, '_original_splash') and self._original_splash:
+                self._original_splash.close()
+
+            # 显示主窗口并置顶
+            app_instance.main_window.show_window_internal()
+
+            # 完成最终初始化
+            self.finalize_initialization(app_instance)
+
+            # 标记初始化完成
+            self.mark_initialization_complete(app_instance)
+
+        except Exception as e:
+            logging.error(f"加载完成处理失败: {e}")
+
+    def handle_loading_failed(self, app_instance, error_message):
+        """处理加载失败 - 从Application类移过来"""
+        import logging
+        logging.error(f"组件加载失败: {error_message}")
+
+        # 隐藏启动界面
+        if hasattr(self, '_original_splash') and self._original_splash:
+            self._original_splash.close()
+
+        # 显示主窗口并置顶（即使部分组件失败）
+        app_instance.main_window.show_window_internal()
+
+        # 显示错误信息
+        app_instance.update_ui_signal.emit("⚠️ 部分组件初始化失败", error_message)
+
+    def finalize_initialization(self, app_instance):
+        """完成初始化设置 - 从Application类移过来"""
+        import logging
+        try:
+            # 设置连接
+            app_instance.setup_connections()
+
+            # 应用设置
+            app_instance.apply_settings()
+
+            logging.debug("最终初始化完成")
+        except Exception as e:
+            logging.error(f"初始化设置失败: {e}")
+
+    def mark_initialization_complete(self, app_instance):
+        """标记初始化完成 - 从Application类移过来"""
+        import logging
+        try:
+            # 标记主窗口初始化完成
+            if hasattr(app_instance.main_window, '_initialization_complete'):
+                app_instance.main_window._initialization_complete = True
+
+            # 通知初始化完成
+            app_instance.update_ui_signal.emit("✓ 应用初始化完成", "")
+        except Exception as e:
+            logging.error(f"标记初始化完成失败: {e}")
+
     def get_status(self):
         """获取管理器状态"""
         return {
