@@ -44,6 +44,8 @@ from managers.cleanup_manager_wrapper import CleanupManagerWrapper
 from managers.transcription_manager_wrapper import TranscriptionManagerWrapper
 # 第九步模块化替换：使用权限管理器包装器
 from managers.permission_manager_wrapper import PermissionManagerWrapper
+# 第十步模块化替换：使用热键处理管理器包装器
+from managers.hotkey_handler_manager_wrapper import HotkeyHandlerManagerWrapper
 
 # 在文件开头添加日志配置
 def setup_logging():
@@ -261,6 +263,8 @@ class Application(QObject):
             self.transcription_manager = TranscriptionManagerWrapper()
             # 第九步模块化替换：使用权限管理器包装器
             self.permission_manager = PermissionManagerWrapper()
+            # 第十步模块化替换：使用热键处理管理器包装器
+            self.hotkey_handler_manager = HotkeyHandlerManagerWrapper()
             
             # 初始化状态变量
             self.recording = False
@@ -459,86 +463,13 @@ class Application(QObject):
 
     @pyqtSlot()
     def _safe_restart_hotkey_manager(self):
-        """安全的热键管理器重启方法 - 简化版本"""
-        try:
-            # 确保在主线程中执行
-            if QThread.currentThread() != QApplication.instance().thread():
-                QMetaObject.invokeMethod(
-                    self, "restart_hotkey_manager",
-                    Qt.ConnectionType.QueuedConnection
-                )
-                return
-            
-            # 调用实际的重启方法
-            self.restart_hotkey_manager()
-            
-        except Exception as e:
-            logging.error(f"安全重启热键管理器失败: {e}")
-            # 显示错误通知
-            if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.showMessage(
-                    "热键功能",
-                    "热键功能重启失败，请检查权限设置",
-                    QSystemTrayIcon.MessageIcon.Warning,
-                    3000
-                )
+        """安全的热键管理器重启方法 - 委托给热键处理管理器"""
+        self.hotkey_handler_manager.safe_restart_hotkey_manager(self)
     
     @handle_common_exceptions(show_error=True)
     def restart_hotkey_manager(self):
-        """重启热键管理器 - 简化版本，仅用于手动重启和方案切换"""
-        logging.debug("开始重启热键管理器")
-        
-        # 停止现有的热键管理器
-        if self.hotkey_manager:
-            try:
-                self.hotkey_manager.stop_listening()
-                if hasattr(self.hotkey_manager, 'cleanup'):
-                    self.hotkey_manager.cleanup()
-            except Exception as e:
-                logging.error(f"停止现有热键管理器失败: {e}")
-        
-        # 重新创建热键管理器
-        try:
-            try:
-                from src.hotkey_manager_factory import HotkeyManagerFactory
-            except ImportError:
-                from hotkey_manager_factory import HotkeyManagerFactory
-            
-            # 获取热键方案设置
-            scheme = self.settings_manager.get_hotkey_scheme()
-            
-            # 使用工厂模式创建热键管理器
-            self.hotkey_manager = HotkeyManagerFactory.create_hotkey_manager(scheme, self.settings_manager)
-            
-            if self.hotkey_manager:
-                self.hotkey_manager.set_press_callback(self.on_option_press)
-                self.hotkey_manager.set_release_callback(self.on_option_release)
-                
-                # 应用当前热键设置
-                current_hotkey = self.settings_manager.get_hotkey()
-                self.hotkey_manager.update_hotkey(current_hotkey)
-                self.hotkey_manager.update_delay_settings()
-                
-                # 启动监听
-                self.hotkey_manager.start_listening()
-                
-                logging.debug(f"热键管理器重启成功，使用方案: {scheme}")
-                
-                # 显示成功通知
-                if hasattr(self, 'tray_icon') and self.tray_icon:
-                    self.tray_icon.showMessage(
-                        "热键功能",
-                        "热键功能已成功重启",
-                        QSystemTrayIcon.MessageIcon.Information,
-                        3000
-                    )
-            else:
-                logging.error(f"热键管理器创建失败，方案: {scheme}")
-                self.hotkey_manager = None
-                
-        except Exception as e:
-            logging.error(f"热键管理器重启失败: {e}")
-            self.hotkey_manager = None
+        """重启热键管理器 - 委托给热键处理管理器"""
+        self.hotkey_handler_manager.restart_hotkey_manager(self)
     
 
     
@@ -736,6 +667,15 @@ class Application(QObject):
 
                         # 重新连接信号（如果线程被重新创建）
                         if self.audio_capture_thread:
+                            # 先断开可能存在的旧连接，避免重复连接
+                            try:
+                                self.audio_capture_thread.audio_captured.disconnect(self.on_audio_captured)
+                                self.audio_capture_thread.recording_stopped.disconnect(self.stop_recording)
+                            except TypeError:
+                                # 如果没有连接，disconnect会抛出TypeError，这是正常的
+                                pass
+
+                            # 重新连接信号
                             self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
                             self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
 
@@ -754,12 +694,13 @@ class Application(QObject):
 
     def stop_recording(self):
         """停止录音 - 委托给音频管理器"""
-        if self._can_stop_recording():
-            self.recording = False
+        try:
+            if self._can_stop_recording():
+                self.recording = False
 
-            # 停止定时器
-            if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
-                self.recording_timer.stop()
+                # 停止定时器
+                if hasattr(self, 'recording_timer') and self.recording_timer.isActive():
+                    self.recording_timer.stop()
 
             try:
                 # 设置音量恢复回调
@@ -789,6 +730,18 @@ class Application(QObject):
                         self.update_ui_signal.emit("⚠️ 语音识别引擎尚未就绪，无法处理录音", "")
                         return
 
+                    # 清理旧的转写线程，避免信号重复连接
+                    if hasattr(self, 'transcription_thread') and self.transcription_thread:
+                        try:
+                            # 断开旧的信号连接
+                            self.transcription_thread.transcription_done.disconnect(self.on_transcription_done)
+                            # 如果线程还在运行，请求中断
+                            if self.transcription_thread.isRunning():
+                                self.transcription_thread.requestInterruption()
+                        except (TypeError, RuntimeError):
+                            # 如果没有连接或线程已销毁，忽略错误
+                            pass
+
                     self.transcription_thread = TranscriptionThread(audio_data, self.funasr_engine)
                     self.transcription_thread.transcription_done.connect(self.on_transcription_done)
                     self.transcription_thread.start()
@@ -797,6 +750,11 @@ class Application(QObject):
             except Exception as e:
                 logging.error(f"录音失败: {e}")
                 self.update_ui_signal.emit(f"❌ 录音失败: {e}", "")
+        finally:
+            # 重置停止录音标志，防止卡死
+            if hasattr(self, '_stopping_recording'):
+                self._stopping_recording = False
+                logging.debug("停止录音标志已重置")
     
     def _auto_stop_recording(self):
         """定时器触发的自动停止录音"""
@@ -886,16 +844,12 @@ class Application(QObject):
         )
 
     def on_option_press(self):
-        """处理Control键按下事件"""
-        if self._can_start_recording():
-            # 使用信号确保在主线程中执行
-            self.start_recording_signal.emit()
+        """处理Control键按下事件 - 委托给热键处理管理器"""
+        self.hotkey_handler_manager.on_option_press(self)
 
     def on_option_release(self):
-        """处理Control键释放事件"""
-        if self._can_stop_recording():
-            # 使用信号确保在主线程中执行
-            self.stop_recording_signal.emit()
+        """处理Control键释放事件 - 委托给热键处理管理器"""
+        self.hotkey_handler_manager.on_option_release(self)
 
     def on_audio_captured(self, data):
         """音频数据捕获回调"""

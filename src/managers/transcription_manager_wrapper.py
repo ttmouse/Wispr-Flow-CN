@@ -57,8 +57,8 @@ class TranscriptionManagerWrapper:
         if text and text.strip():
             # 调试模式：显示转录完成信息
 
-            # 1. 更新UI并添加到历史记录（无论窗口是否可见）
-            app_instance.main_window.display_result(text)  # UI显示保留HTML格式
+            # 1. 通过update_ui_signal更新UI并添加到历史记录（保持原始逻辑）
+            app_instance.update_ui_signal.emit("转录完成", text)
 
             # 2. 使用可配置的延迟时间，用lambda函数捕获当前文本
             delay = app_instance.settings_manager.get_setting('paste.transcription_delay', 30)
