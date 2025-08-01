@@ -24,16 +24,22 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-07-31T04:24:54.148522",
+      "last_check": "2025-08-01T20:22:17.534062",
       "accessibility": true,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-07-31T04:25:00.463600",
+      "last_check": "2025-08-01T20:22:22.683939",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168
     }
-  }
+  },
+  "input_device": "系统默认 (MacBook Pro麦克风)",
+  "volume_threshold": 5,
+  "asr_model_path": "",
+  "punc_model_path": "",
+  "auto_punctuation": true,
+  "real_time_display": true
 }

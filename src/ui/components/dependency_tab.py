@@ -35,13 +35,10 @@ class DependencyCheckThread(QThread):
     def run(self):
         """执行依赖检查"""
         try:
-            print("DependencyCheckThread: 开始执行依赖检查")
             self.check_progress.emit("正在检查依赖项...")
             dependencies = self.dependency_manager.check_all_dependencies()
-            print(f"DependencyCheckThread: 检查完成，找到 {len(dependencies)} 个依赖项")
             self.check_completed.emit(dependencies)
         except Exception as e:
-            print(f"DependencyCheckThread: 检查失败 - {e}")
             logging.error(f"依赖检查失败: {e}")
             self.check_completed.emit({})
 
@@ -279,16 +276,14 @@ class DependencyTab(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        print("DependencyTab: 初始化开始")
         self.dependency_manager = DependencyManager()
         self.dependencies = {}
         self.dependency_cards = {}
         self.check_thread = None
         self.install_thread = None
         self._setup_ui()
-        
+
         # 自动检查依赖
-        print("DependencyTab: 设置500ms后自动检查依赖")
         QTimer.singleShot(500, self._check_dependencies)
     
     def _setup_ui(self):
@@ -352,21 +347,17 @@ class DependencyTab(QWidget):
     
     def _check_dependencies(self):
         """检查依赖项"""
-        print("DependencyTab: _check_dependencies 方法被调用")
         if self.check_thread and self.check_thread.isRunning():
-            print("DependencyTab: 检查线程正在运行，跳过")
             return
-        
-        print("DependencyTab: 开始启动依赖检查线程")
+
         self.summary_label.setText("正在检查依赖项...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # 无限进度条
-        
+
         self.check_thread = DependencyCheckThread()
         self.check_thread.check_completed.connect(self._on_check_completed)
         self.check_thread.check_progress.connect(self._on_check_progress)
         self.check_thread.start()
-        print("DependencyTab: 依赖检查线程已启动")
     
     def _on_check_completed(self, dependencies: Dict[str, DependencyInfo]):
         """检查完成回调"""
@@ -393,12 +384,7 @@ class DependencyTab(QWidget):
         
         summary_text = f"总计: {summary['total']} | 已安装: {summary['installed']} | 未安装: {summary['not_installed']} | 有问题: {summary['issues']}"
         self.summary_label.setText(summary_text)
-        
-        # 调试输出
-        print(f"依赖检查完成，状态统计: {summary}")
-        for dep_name, dep_info in dependencies.items():
-            print(f"{dep_name}: {dep_info.status} (枚举值: {dep_info.status.value})")
-        
+
         # 更新依赖卡片
         self._update_dependency_cards()
         

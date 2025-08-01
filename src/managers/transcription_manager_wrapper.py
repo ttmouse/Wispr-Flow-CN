@@ -57,12 +57,19 @@ class TranscriptionManagerWrapper:
         if text and text.strip():
             # 调试模式：显示转录完成信息
 
-            # 1. 通过update_ui_signal更新UI并添加到历史记录（保持原始逻辑）
-            app_instance.update_ui_signal.emit("转录完成", text)
+            # 1. 更新UI并添加到历史记录（无论窗口是否可见）
+            app_instance.main_window.display_result(text)  # UI显示保留HTML格式
 
             # 2. 使用可配置的延迟时间，用lambda函数捕获当前文本
             delay = app_instance.settings_manager.get_setting('paste.transcription_delay', 30)
-            QTimer.singleShot(delay, lambda: app_instance._paste_and_reactivate(text))
+            # 确保在主线程中使用QTimer，避免线程警告
+            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(
+                app_instance, "_delayed_paste_and_reactivate",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(int, delay),
+                Q_ARG(str, text)
+            )
 
             # 转录完成
     
@@ -98,6 +105,8 @@ class TranscriptionManagerWrapper:
                         app_instance.main_window.update_status("粘贴失败")
                 else:
                     # 使用lambda函数捕获当前文本，避免变量覆盖问题
+                    # 直接使用QTimer.singleShot，因为on_history_item_clicked已经在主线程中
+                    from PyQt6.QtCore import QTimer
                     QTimer.singleShot(delay, lambda: app_instance._paste_and_reactivate_with_feedback(text))
             else:
                 # 如果不自动粘贴，只复制到剪贴板

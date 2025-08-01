@@ -170,13 +170,13 @@ class RecordingManager(QObject):
 
             # 如果定时器还未创建，则创建它们
             if not self.recording_timer:
-                self.recording_timer = QTimer()
+                self.recording_timer = QTimer(self)  # 指定父对象
                 self.recording_timer.setSingleShot(True)
                 self.recording_timer.timeout.connect(self._on_recording_timeout)
                 self.logger.debug("录音定时器创建成功")
 
             if not self.volume_timer:
-                self.volume_timer = QTimer()
+                self.volume_timer = QTimer(self)  # 指定父对象
                 self.volume_timer.setSingleShot(True)
                 self.logger.debug("音量定时器创建成功")
 

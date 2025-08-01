@@ -433,35 +433,54 @@ class PythonHotkeyManager(HotkeyManagerBase, CleanupMixin):
         except Exception as e:
             self.logger.error(f"处理按键释放事件失败: {str(e)}")
 
+    def _safe_on_press(self, key):
+        """安全的按键按下处理器，捕获所有异常"""
+        try:
+            self.on_press(key)
+        except Exception as e:
+            # 静默处理 pynput 内部错误，避免应用程序崩溃
+            self.logger.debug(f"按键处理中的内部错误（已忽略）: {e}")
+            pass
+
+    def _safe_on_release(self, key):
+        """安全的按键释放处理器，捕获所有异常"""
+        try:
+            self.on_release(key)
+        except Exception as e:
+            # 静默处理 pynput 内部错误，避免应用程序崩溃
+            self.logger.debug(f"按键处理中的内部错误（已忽略）: {e}")
+            pass
+
     def start_listening(self):
         """启动热键监听"""
         try:
             listener_running, _ = self._check_component_status()
             if not listener_running:
                 self.reset_state()  # 启动监听时重置状态
-                
-                # 启动键盘监听器（用于其他键）
+
+                # 启动键盘监听器（用于其他键）- 添加安全包装
                 self.keyboard_listener = keyboard.Listener(
-                    on_press=self.on_press,
-                    on_release=self.on_release,
+                    on_press=self._safe_on_press,
+                    on_release=self._safe_on_release,
                     suppress=False  # 不阻止按键事件传递给其他应用
                 )
                 self.keyboard_listener.daemon = True
                 self.keyboard_listener.start()
-                
+
                 # 启动 fn 键监听线程
                 self.should_stop = False
                 self.fn_listener_thread = threading.Thread(target=self._monitor_fn_key)
                 self.fn_listener_thread.daemon = True
                 self.fn_listener_thread.start()
-                
+
                 self.logger.debug("热键监听器已启动")
         except Exception as e:
             self.logger.error(f"启动热键监听器失败: {e}")
             import traceback
             self.logger.error(f"详细错误信息: {traceback.format_exc()}")
             self.stop_listening()
-            raise
+            # 不再抛出异常，而是记录错误并继续运行
+            self.logger.warning("热键监听器启动失败，应用程序将继续运行但热键功能不可用")
 
     def stop_listening(self):
         """停止热键监听"""
@@ -498,13 +517,9 @@ class PythonHotkeyManager(HotkeyManagerBase, CleanupMixin):
         # 关闭线程池
         if hasattr(self, 'thread_pool') and self.thread_pool:
             try:
-                # 兼容不同Python版本的shutdown方法
-                import sys
-                if sys.version_info >= (3, 9):
-                    self.thread_pool.shutdown(wait=True, timeout=2.0)
-                else:
-                    self.thread_pool.shutdown(wait=True)
-                self.logger.info("线程池已关闭")
+                # 使用简单的shutdown方法，避免版本兼容性问题
+                self.thread_pool.shutdown(wait=True)
+                self.logger.debug("线程池已关闭")
             except Exception as e:
                 self.logger.warning(f"关闭线程池时出现异常: {e}")
 

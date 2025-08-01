@@ -244,12 +244,12 @@ class AudioManager(QObject):
     def _initialize_timers(self):
         """初始化定时器"""
         try:
-            self.recording_timer = QTimer()
+            self.recording_timer = QTimer(self)  # 指定父对象
             self.recording_timer.setSingleShot(True)
             self.recording_timer.timeout.connect(self._on_recording_timeout)
-            
+
             self.logger.debug("定时器初始化成功")
-            
+
         except Exception as e:
             self.logger.error(f"定时器初始化失败: {e}")
     
@@ -317,7 +317,7 @@ class AudioManager(QObject):
                             max_duration = settings_manager.get_setting('audio.max_recording_duration', 10)
 
                         from PyQt6.QtCore import QTimer
-                        self.recording_timer = QTimer()
+                        self.recording_timer = QTimer(self)  # 指定父对象
                         self.recording_timer.setSingleShot(True)
                         self.recording_timer.timeout.connect(self._auto_stop_recording)
                         self.recording_timer.start(max_duration * 1000)  # 转换为毫秒

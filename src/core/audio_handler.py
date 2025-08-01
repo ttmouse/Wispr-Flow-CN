@@ -63,12 +63,24 @@ class AudioHandler:
                             self.app.recording_timer.stop()
                             self.app.recording_timer.deleteLater()
                         
-                        # 确保定时器在主线程中创建，设置parent为self.app
+                        # 确保定时器在主线程中创建
                         max_duration = self.app.settings_manager.get_setting('audio.max_recording_duration', 10)
-                        self.app.recording_timer = QTimer(self.app)
-                        self.app.recording_timer.setSingleShot(True)
-                        self.app.recording_timer.timeout.connect(self._auto_stop_recording)
-                        self.app.recording_timer.start(max_duration * 1000)  # 转换为毫秒
+
+                        # 检查当前线程，如果不在主线程则使用信号机制
+                        if QThread.currentThread() != QApplication.instance().thread():
+                            # 在非主线程中，使用信号机制在主线程中创建定时器
+                            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+                            QMetaObject.invokeMethod(
+                                self.app, "_create_recording_timer",
+                                Qt.ConnectionType.QueuedConnection,
+                                Q_ARG(int, max_duration * 1000)
+                            )
+                        else:
+                            # 在主线程中直接创建
+                            self.app.recording_timer = QTimer(self.app)
+                            self.app.recording_timer.setSingleShot(True)
+                            self.app.recording_timer.timeout.connect(self._auto_stop_recording)
+                            self.app.recording_timer.start(max_duration * 1000)  # 转换为毫秒
                         
                     except Exception as e:
                         error_msg = f"开始录音时出错: {str(e)}"

@@ -46,6 +46,8 @@ from managers.transcription_manager_wrapper import TranscriptionManagerWrapper
 from managers.permission_manager_wrapper import PermissionManagerWrapper
 # 第十步模块化替换：使用热键处理管理器包装器
 from managers.hotkey_handler_manager_wrapper import HotkeyHandlerManagerWrapper
+# 第十一步模块化替换：使用应用程序生命周期管理器包装器
+from managers.application_lifecycle_manager_wrapper import ApplicationLifecycleManagerWrapper
 
 # 在文件开头添加日志配置
 def setup_logging():
@@ -177,10 +179,13 @@ class Application(QObject):
         self._app_lock = threading.RLock()
         
         try:
-            
+
             # 设置Qt应用程序的异常处理
             self.app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
             
+            # 第十一步模块化替换：使用应用程序生命周期管理器包装器（需要提前创建）
+            self.lifecycle_manager = ApplicationLifecycleManagerWrapper()
+
             # 初始化设置管理器（第一步模块化替换 - 真正的减法重构）
             self.settings_manager = SettingsManagerWrapper()
             self.settings_manager.set_apply_settings_callback(self.apply_settings)
@@ -192,6 +197,26 @@ class Application(QObject):
             # 设置应用程序信息
             self.app.setApplicationName(APP_NAME)
             self.app.setApplicationDisplayName(APP_NAME)
+
+            # 在 macOS 上强制设置应用程序图标和 Dock 显示
+            if sys.platform == 'darwin':
+                try:
+                    # 设置应用程序图标
+                    icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "icon.png")
+                    if os.path.exists(icon_path):
+                        self.app.setWindowIcon(QIcon(icon_path))
+
+                    # 强制设置 Dock 图标和应用程序名称
+                    import subprocess
+                    # 获取当前进程 ID
+                    pid = os.getpid()
+                    # 使用 osascript 设置 Dock 中的应用程序名称
+                    subprocess.run([
+                        'osascript', '-e',
+                        f'tell application "System Events" to set name of application process id {pid} to "{APP_NAME}"'
+                    ], capture_output=True, text=True)
+                except Exception as e:
+                    pass  # 静默处理，不影响应用程序启动
             
             # 加载应用图标
             icon_path = os.path.join(os.path.dirname(__file__), "..", "iconset.icns")
@@ -314,51 +339,23 @@ class Application(QObject):
 
 
     def _setup_mac_event_handling(self):
-        """设置macOS事件处理"""
-        try:
-            # 安装事件过滤器来处理dock图标点击
-            self.app.installEventFilter(self)
-            
-            # 创建dock菜单
-            self._setup_dock_menu()
-            
-            pass  # macOS事件处理器已安装
-        except Exception as e:
-            logging.error(f"设置macOS事件处理失败: {e}")
+        """设置macOS事件处理 - 委托给应用程序生命周期管理器"""
+        self.lifecycle_manager.setup_mac_event_handling(self)
     
     def _setup_dock_menu(self):
-        """设置macOS Dock图标菜单（通过系统托盘实现）"""
-        try:
-            # 在macOS上，dock菜单实际上是通过系统托盘图标的右键菜单实现的
-            # 由于PyQt6没有直接的setDockMenu方法，我们使用系统托盘图标来提供类似功能
-            # 系统托盘菜单已经在初始化时创建，这里只是确认功能可用
-            if not (hasattr(self, 'tray_icon') and self.tray_icon.isVisible()):
-                pass  # 静默处理托盘图标问题
-            
-        except Exception as e:
-            logging.error(f"设置Dock菜单失败: {e}")
+        """设置macOS Dock图标菜单 - 委托给应用程序生命周期管理器"""
+        self.lifecycle_manager.setup_dock_menu(self)
     
     def eventFilter(self, obj, event):
-        """优化的事件过滤器，减少处理时间"""
-        try:
-            # 快速检查：只处理应用程序对象的特定事件
-            if obj == self.app and event.type() == 121:  # QEvent.Type.ApplicationActivate
-                # 使用信号异步处理，避免阻塞事件循环
-                self.show_window_signal.emit()
-                return False  # 继续传递事件
-            
-            # 对于其他事件，直接返回，减少处理时间
-            return False
-        except Exception:
-
-            return False
+        """优化的事件过滤器 - 委托给应用程序生命周期管理器"""
+        return self.lifecycle_manager.event_filter(self, obj, event)
     
     def _start_async_loading(self):
         """启动异步加载任务"""
         from PyQt6.QtCore import QTimer
 
         # 延迟启动加载，让UI先显示
-        self._load_timer = QTimer()
+        self._load_timer = QTimer(self)  # 指定 self 作为父对象
         self._load_timer.setSingleShot(True)
         self._load_timer.timeout.connect(self.app_loader.start_loading)
         self._load_timer.start(500)  # 500ms后开始加载
@@ -657,6 +654,9 @@ class Application(QObject):
                             self.recording_timer.timeout.connect(self._auto_stop_recording)
                             self.recording_timer.start(duration_ms)
 
+                        # 记住旧的线程引用
+                        old_thread = self.audio_capture_thread
+
                         # 委托给音频管理器处理录音流程
                         self.previous_volume, self.audio_capture_thread = self.audio_capture.start_recording_process(
                             self.state_manager,
@@ -665,17 +665,8 @@ class Application(QObject):
                             setup_timer
                         )
 
-                        # 重新连接信号（如果线程被重新创建）
-                        if self.audio_capture_thread:
-                            # 先断开可能存在的旧连接，避免重复连接
-                            try:
-                                self.audio_capture_thread.audio_captured.disconnect(self.on_audio_captured)
-                                self.audio_capture_thread.recording_stopped.disconnect(self.stop_recording)
-                            except TypeError:
-                                # 如果没有连接，disconnect会抛出TypeError，这是正常的
-                                pass
-
-                            # 重新连接信号
+                        # 只有在线程被重新创建时才重新连接信号
+                        if self.audio_capture_thread and self.audio_capture_thread != old_thread:
                             self.audio_capture_thread.audio_captured.connect(self.on_audio_captured)
                             self.audio_capture_thread.recording_stopped.connect(self.stop_recording)
 
@@ -857,102 +848,72 @@ class Application(QObject):
         pass
 
     def quit_application(self):
-        """退出应用程序 - 简化版本"""
-        try:
-
-            
-            # 2. 停止热键监听，避免在清理过程中触发新的操作
-            if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
-                try:
-                    self.hotkey_manager.stop_listening()
-                except Exception as e:
-                    logging.error(f"停止热键监听失败: {e}")
-            
-            # 3. 快速清理资源，避免长时间等待
-            self._quick_cleanup()
-            
-            # 4. 强制退出应用
-            if hasattr(self, 'app') and self.app:
-                self.app.quit()
-                
-        except Exception as e:
-            logging.error(f"退出应用程序时出错: {e}")
-            # 强制退出
-            import os
-            os._exit(0)
+        """退出应用程序 - 委托给应用程序生命周期管理器"""
+        self.lifecycle_manager.quit_application(self)
 
     def _restore_window_level(self):
-        """恢复窗口正常级别"""
-        try:
-            # 简化实现，只使用Qt方法确保窗口在前台
-            self.main_window.raise_()
-            self.main_window.activateWindow()
-        except Exception as e:
-            logging.error(f"恢复窗口级别时出错: {e}")
+        """恢复窗口正常级别 - 委托给应用程序生命周期管理器"""
+        self.lifecycle_manager.restore_window_level(self)
     
     def _show_window_internal(self):
-        """在主线程中显示窗口"""
-        try:
-            # 在 macOS 上使用 NSWindow 来激活窗口
-            if sys.platform == 'darwin':
-                try:
-                    from AppKit import NSApplication, NSWindow
-                    from PyQt6.QtGui import QWindow
-
-                    # 获取应用
-                    app = NSApplication.sharedApplication()
-
-                    # 显示窗口
-                    if not self.main_window.isVisible():
-                        self.main_window.show()
-
-                    # 获取窗口句柄
-                    window_handle = self.main_window.windowHandle()
-                    if window_handle:
-                        # 在PyQt6中使用winId()获取原生窗口ID
-                        window_id = self.main_window.winId()
-                        if window_id:
-                            # 激活应用程序
-                            app.activateIgnoringOtherApps_(True)
-
-                            # 使用Qt方法激活窗口
-                            self.main_window.raise_()
-                            self.main_window.activateWindow()
-                            self.main_window.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-                        else:
-                            # 如果无法获取窗口ID，使用基本方法
-                            app.activateIgnoringOtherApps_(True)
-                            self.main_window.raise_()
-                            self.main_window.activateWindow()
-                    else:
-                        # 如果无法获取窗口句柄，使用基本方法
-                        app.activateIgnoringOtherApps_(True)
-                        self.main_window.raise_()
-                        self.main_window.activateWindow()
-
-                except Exception as e:
-                    logging.error(f"激活窗口时出错: {e}")
-                    # 如果原生方法失败，使用 Qt 方法
-                    self.main_window.show()
-                    self.main_window.raise_()
-                    self.main_window.activateWindow()
-            else:
-                # 非 macOS 系统的处理
-                if not self.main_window.isVisible():
-                    self.main_window.show()
-                self.main_window.raise_()
-                self.main_window.activateWindow()
-
-            pass  # 窗口已显示
-        except Exception as e:
-            logging.error(f"显示窗口失败: {e}")
+        """在主线程中显示窗口 - 委托给应用程序生命周期管理器"""
+        self.lifecycle_manager.show_window_internal(self)
     
 
     
     def _paste_and_reactivate(self, text):
         """执行粘贴操作 - 委托给转写管理器"""
         self.transcription_manager.paste_and_reactivate(self, text)
-    
+
+    @pyqtSlot(int, str)
+    def _delayed_paste_and_reactivate(self, delay, text):
+        """在主线程中延迟执行粘贴操作，避免QTimer线程警告"""
+        from PyQt6.QtCore import QTimer
+        # 创建一个临时定时器，确保在主线程中执行
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._paste_and_reactivate(text))
+        timer.start(delay)
+
+    @pyqtSlot(int)
+    def _create_recording_timer(self, duration_ms):
+        """在主线程中创建录音定时器"""
+        from PyQt6.QtCore import QTimer
+        try:
+            # 清理之前的定时器
+            if hasattr(self, 'recording_timer') and self.recording_timer:
+                self.recording_timer.stop()
+                self.recording_timer.deleteLater()
+
+            # 创建新的定时器
+            self.recording_timer = QTimer(self)
+            self.recording_timer.setSingleShot(True)
+            self.recording_timer.timeout.connect(self._auto_stop_recording)
+            self.recording_timer.start(duration_ms)
+
+        except Exception as e:
+            self.logger.error(f"创建录音定时器失败: {e}")
+
+    @pyqtSlot(int)
+    def _create_reset_timer(self, delay_ms):
+        """在主线程中创建重置标志的定时器"""
+        from PyQt6.QtCore import QTimer
+        try:
+            def reset_stopping_flag():
+                if hasattr(self, '_stopping_recording'):
+                    self._stopping_recording = False
+                    import logging
+                    logging.debug("停止录音标志已重置")
+
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(reset_stopping_flag)
+            timer.start(delay_ms)
+
+        except Exception as e:
+            self.logger.error(f"创建重置定时器失败: {e}")
+
+
     def _paste_and_reactivate_with_feedback(self, text):
         """执行粘贴操作并返回成功状态 - 委托给转写管理器"""
         return self.transcription_manager.paste_and_reactivate_with_feedback(self, text)

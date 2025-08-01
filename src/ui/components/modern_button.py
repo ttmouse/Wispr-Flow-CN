@@ -55,8 +55,8 @@ class ModernButton(QPushButton):
         self.animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         
         # 创建定时器用于更新动画
-        self.update_timer = QTimer()
-        self.update_timer.moveToThread(self.thread())
+        self.update_timer = QTimer(self)  # 指定父对象
+        # 移除 moveToThread 调用，让定时器保持在主线程中
         self.update_timer.timeout.connect(self.update_animation)
         self.update_timer.setInterval(150)  # 降低更新频率
         

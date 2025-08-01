@@ -159,6 +159,22 @@ class UIManagerWrapper:
         """设置显示窗口的信号"""
         self._show_window_signal = signal
 
+    def set_app_instance(self, app_instance):
+        """设置应用实例"""
+        self._ensure_initialized()
+        if hasattr(self._original_window, 'set_app_instance'):
+            return self._original_window.set_app_instance(app_instance)
+        # 如果原始窗口没有这个方法，就存储在包装器中
+        self._app_instance = app_instance
+
+    def apply_settings(self):
+        """应用设置"""
+        self._ensure_initialized()
+        if hasattr(self._original_window, 'apply_settings'):
+            return self._original_window.apply_settings()
+        # 如果原始窗口没有这个方法，就静默处理
+        pass
+
     def show_window_internal(self):
         """在主线程中显示窗口 - 从Application类移过来"""
         import sys

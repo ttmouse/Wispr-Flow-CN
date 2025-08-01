@@ -72,43 +72,55 @@ class MacOSSettingsWindow(QDialog):
                         break
             
             # 加载音量阈值
-            volume_threshold = settings.get_setting('volume_threshold', 0.01)
-            self.volume_threshold.setValue(volume_threshold)
+            if hasattr(self, 'volume_threshold'):
+                volume_threshold = settings.get_setting('audio.volume_threshold', 150)
+                # 将0-1000的值转换为0-20范围
+                slider_value = int(volume_threshold * 20 / 1000)
+                self.volume_threshold.setValue(slider_value)
             
             # 加载最大录音时长
-            max_record_time = settings.get_setting('max_record_time', 60)
-            self.max_record_time.setValue(max_record_time)
+            max_record_time = settings.get_setting('audio.max_recording_duration', 10)
+            if hasattr(self, 'recording_duration'):
+                self.recording_duration.setValue(int(max_record_time))
             
             # 加载ASR模型路径
-            asr_model_path = settings.get_setting('asr_model_path', '')
-            self.asr_model_path.setText(asr_model_path)
-            
+            if hasattr(self, 'asr_model_path'):
+                asr_model_path = settings.get_setting('asr.model_path', '')
+                self.asr_model_path.setText(asr_model_path)
+
             # 加载标点模型路径
-            punc_model_path = settings.get_setting('punc_model_path', '')
-            self.punc_model_path.setText(punc_model_path)
-            
+            if hasattr(self, 'punc_model_path'):
+                punc_model_path = settings.get_setting('asr.punc_model_path', '')
+                self.punc_model_path.setText(punc_model_path)
+
             # 加载自动标点设置
-            auto_punctuation = settings.get_setting('auto_punctuation', True)
-            self.auto_punctuation.setChecked(auto_punctuation)
-            
+            if hasattr(self, 'auto_punctuation'):
+                auto_punctuation = settings.get_setting('asr.auto_punctuation', True)
+                self.auto_punctuation.setChecked(auto_punctuation)
+
             # 加载实时显示设置
-            real_time_display = settings.get_setting('real_time_display', True)
-            self.real_time_display.setChecked(real_time_display)
+            if hasattr(self, 'real_time_display'):
+                real_time_display = settings.get_setting('asr.real_time_display', True)
+                self.real_time_display.setChecked(real_time_display)
             
             # 加载粘贴延迟设置
-            paste_delay = settings.get_setting('paste_delay', 0.1)
-            self.paste_delay.setValue(paste_delay)
-            
-            history_paste_delay = settings.get_setting('history_paste_delay', 0.0)
-            self.history_paste_delay.setValue(history_paste_delay)
-            
+            if hasattr(self, 'transcription_delay'):
+                paste_delay = settings.get_setting('paste.transcription_delay', 0)
+                self.transcription_delay.setValue(int(paste_delay))
+
+            if hasattr(self, 'history_delay'):
+                history_paste_delay = settings.get_setting('paste.history_click_delay', 0)
+                self.history_delay.setValue(int(history_paste_delay))
+
             # 加载热词权重
-            hotword_weight = settings.get_setting('hotword_weight', 10.0)
-            self.hotword_weight.setValue(hotword_weight)
-            
+            if hasattr(self, 'hotword_weight'):
+                hotword_weight = settings.get_setting('asr.hotword_weight', 80)
+                self.hotword_weight.setValue(int(hotword_weight))
+
             # 加载发音校正设置
-            pronunciation_correction = settings.get_setting('pronunciation_correction', True)
-            self.pronunciation_correction.setChecked(pronunciation_correction)
+            if hasattr(self, 'pronunciation_correction'):
+                pronunciation_correction = settings.get_setting('asr.enable_pronunciation_correction', True)
+                self.pronunciation_correction.setChecked(pronunciation_correction)
             
         except Exception as e:
             import logging
@@ -126,44 +138,83 @@ class MacOSSettingsWindow(QDialog):
             # 保存快捷键
             if hasattr(self, 'hotkey_combo'):
                 settings.set_setting('hotkey', self.hotkey_combo.currentText())
+
+            # 保存热键延迟设置
+            if hasattr(self, 'recording_start_delay'):
+                settings.set_setting('hotkey_settings.recording_start_delay', self.recording_start_delay.value())
             
             # 保存音频设备
-            settings.set_setting('input_device', self.input_device.currentText())
-            
+            if hasattr(self, 'input_device'):
+                device_text = self.input_device.currentText()
+                if device_text.startswith("系统默认"):
+                    device_name = None
+                else:
+                    device_name = device_text
+                settings.set_setting('audio.input_device', device_name)
+
             # 保存音量阈值
-            settings.set_setting('volume_threshold', self.volume_threshold.value())
+            if hasattr(self, 'volume_threshold'):
+                # 将滑块值转换为正确的范围
+                volume_value = int(self.volume_threshold.value() * 1000 / 20)
+                settings.set_setting('audio.volume_threshold', volume_value)
             
             # 保存最大录音时长
-            settings.set_setting('max_record_time', self.max_record_time.value())
+            if hasattr(self, 'recording_duration'):
+                settings.set_setting('audio.max_recording_duration', self.recording_duration.value())
             
             # 保存ASR模型路径
-            settings.set_setting('asr_model_path', self.asr_model_path.text())
-            
+            if hasattr(self, 'asr_model_path'):
+                settings.set_setting('asr.model_path', self.asr_model_path.text())
+
             # 保存标点模型路径
-            settings.set_setting('punc_model_path', self.punc_model_path.text())
-            
+            if hasattr(self, 'punc_model_path'):
+                settings.set_setting('asr.punc_model_path', self.punc_model_path.text())
+
             # 保存自动标点设置
-            settings.set_setting('auto_punctuation', self.auto_punctuation.isChecked())
-            
+            if hasattr(self, 'auto_punctuation'):
+                settings.set_setting('asr.auto_punctuation', self.auto_punctuation.isChecked())
+
             # 保存实时显示设置
-            settings.set_setting('real_time_display', self.real_time_display.isChecked())
+            if hasattr(self, 'real_time_display'):
+                settings.set_setting('asr.real_time_display', self.real_time_display.isChecked())
             
             # 保存粘贴延迟设置
-            settings.set_setting('paste_delay', self.paste_delay.value())
-            settings.set_setting('history_paste_delay', self.history_paste_delay.value())
+            if hasattr(self, 'transcription_delay'):
+                settings.set_setting('paste.transcription_delay', self.transcription_delay.value())
+            if hasattr(self, 'history_delay'):
+                settings.set_setting('paste.history_click_delay', self.history_delay.value())
             
             # 保存热词权重
-            settings.set_setting('hotword_weight', self.hotword_weight.value())
+            if hasattr(self, 'hotword_weight'):
+                settings.set_setting('asr.hotword_weight', self.hotword_weight.value())
             
             # 保存发音校正设置
-            settings.set_setting('pronunciation_correction', self.pronunciation_correction.isChecked())
-            
+            if hasattr(self, 'pronunciation_correction'):
+                settings.set_setting('asr.enable_pronunciation_correction', self.pronunciation_correction.isChecked())
+
+            # 保存热词
+            if hasattr(self, 'hotword_text_edit'):
+                try:
+                    content = self.hotword_text_edit.toPlainText()
+                    hotwords_file = Path("resources") / "hotwords.txt"
+                    hotwords_file.parent.mkdir(exist_ok=True)
+                    hotwords_file.write_text(content, encoding="utf-8")
+
+                    # 重新加载热词
+                    if hasattr(self.parent, 'state_manager'):
+                        if hasattr(self.parent.state_manager, 'reload_hotwords'):
+                            self.parent.state_manager.reload_hotwords()
+                except Exception as e:
+                    import logging
+                    logging.error(f"保存热词失败: {e}")
+                    QMessageBox.warning(self, "警告", f"保存热词失败: {e}")
+
             # 保存设置到文件
             settings.save_settings()
-            
+
             # 通知用户保存成功
             QMessageBox.information(self, "成功", "设置已保存成功！")
-            
+
             # 关闭窗口
             self.accept()
             
@@ -191,17 +242,20 @@ class MacOSSettingsWindow(QDialog):
                 self.shortcut_edit.setText('F1')
                 
                 # 重置快捷键延迟
-                self.shortcut_delay.setValue(0.1)
-                
+                if hasattr(self, 'shortcut_delay'):
+                    self.shortcut_delay.setValue(100)  # 0.1秒 = 100毫秒
+
                 # 重置音频设备为第一个（通常是系统默认）
                 if self.input_device.count() > 0:
                     self.input_device.setCurrentIndex(0)
-                
+
                 # 重置音量阈值
-                self.volume_threshold.setValue(0.01)
+                if hasattr(self, 'volume_threshold'):
+                    self.volume_threshold.setValue(1)  # 对应0.01的阈值
                 
                 # 重置最大录音时长
-                self.max_record_time.setValue(60)
+                if hasattr(self, 'recording_duration'):
+                    self.recording_duration.setValue(10)
                 
                 # 重置模型路径
                 self.asr_model_path.setText('')
@@ -214,14 +268,18 @@ class MacOSSettingsWindow(QDialog):
                 self.real_time_display.setChecked(True)
                 
                 # 重置粘贴延迟
-                self.paste_delay.setValue(0.1)
-                self.history_paste_delay.setValue(0.0)
-                
+                if hasattr(self, 'transcription_delay'):
+                    self.transcription_delay.setValue(0)
+                if hasattr(self, 'history_delay'):
+                    self.history_delay.setValue(0)
+
                 # 重置热词权重
-                self.hotword_weight.setValue(10.0)
-                
+                if hasattr(self, 'hotword_weight'):
+                    self.hotword_weight.setValue(80)
+
                 # 重置发音校正
-                self.pronunciation_correction.setChecked(True)
+                if hasattr(self, 'pronunciation_correction'):
+                    self.pronunciation_correction.setChecked(True)
                 
                 QMessageBox.information(self, "成功", "设置已重置为默认值！")
                 
@@ -873,7 +931,7 @@ class MacOSSettingsWindow(QDialog):
         self.recording_start_delay = QSlider(Qt.Orientation.Horizontal)
         self.recording_start_delay.setRange(50, 500)
         delay_value = self.settings_manager.get_setting('hotkey_settings.recording_start_delay', 50) if self.settings_manager else 50
-        self.recording_start_delay.setValue(delay_value)
+        self.recording_start_delay.setValue(int(delay_value))
         self.recording_start_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.recording_start_delay.setTickInterval(50)
         
@@ -978,7 +1036,7 @@ class MacOSSettingsWindow(QDialog):
         self.recording_duration = QSlider(Qt.Orientation.Horizontal)
         self.recording_duration.setRange(5, 60)
         duration_value = self.settings_manager.get_setting('audio.max_recording_duration', 10) if self.settings_manager else 10
-        self.recording_duration.setValue(duration_value)
+        self.recording_duration.setValue(int(duration_value))
         self.recording_duration.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.recording_duration.setTickInterval(5)
         
@@ -1089,7 +1147,7 @@ class MacOSSettingsWindow(QDialog):
         self.transcription_delay = QSlider(Qt.Orientation.Horizontal)
         self.transcription_delay.setRange(0, 200)
         trans_delay = self.settings_manager.get_setting('paste.transcription_delay', 0) if self.settings_manager else 0
-        self.transcription_delay.setValue(trans_delay)
+        self.transcription_delay.setValue(int(trans_delay))
         self.transcription_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.transcription_delay.setTickInterval(20)
         
@@ -1117,7 +1175,7 @@ class MacOSSettingsWindow(QDialog):
         self.history_delay = QSlider(Qt.Orientation.Horizontal)
         self.history_delay.setRange(0, 200)
         hist_delay = self.settings_manager.get_setting('paste.history_click_delay', 0) if self.settings_manager else 0
-        self.history_delay.setValue(hist_delay)
+        self.history_delay.setValue(int(hist_delay))
         self.history_delay.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.history_delay.setTickInterval(20)
         
@@ -1234,20 +1292,11 @@ class MacOSSettingsWindow(QDialog):
             }
         """)
         
-        # 热词编辑按钮
-        hotword_button_layout = QHBoxLayout()
-        save_hotwords_btn = QPushButton("保存热词")
-        save_hotwords_btn.clicked.connect(self._save_hotwords)
-        
-        hotword_button_layout.addWidget(save_hotwords_btn)
-        hotword_button_layout.addStretch()
-        
-        hotword_edit_help = QLabel("修改后请点击'保存热词'按钮保存更改，重新开始录音后生效")
+        hotword_edit_help = QLabel("修改后点击底部的'保存'按钮保存所有设置，重新开始录音后生效")
         hotword_edit_help.setProperty("class", "help-text")
         hotword_edit_help.setWordWrap(True)
-        
+
         hotword_edit_layout.addWidget(self.hotword_text_edit)
-        hotword_edit_layout.addLayout(hotword_button_layout)
         hotword_edit_layout.addWidget(hotword_edit_help)
         hotword_edit_group.setLayout(hotword_edit_layout)
         
@@ -1402,27 +1451,7 @@ class MacOSSettingsWindow(QDialog):
             logging.error(f"加载热词失败: {e}")
             QMessageBox.warning(self, "错误", f"加载热词失败: {e}")
     
-    def _save_hotwords(self):
-        """保存热词到文件"""
-        try:
-            content = self.hotword_text_edit.toPlainText()
-            hotwords_file = Path("resources") / "hotwords.txt"
-            hotwords_file.parent.mkdir(exist_ok=True)
-            hotwords_file.write_text(content, encoding="utf-8")
-            
-            # 通知用户保存成功
-            QMessageBox.information(self, "成功", "热词已保存成功！\n\n重新开始录音后生效。")
-            
-            # 如果有状态管理器，重新加载热词
-            if hasattr(self, 'parent') and self.parent and hasattr(self.parent, 'state_manager'):
-                if hasattr(self.parent.state_manager, 'reload_hotwords'):
-                    self.parent.state_manager.reload_hotwords()
-                    
-        except Exception as e:
-            import logging
-            logging.error(f"保存热词失败: {e}")
-            QMessageBox.critical(self, "错误", f"保存热词失败: {e}")
-    
+
     def _cleanup_audio(self):
         """清理音频资源"""
         if self.audio:

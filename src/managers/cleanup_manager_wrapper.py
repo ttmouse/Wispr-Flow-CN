@@ -69,7 +69,12 @@ class CleanupManagerWrapper:
                 logging.debug(f"组件 {component_name} 没有 {cleanup_method} 方法，跳过清理")
                 return True
                 
+        except AttributeError as e:
+            # 属性不存在的错误，通常是正常的，只记录调试信息
+            logging.debug(f"组件 {component_name} 清理时属性不存在: {e}")
+            return True
         except Exception as e:
+            # 其他真正的错误才记录为错误级别
             logging.error(f"清理组件 {component_name} 失败: {e}")
             return False
     

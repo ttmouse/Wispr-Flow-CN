@@ -167,7 +167,13 @@ class HotkeyHandlerManagerWrapper:
                     app_instance._stopping_recording = False
                     logging.debug("停止录音标志已重置")
 
-            QTimer.singleShot(3000, reset_stopping_flag)  # 3秒后重置标志
+            # 使用信号机制在主线程中创建定时器，避免线程警告
+            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(
+                app_instance, "_create_reset_timer",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(int, 3000)  # 3秒后重置标志
+            )
 
         except Exception as e:
             logging.error(f"处理热键释放事件失败: {e}")

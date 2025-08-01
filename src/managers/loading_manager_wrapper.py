@@ -41,6 +41,7 @@ class LoadingManagerWrapper:
     def start_loading(self):
         """开始异步加载"""
         self._ensure_initialized()
+        self.logger.info("开始异步加载组件...")
         return self._original_loader.start_loading()
     
     def stop_loading(self):
@@ -181,9 +182,9 @@ class LoadingManagerWrapper:
                     app_instance.state_manager.funasr_engine = component
 
             elif component_name == 'hotkey_manager' and component:
-                # 设置热键回调
-                component.set_press_callback(app_instance.on_option_press)
-                component.set_release_callback(app_instance.on_option_release)
+                # 设置热键回调 - 使用热键处理管理器的方法
+                component.set_press_callback(lambda: app_instance.hotkey_handler_manager.on_option_press(app_instance))
+                component.set_release_callback(lambda: app_instance.hotkey_handler_manager.on_option_release(app_instance))
 
             elif component_name == 'audio_capture_thread' and component:
                 # 连接音频捕获信号

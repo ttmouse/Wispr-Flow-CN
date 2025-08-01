@@ -590,7 +590,7 @@ class MainWindow(QMainWindow):
             self._position_save_timer.stop()
         else:
             from PyQt6.QtCore import QTimer
-            self._position_save_timer = QTimer()
+            self._position_save_timer = QTimer(self)  # 指定父对象
             self._position_save_timer.setSingleShot(True)
             self._position_save_timer.timeout.connect(self.save_window_position)
         
@@ -717,7 +717,12 @@ class MainWindow(QMainWindow):
         try:
             if os.path.exists(self.history_file):
                 with open(self.history_file, 'r', encoding='utf-8') as f:
-                    history_data = json.load(f)
+                    content = f.read().strip()
+                    if not content:
+                        # 文件为空，创建空的历史记录
+                        history_data = []
+                    else:
+                        history_data = json.loads(content)
                 
                 # 清空现有历史记录
                 self.history_list.clear()
@@ -736,6 +741,20 @@ class MainWindow(QMainWindow):
                         self.history_list.addItem(text_with_highlight)
                     
                     self._loading_history = False
+        except json.JSONDecodeError as e:
+            import logging
+            logging.error(f"历史记录文件格式错误: {e}")
+            # 备份损坏的文件并创建新的空文件
+            try:
+                import shutil
+                backup_file = f"{self.history_file}.backup"
+                shutil.move(self.history_file, backup_file)
+                logging.info(f"已将损坏的历史记录文件备份到: {backup_file}")
+                # 创建空的历史记录文件
+                with open(self.history_file, 'w', encoding='utf-8') as f:
+                    json.dump([], f, ensure_ascii=False, indent=2)
+            except Exception as backup_e:
+                logging.error(f"备份损坏文件失败: {backup_e}")
         except Exception as e:
             import logging
             logging.error(f"加载历史记录失败: {e}")
