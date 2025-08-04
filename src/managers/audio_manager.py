@@ -585,9 +585,22 @@ class AudioManager(QObject):
                                 return
                                 
                             if result:
-                                text = result.get('text', '')
-                                language = result.get('language', 'zh')
-                                
+                                # 处理不同类型的结果
+                                if isinstance(result, list) and len(result) > 0:
+                                    first_result = result[0]
+                                    if isinstance(first_result, dict):
+                                        text = first_result.get('text', '')
+                                        language = first_result.get('language', 'zh')
+                                    else:
+                                        text = str(first_result)
+                                        language = 'zh'
+                                elif isinstance(result, dict):
+                                    text = result.get('text', '')
+                                    language = result.get('language', 'zh')
+                                else:
+                                    text = str(result)
+                                    language = 'zh'
+
                                 # 最后检查是否被中断
                                 if not self.isInterruptionRequested():
                                     self.transcription_completed.emit(text, language)

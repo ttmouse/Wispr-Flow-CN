@@ -263,17 +263,22 @@ class FunASREngine(CleanupMixin):
 
     def _add_punctuation(self, text):
         """添加标点符号"""
+        # 如果没有标点模型，直接返回原文本
+        if not self.has_punc_model:
+            return text
+
+        # 如果文本为空或太短，直接返回
+        if not text or len(text.strip()) < 2:
+            return text
+
         try:
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                # 简化标点模型调用，移除可能导致张量类型错误的参数
                 result = self.punc_model.generate(
                     input=text,
                     disable_progress_bar=True,
                     batch_size=1,
-                    mode='offline',
-                    cache_size=1000,
-                    hotword_score=2.0,
-                    min_sentence_length=2,
-                    hotwords=[(word, 50.0) for word in self.hotwords] if self.hotwords else None
+                    mode='offline'
                 )
 
             if isinstance(result, list) and len(result) > 0:
@@ -344,8 +349,9 @@ class FunASREngine(CleanupMixin):
                     # 如果是其他类型，尝试转换为字符串
                     text = str(first_result)
                 
-            # 2. 添加标点
-            text = self._add_punctuation(text)
+            # 2. 添加标点（如果启用）
+            if self.settings_manager and self.settings_manager.get_setting('asr.auto_punctuation', True):
+                text = self._add_punctuation(text)
             
             # 3. 处理英文单词间的空格
             processed_text = self._process_text(text)
