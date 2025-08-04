@@ -9,7 +9,7 @@ import io
 import time
 from concurrent.futures import ThreadPoolExecutor
 import math
-from utils.cleanup_mixin import CleanupMixin
+from src.utils.cleanup_mixin import CleanupMixin
 
 # 设置 modelscope 日志级别为 WARNING，减少不必要的信息
 logging.getLogger('modelscope').setLevel(logging.WARNING)
@@ -55,9 +55,10 @@ class FunASREngine(CleanupMixin):
             # 检查模型路径
             
             # ASR模型是必需的
-            if not os.path.exists(asr_model_dir):
+            self.has_asr_model = os.path.exists(asr_model_dir)
+            if not self.has_asr_model:
                 raise Exception(f"ASR模型文件不存在: {asr_model_dir}")
-            
+
             # 标点模型是可选的
             self.has_punc_model = os.path.exists(punc_model_dir)
             if not self.has_punc_model:

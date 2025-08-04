@@ -4,7 +4,13 @@
 """
 
 import logging
-from settings_manager import SettingsManager as OriginalSettingsManager
+try:
+    from settings_manager import SettingsManager as OriginalSettingsManager
+except ImportError:
+    try:
+        from src.settings_manager import SettingsManager as OriginalSettingsManager
+    except ImportError:
+        from ..settings_manager import SettingsManager as OriginalSettingsManager
 
 
 class SettingsManagerWrapper:
@@ -113,7 +119,7 @@ class SettingsManagerWrapper:
 
         self._ensure_initialized()
         try:
-            # 尝试不同的导入路径
+            # 导入设置窗口
             try:
                 from ui.settings_window import MacOSSettingsWindow
             except ImportError:
