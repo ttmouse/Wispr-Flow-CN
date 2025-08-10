@@ -139,7 +139,7 @@ class ModernSlider(QWidget):
 
         # 数值显示
         painter.setPen(QPen(QColor("#FFFFFF")))
-        painter.setFont(QFont("-apple-system", 11))
+        painter.setFont(QFont("SF Pro Display", 11))
         value_text = f"{self._value}{self.unit}"
         text_rect = QRectF(0, 2, self.width(), 16)
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, value_text)
@@ -175,102 +175,222 @@ class ModernSlider(QWidget):
             self.update()
 
 
-class ModernComboBox(QComboBox):
-    """现代化的下拉框 - 参考系统设置"""
+class CustomDropdownWidget(QWidget):
+    """完全自定义的下拉框组件 - 避免QComboBox的限制"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(36)  # 增加高度，更接近系统设置
+        self.items = []
+        self.current_index = 0
+        self.popup_widget = None
+        self.is_popup_visible = False
+
+        self.setFixedHeight(36)
         self.setMinimumWidth(140)
+        self._setup_ui()
         self._setup_style()
+
+    def _setup_ui(self):
+        from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton
+        from PyQt6.QtCore import Qt
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(12, 0, 8, 0)
+        layout.setSpacing(0)
+
+        # 显示当前选中项的标签
+        self.label = QLabel("请选择...")
+        self.label.setStyleSheet("color: #ffffff; background: transparent; font-size: 13px;")
+        layout.addWidget(self.label)
+
+        layout.addStretch()
+
+        # 下拉箭头
+        self.arrow = QLabel("▼")
+        self.arrow.setStyleSheet("color: #8E8E93; background: transparent; font-size: 10px;")
+        self.arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.arrow)
+
+        self.setLayout(layout)
 
     def _setup_style(self):
         self.setStyleSheet("""
-            QComboBox {
+            CustomDropdownWidget {
                 background-color: #1C1C1E;
                 border: 2px solid #3A3A3C;
                 border-radius: 8px;
-                padding: 8px 12px;
-                color: #ffffff;
-                font-size: 13px;
-                font-weight: 400;
-                selection-background-color: transparent;
-                min-height: 16px;
-                padding-right: 30px;
             }
-
-            QComboBox:hover {
+            CustomDropdownWidget:hover {
                 background-color: #2C2C2E;
                 border-color: #48484A;
             }
+        """)
 
-            QComboBox:focus {
-                border-color: #007AFF;
-            }
+    def addItem(self, text):
+        """添加选项"""
+        self.items.append(text)
+        if len(self.items) == 1:
+            self.label.setText(text)
+            self.current_index = 0
 
-            QComboBox::drop-down {
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 24px;
-                border: none;
-                background: transparent;
-                margin-right: 4px;
-            }
+    def setCurrentIndex(self, index):
+        """设置当前选中项"""
+        if 0 <= index < len(self.items):
+            self.current_index = index
+            self.label.setText(self.items[index])
 
-            QComboBox::down-arrow {
-                width: 8px;
-                height: 8px;
-                background-color: #8E8E93;
-                border-radius: 2px;
-                margin: 4px;
-            }
+    def currentText(self):
+        """获取当前选中文本"""
+        if 0 <= self.current_index < len(self.items):
+            return self.items[self.current_index]
+        return ""
 
-            QComboBox::down-arrow:hover {
-                background-color: #AEAEB2;
-            }
+    def mousePressEvent(self, event):
+        """鼠标点击事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._show_popup()
+        super().mousePressEvent(event)
 
-            QComboBox QAbstractItemView {
+    def _show_popup(self):
+        """显示下拉列表"""
+        if self.is_popup_visible or not self.items:
+            return
+
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
+        from PyQt6.QtCore import Qt, QPoint, QTimer
+
+        # 创建弹出窗口
+        self.popup_widget = QWidget()
+        self.popup_widget.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.popup_widget.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        # 设置弹出窗口样式 - 更自然的外观
+        self.popup_widget.setStyleSheet("""
+            QWidget {
                 background-color: #1C1C1E;
-                border: 2px solid #3A3A3C;
-                border-radius: 8px;
-                color: #ffffff;
-                selection-background-color: #007AFF;
-                outline: none;
-                padding: 4px 0px;
-                font-size: 13px;
-            }
-
-            QComboBox QAbstractItemView::item {
-                padding: 8px 12px;
-                border: none;
-                min-height: 20px;
-            }
-
-            QComboBox QAbstractItemView::item:selected {
-                background-color: #007AFF;
-                color: #ffffff;
-            }
-
-            QComboBox QAbstractItemView::item:hover {
-                background-color: #2C2C2E;
+                border: 1px solid #48484A;
+                border-radius: 6px;
             }
         """)
 
-    def addItem(self, text, userData=None):
-        """重写添加项目方法，支持勾选标记"""
-        super().addItem(text, userData)
+        # 创建布局 - 关键：没有任何边距
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-    def setCurrentText(self, text):
-        """设置当前文本"""
-        index = self.findText(text)
-        if index >= 0:
-            self.setCurrentIndex(index)
+        # 不使用事件过滤器，避免悬停卡住问题
 
-    def paintEvent(self, event):
-        """自定义绘制，添加勾选标记"""
-        super().paintEvent(event)
+        # 添加选项按钮
+        for i, item in enumerate(self.items):
+            btn = QPushButton(item)
+            btn.setFixedHeight(28)
+            btn.clicked.connect(lambda checked, idx=i: self._select_item(idx))
 
-        # 如果需要，可以在这里添加自定义绘制逻辑
+            # 设置按钮样式 - 更自然的外观
+            if i == self.current_index:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #007AFF;
+                        color: #ffffff;
+                        border: none;
+                        padding: 6px 12px;
+                        text-align: left;
+                        font-size: 13px;
+                        font-weight: 400;
+                        border-radius: 0px;
+                    }
+                    QPushButton:hover {
+                        background-color: #0056CC;
+                    }
+                    QPushButton:pressed {
+                        background-color: #004499;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: transparent;
+                        color: #ffffff;
+                        border: none;
+                        padding: 6px 12px;
+                        text-align: left;
+                        font-size: 13px;
+                        font-weight: 400;
+                        border-radius: 0px;
+                    }
+                    QPushButton:hover {
+                        background-color: #2C2C2E;
+                    }
+                    QPushButton:pressed {
+                        background-color: #3A3A3C;
+                    }
+                """)
+
+            layout.addWidget(btn)
+
+        self.popup_widget.setLayout(layout)
+
+        # 计算位置和大小
+        global_pos = self.mapToGlobal(QPoint(0, self.height()))
+        popup_width = self.width()
+        popup_height = len(self.items) * 28 + 2  # 精确高度：28px每项 + 2px边框
+
+        self.popup_widget.setGeometry(global_pos.x(), global_pos.y(), popup_width, popup_height)
+
+        # 显示弹出窗口
+        self.popup_widget.show()
+        self.is_popup_visible = True
+
+        # 监听关闭事件
+        self.popup_widget.destroyed.connect(self._popup_closed)
+
+    def _select_item(self, index):
+        """选择项目"""
+        self.setCurrentIndex(index)
+        if self.popup_widget:
+            self.popup_widget.close()
+
+    def _popup_closed(self):
+        """弹出窗口关闭"""
+        self.is_popup_visible = False
+        self.popup_widget = None
+
+
+class ModernComboBox(CustomDropdownWidget):
+    """现代化的下拉框 - 使用自定义实现"""
+
+    def addItems(self, items):
+        """添加多个选项（兼容QComboBox的addItems方法）"""
+        for item in items:
+            self.addItem(item)
+
+    def findText(self, text):
+        """查找文本对应的索引（兼容QComboBox的findText方法）"""
+        try:
+            return self.items.index(text)
+        except ValueError:
+            return -1
+
+    def clear(self):
+        """清空所有选项（兼容QComboBox的clear方法）"""
+        self.items.clear()
+        self.current_index = 0
+        if hasattr(self, 'label'):
+            self.label.setText("")
+
+    def count(self):
+        """返回选项数量（兼容QComboBox的count方法）"""
+        return len(self.items)
+
+    def itemText(self, index):
+        """获取指定索引的文本（兼容QComboBox的itemText方法）"""
+        if 0 <= index < len(self.items):
+            return self.items[index]
+        return ""
+
+
+
+
 
 
 class SettingRow(QWidget):
@@ -426,7 +546,7 @@ class MacOSSettingsWindow(QDialog):
             QDialog {
                 background-color: #1e1e1e;
                 color: #ffffff;
-                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+                font-family: 'SF Pro Display', BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
             }
         """)
 
@@ -766,11 +886,6 @@ class MacOSSettingsWindow(QDialog):
         punct_row = SettingRow("。", "自动标点", "自动添加标点符号", self.auto_punct_switch)
         asr_group.add_row(punct_row)
 
-        # 实时显示
-        self.realtime_switch = ModernSwitch()
-        realtime_row = SettingRow("⚡", "实时显示", "实时显示识别结果", self.realtime_switch)
-        asr_group.add_row(realtime_row)
-
         # 发音纠错
         self.correction_switch = ModernSwitch()
         correction_row = SettingRow("✏️", "发音纠错", "启用发音相似词纠错", self.correction_switch)
@@ -940,15 +1055,9 @@ class MacOSSettingsWindow(QDialog):
     def _create_dependency_page(self):
         """创建依赖管理页面"""
         page = QWidget()
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
-
-        content = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # 尝试导入依赖管理组件
         try:
@@ -957,6 +1066,16 @@ class MacOSSettingsWindow(QDialog):
             layout.addWidget(dependency_widget)
         except ImportError:
             # 如果导入失败，显示简化的依赖信息
+            scroll_area = QScrollArea()
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll_area.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
+
+            content = QWidget()
+            content_layout = QVBoxLayout()
+            content_layout.setContentsMargins(20, 20, 20, 20)
+            content_layout.setSpacing(16)
+
             dep_group = SettingGroup("依赖管理")
 
             # 模型状态
@@ -977,18 +1096,14 @@ class MacOSSettingsWindow(QDialog):
             env_status_row = SettingRow("🐍", "Python环境", "当前Python环境", env_label)
             dep_group.add_row(env_status_row)
 
-            layout.addWidget(dep_group)
+            content_layout.addWidget(dep_group)
+            content_layout.addStretch()
 
-        layout.addStretch()
+            content.setLayout(content_layout)
+            scroll_area.setWidget(content)
+            layout.addWidget(scroll_area)
 
-        content.setLayout(layout)
-        scroll_area.setWidget(content)
-
-        page_layout = QVBoxLayout()
-        page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.addWidget(scroll_area)
-        page.setLayout(page_layout)
-
+        page.setLayout(layout)
         return page
 
     def _create_path_input(self, model_type):
@@ -1256,9 +1371,6 @@ class MacOSSettingsWindow(QDialog):
             auto_punct = self.settings_manager.get_setting('asr.auto_punctuation', True)
             self.auto_punct_switch.setChecked(auto_punct)
 
-            realtime = self.settings_manager.get_setting('asr.real_time_display', True)
-            self.realtime_switch.setChecked(realtime)
-
             correction = self.settings_manager.get_setting('asr.enable_pronunciation_correction', True)
             self.correction_switch.setChecked(correction)
 
@@ -1306,7 +1418,6 @@ class MacOSSettingsWindow(QDialog):
 
             # 保存ASR设置
             self.settings_manager.set_setting('asr.auto_punctuation', self.auto_punct_switch.isChecked())
-            self.settings_manager.set_setting('asr.real_time_display', self.realtime_switch.isChecked())
             self.settings_manager.set_setting('asr.enable_pronunciation_correction', self.correction_switch.isChecked())
 
             # 保存模型路径

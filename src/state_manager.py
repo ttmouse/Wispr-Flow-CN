@@ -52,7 +52,9 @@ class StateManager(QObject, CleanupMixin):
         try:
             self.status = "录音中"
             self.status_changed.emit(self.status)
-            # 开始录音时不播放音效
+
+            # 播放开始录音音效
+            self._play_start_sound()
         except Exception as e:
             import logging
             logging.error(f"开始录音失败: {e}")
@@ -69,6 +71,42 @@ class StateManager(QObject, CleanupMixin):
             import logging
             logging.error(f"停止录音失败: {e}")
     
+    def _play_start_sound(self):
+        """播放开始录音音效"""
+        try:
+            # 使用预初始化的开始音效实例
+            if self.start_sound and self.start_sound.status() == QSoundEffect.Status.Ready:
+                self.start_sound.play()
+            else:
+                # 如果预初始化的音效不可用，创建临时实例并保持引用
+                if not hasattr(self, '_temp_start_sound'):
+                    self._temp_start_sound = QSoundEffect()
+                    self._temp_start_sound.moveToThread(QApplication.instance().thread())
+
+                    # 设置音效文件路径
+                    start_sound_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "start.wav")
+                    self._temp_start_sound.setSource(QUrl.fromLocalFile(start_sound_path))
+                    self._temp_start_sound.setVolume(0.3)
+                    self._temp_start_sound.setLoopCount(1)
+
+                    # 连接播放完成信号，清理临时实例
+                    def on_playing_changed():
+                        if not self._temp_start_sound.isPlaying():
+                            self._temp_start_sound.deleteLater()
+                            self._temp_start_sound = None
+
+                    self._temp_start_sound.playingChanged.connect(on_playing_changed)
+
+                # 播放临时音效
+                if self._temp_start_sound.status() == QSoundEffect.Status.Ready:
+                    self._temp_start_sound.play()
+                else:
+                    pass  # 开始音效未就绪，无法播放
+
+        except Exception as e:
+            import logging
+            logging.error(f"播放开始音效失败: {e}")
+
     def _play_stop_sound(self):
         """播放停止音效 - 使用预初始化的音效实例"""
         try:
@@ -135,6 +173,12 @@ class StateManager(QObject, CleanupMixin):
                 self.stop_sound.deleteLater()
                 self.stop_sound = None
             
+            # 清理临时开始音效实例
+            if hasattr(self, '_temp_start_sound') and self._temp_start_sound:
+                self._temp_start_sound.stop()
+                self._temp_start_sound.deleteLater()
+                self._temp_start_sound = None
+
             # 清理临时停止音效实例
             if hasattr(self, '_temp_stop_sound') and self._temp_stop_sound:
                 self._temp_stop_sound.stop()

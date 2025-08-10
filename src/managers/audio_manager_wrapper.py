@@ -241,11 +241,50 @@ class AudioManagerWrapper:
             return []
 
     def get_status(self):
-        """获取管理器状态"""
+        """获取状态信息"""
         return {
             'name': 'AudioManagerWrapper',
             'initialized': self._initialized,
-            'original_capture_type': type(self._original_capture).__name__ if self._initialized and self._original_capture else None,
-            'has_stream': self.stream is not None if self._initialized else False,
-            'device_index': self.device_index if self._initialized else None
+            'has_original_capture': self._original_capture is not None
         }
+    
+    def get_audio_devices(self):
+        """获取系统中所有可用的音频输入设备"""
+        try:
+            self._ensure_initialized()
+            if self._original_capture and hasattr(self._original_capture, 'get_audio_devices'):
+                return self._original_capture.get_audio_devices()
+            
+            # 如果原始类没有这个方法，直接使用pyaudio获取
+            import pyaudio
+            devices = []
+            
+            # 获取默认输入设备信息
+            try:
+                default_device = self._original_capture.audio.get_default_input_device_info()
+                default_name = default_device['name']
+                devices.append({'name': f"系统默认 ({default_name})", 'index': default_device['index']})
+            except Exception as e:
+                self.logger.error(f"获取默认设备失败: {e}")
+                devices.append({'name': "系统默认", 'index': None})
+            
+            # 获取所有设备信息
+            for i in range(self._original_capture.audio.get_device_count()):
+                try:
+                    device_info = self._original_capture.audio.get_device_info_by_index(i)
+                    # 只添加输入设备（maxInputChannels > 0）
+                    if device_info['maxInputChannels'] > 0:
+                        name = device_info['name']
+                        # 避免重复添加默认设备
+                        if not any(dev['name'] == f"系统默认 ({name})" for dev in devices):
+                            devices.append({'name': name, 'index': i})
+                except Exception as e:
+                    self.logger.error(f"获取设备 {i} 信息失败: {e}")
+                    continue
+                    
+            return devices
+            
+        except Exception as e:
+            self.logger.error(f"获取音频设备列表失败: {e}")
+            # 返回至少一个默认选项
+            return [{'name': "系统默认", 'index': None}]

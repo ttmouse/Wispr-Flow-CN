@@ -62,62 +62,99 @@ class DependencyInstallThread(QThread):
             logging.error(f"安装{self.dependency_name}失败: {e}")
             self.install_completed.emit(self.dependency_name, False, str(e))
 
-class DependencyCard(QFrame):
-    """依赖项卡片组件"""
+class DependencyCard(QWidget):
+    """依赖项卡片组件 - 使用与设置窗口一致的现代化风格"""
     install_requested = pyqtSignal(str)
-    
+
     def __init__(self, dep_name: str, dep_info: DependencyInfo):
         super().__init__()
         self.dep_name = dep_name
         self.dep_info = dep_info
         self._setup_ui()
-    
+
     def _setup_ui(self):
         """设置UI"""
-        self.setFrameStyle(QFrame.Shape.Box)
-        self.setLineWidth(1)
-        self.setContentsMargins(10, 10, 10, 10)
-        
-        layout = QVBoxLayout()
+        self.setMinimumHeight(60)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(12)
         self.setLayout(layout)
-        
-        # 标题行
-        title_layout = QHBoxLayout()
-        
-        # 状态图标和名称
+
+        # 状态图标
         status_label = QLabel(self._get_status_icon())
-        status_label.setFont(QFont("Arial", 16))
-        title_layout.addWidget(status_label)
-        
+        status_label.setFont(QFont("Arial", 18))
+        status_label.setFixedSize(24, 24)
+        layout.addWidget(status_label)
+
+        # 主要信息区域
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 名称和状态
+        name_status_layout = QHBoxLayout()
+        name_status_layout.setSpacing(8)
+        name_status_layout.setContentsMargins(0, 0, 0, 0)
+
         name_label = QLabel(self.dep_info.name)
-        name_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        title_layout.addWidget(name_label)
-        
-        title_layout.addStretch()
-        
+        name_label.setStyleSheet("""
+            QLabel {
+                color: #FFFFFF;
+                font-size: 14px;
+                font-weight: 500;
+                background-color: transparent;
+            }
+        """)
+        name_status_layout.addWidget(name_label)
+
+        # 状态文本
+        status_text = self._get_status_text()
+        if status_text:
+            status_info = QLabel(status_text)
+            status_info.setStyleSheet(self._get_status_style())
+            name_status_layout.addWidget(status_info)
+
+        name_status_layout.addStretch()
+        info_layout.addLayout(name_status_layout)
+
+        # 描述
+        desc_label = QLabel(self.dep_info.description)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("""
+            QLabel {
+                color: #8E8E93;
+                font-size: 12px;
+                background-color: transparent;
+            }
+        """)
+        info_layout.addWidget(desc_label)
+
+        layout.addLayout(info_layout)
+
         # 安装按钮
         if self.dep_info.status != DependencyStatus.INSTALLED:
             self.install_btn = QPushButton("安装")
             self.install_btn.clicked.connect(lambda: self.install_requested.emit(self.dep_name))
-            self.install_btn.setMaximumWidth(80)
-            title_layout.addWidget(self.install_btn)
-        
-        layout.addLayout(title_layout)
-        
-        # 描述
-        desc_label = QLabel(self.dep_info.description)
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: #666; font-size: 11px;")
-        layout.addWidget(desc_label)
-        
-        # 状态信息
-        status_text = self._get_status_text()
-        if status_text:
-            status_info = QLabel(status_text)
-            status_info.setWordWrap(True)
-            status_info.setStyleSheet(self._get_status_style())
-            layout.addWidget(status_info)
-        
+            self.install_btn.setFixedSize(60, 28)
+            self.install_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #007AFF;
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #0056CC;
+                }
+                QPushButton:pressed {
+                    background-color: #004499;
+                }
+            """)
+            layout.addWidget(self.install_btn)
+
         # 设置卡片样式
         self._apply_card_style()
     
@@ -149,55 +186,50 @@ class DependencyCard(QFrame):
     def _get_status_style(self) -> str:
         """获取状态样式"""
         if self.dep_info.status == DependencyStatus.INSTALLED:
-            return "color: #4CAF50; font-size: 11px;"
+            return """
+                QLabel {
+                    color: #34C759;
+                    font-size: 11px;
+                    background-color: transparent;
+                }
+            """
         elif self.dep_info.status == DependencyStatus.NOT_INSTALLED:
-            return "color: #F44336; font-size: 11px;"
+            return """
+                QLabel {
+                    color: #FF453A;
+                    font-size: 11px;
+                    background-color: transparent;
+                }
+            """
         elif self.dep_info.status == DependencyStatus.VERSION_MISMATCH:
-            return "color: #FF9800; font-size: 11px;"
+            return """
+                QLabel {
+                    color: #FF9F0A;
+                    font-size: 11px;
+                    background-color: transparent;
+                }
+            """
         else:
-            return "color: #FFFFFF; font-size: 11px;"
-    
+            return """
+                QLabel {
+                    color: #8E8E93;
+                    font-size: 11px;
+                    background-color: transparent;
+                }
+            """
+
     def _apply_card_style(self):
-        """应用卡片样式"""
-        if self.dep_info.status == DependencyStatus.INSTALLED:
-            self.setStyleSheet("""
-                QFrame {
-                    background-color: rgba(255, 255, 255, 0.03);
-                    border: none;
-                    border-radius: 4px;
-                    color: #FFFFFF;
-                    padding: 8px;
-                }
-                QLabel {
-                    color: #FFFFFF;
-                }
-            """)
-        elif self.dep_info.status == DependencyStatus.NOT_INSTALLED:
-            self.setStyleSheet("""
-                QFrame {
-                    background-color: rgba(128, 128, 128, 0.03);
-                    border: none;
-                    border-radius: 4px;
-                    color: #FFFFFF;
-                    padding: 8px;
-                }
-                QLabel {
-                    color: #CCCCCC;
-                }
-            """)
-        else:
-            self.setStyleSheet("""
-                QFrame {
-                    background-color: rgba(192, 192, 192, 0.03);
-                    border: none;
-                    border-radius: 4px;
-                    color: #FFFFFF;
-                    padding: 8px;
-                }
-                QLabel {
-                    color: #DDDDDD;
-                }
-            """)
+        """应用卡片样式 - 使用与设置窗口一致的现代化风格"""
+        self.setStyleSheet("""
+            QWidget {
+                background-color: rgba(28, 28, 30, 0.6);
+                border-radius: 10px;
+                border: none;
+            }
+            QWidget:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+        """)
     
     def update_dependency_info(self, dep_info: DependencyInfo):
         """更新依赖信息"""
@@ -287,64 +319,188 @@ class DependencyTab(QWidget):
         QTimer.singleShot(500, self._check_dependencies)
     
     def _setup_ui(self):
-        """设置UI"""
+        """设置UI - 使用与设置窗口一致的现代化风格"""
         layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
         self.setLayout(layout)
-        
-        # 标题和操作按钮
-        header_layout = QHBoxLayout()
-        
-        title_label = QLabel("依赖管理")
-        title_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        header_layout.addWidget(title_label)
-        
-        header_layout.addStretch()
-        
+
+        # 操作按钮组
+        button_group_widget = QWidget()
+        button_group_widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(28, 28, 30, 0.6);
+                border-radius: 10px;
+                border: none;
+            }
+        """)
+
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(16, 12, 16, 12)
+        button_layout.setSpacing(12)
+
         # 刷新按钮
         refresh_btn = QPushButton("刷新检查")
+        refresh_btn.setStyleSheet(self._get_button_style(False))
         refresh_btn.clicked.connect(self._check_dependencies)
-        header_layout.addWidget(refresh_btn)
-        
+        button_layout.addWidget(refresh_btn)
+
         # 一键安装按钮
         self.install_all_btn = QPushButton("一键安装全部")
+        self.install_all_btn.setStyleSheet(self._get_button_style(True))
         self.install_all_btn.clicked.connect(self._install_all_missing)
         self.install_all_btn.setEnabled(False)
-        header_layout.addWidget(self.install_all_btn)
-        
+        button_layout.addWidget(self.install_all_btn)
+
         # 查看报告按钮
         report_btn = QPushButton("查看报告")
+        report_btn.setStyleSheet(self._get_button_style(False))
         report_btn.clicked.connect(self._show_report)
-        header_layout.addWidget(report_btn)
-        
-        layout.addLayout(header_layout)
-        
+        button_layout.addWidget(report_btn)
+
+        button_layout.addStretch()
+        button_group_widget.setLayout(button_layout)
+        layout.addWidget(button_group_widget)
+
         # 状态摘要
         self.summary_label = QLabel("正在检查依赖项...")
-        self.summary_label.setStyleSheet("color: #FFFFFF; font-size: 12px; padding: 10px;")
+        self.summary_label.setStyleSheet("""
+            QLabel {
+                color: #8E8E93;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 16px 16px 8px 16px;
+                background-color: transparent;
+            }
+        """)
         layout.addWidget(self.summary_label)
         
         # 进度条
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                border-radius: 4px;
+                background-color: rgba(255, 255, 255, 0.1);
+                text-align: center;
+                color: #FFFFFF;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background-color: #007AFF;
+                border-radius: 4px;
+            }
+        """)
         layout.addWidget(self.progress_bar)
-        
+
         # 状态标签
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #FFFFFF; font-size: 11px; padding: 5px;")
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #8E8E93;
+                font-size: 11px;
+                padding: 5px 16px;
+                background-color: transparent;
+            }
+        """)
         layout.addWidget(self.status_label)
-        
+
+        # 依赖项列表容器
+        dependencies_container = QWidget()
+        dependencies_container.setStyleSheet("""
+            QWidget {
+                background-color: rgba(28, 28, 30, 0.6);
+                border-radius: 10px;
+                border: none;
+            }
+        """)
+
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
         # 依赖项列表（滚动区域）
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+                border-radius: 10px;
+            }
+            QScrollBar:vertical {
+                background-color: rgba(255, 255, 255, 0.1);
+                width: 8px;
+                border-radius: 4px;
+                margin: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: rgba(255, 255, 255, 0.3);
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: rgba(255, 255, 255, 0.5);
+            }
+        """)
+
         self.dependencies_widget = QWidget()
+        self.dependencies_widget.setStyleSheet("background-color: transparent;")
         self.dependencies_layout = QVBoxLayout()
+        self.dependencies_layout.setContentsMargins(0, 0, 0, 0)
+        self.dependencies_layout.setSpacing(1)
         self.dependencies_widget.setLayout(self.dependencies_layout)
-        
+
         scroll_area.setWidget(self.dependencies_widget)
-        layout.addWidget(scroll_area)
-    
+        container_layout.addWidget(scroll_area)
+        dependencies_container.setLayout(container_layout)
+        layout.addWidget(dependencies_container)
+
+    def _get_button_style(self, primary: bool) -> str:
+        """获取按钮样式"""
+        if primary:
+            return """
+                QPushButton {
+                    background-color: #007AFF;
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #0056CC;
+                }
+                QPushButton:pressed {
+                    background-color: #004499;
+                }
+                QPushButton:disabled {
+                    background-color: #3A3A3C;
+                    color: #8E8E93;
+                }
+            """
+        else:
+            return """
+                QPushButton {
+                    background-color: rgba(58, 58, 60, 0.8);
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: rgba(72, 72, 74, 0.8);
+                }
+                QPushButton:pressed {
+                    background-color: rgba(48, 48, 50, 0.8);
+                }
+            """
+
     def _check_dependencies(self):
         """检查依赖项"""
         if self.check_thread and self.check_thread.isRunning():

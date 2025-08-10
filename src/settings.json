@@ -3,7 +3,7 @@
   "hotkey_scheme": "python",
   "high_frequency_words": [],
   "audio": {
-    "input_device": null,
+    "input_device": "系统默认",
     "volume_threshold": 350,
     "max_recording_duration": 10
   },
@@ -11,7 +11,6 @@
     "model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     "punc_model_path": "/Users/douba/Downloads/GPT插件/ASR-FunASR/src/modelscope/hub/damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
     "auto_punctuation": true,
-    "real_time_display": true,
     "hotword_weight": 80,
     "enable_pronunciation_correction": true
   },
@@ -24,13 +23,13 @@
   },
   "cache": {
     "permissions": {
-      "last_check": "2025-08-04T20:43:05.815526",
-      "accessibility": true,
+      "last_check": "2025-08-10T22:29:49.467678",
+      "accessibility": false,
       "microphone": true,
       "check_interval_hours": 24
     },
     "models": {
-      "last_check": "2025-08-04T20:43:08.366435",
+      "last_check": "2025-08-10T22:29:54.453574",
       "asr_available": true,
       "punc_available": true,
       "check_interval_hours": 168

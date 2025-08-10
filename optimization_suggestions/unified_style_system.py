@@ -53,7 +53,7 @@ class StyleManager:
                     'warning': '#FF9500'
                 },
                 'fonts': {
-                    'family': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    'family': '"SF Pro Display", BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                     'size_small': 12,
                     'size_normal': 14,
                     'size_large': 16,
@@ -92,7 +92,7 @@ class StyleManager:
                     'warning': '#FF9500'
                 },
                 'fonts': {
-                    'family': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    'family': '"SF Pro Display", BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                     'size_small': 12,
                     'size_normal': 14,
                     'size_large': 16,

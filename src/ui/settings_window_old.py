@@ -926,7 +926,7 @@ class MacOSSettingsWindow(QDialog):
             QDialog {
                 background-color: #1C1C1E;
                 color: #FFFFFF;
-                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+                font-family: 'SF Pro Display', BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
             }
             
             QFrame#sidebar {
